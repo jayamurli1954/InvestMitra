@@ -177,7 +177,9 @@ const Strategies = () => {
           </DialogTrigger>
           <DialogContent className="bg-slate-900 border-slate-700 max-w-2xl" data-testid="create-strategy-dialog">
             <DialogHeader>
-              <DialogTitle className="text-white">Create Investment Strategy</DialogTitle>
+              <DialogTitle className="text-white">
+                {editingStrategy ? 'Edit Investment Strategy' : 'Create Investment Strategy'}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
               <div>
