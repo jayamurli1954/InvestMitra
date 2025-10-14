@@ -314,6 +314,102 @@ const Strategies = () => {
           ))}
         </div>
       )}
+
+      {/* Strategy Results Dialog */}
+      {runningStrategy && (
+        <Dialog open={!!runningStrategy} onOpenChange={closeResults}>
+          <DialogContent className="bg-slate-900 border-slate-700 max-w-5xl max-h-[80vh]" data-testid="strategy-results-dialog">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center space-x-2">
+                <Target className="w-5 h-5 text-purple-400" />
+                <span>{runningStrategy.name} - Results</span>
+              </DialogTitle>
+              <p className="text-sm text-slate-400 mt-2">{runningStrategy.description}</p>
+            </DialogHeader>
+
+            {loadingResults ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+              </div>
+            ) : (
+              <div className="overflow-y-auto max-h-[60vh]">
+                {matchingStocks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-slate-400">No stocks match your strategy criteria. Try adjusting the filters.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mb-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                      <p className="text-emerald-400 font-medium">
+                        ✓ Found {matchingStocks.length} stocks matching your criteria
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      {matchingStocks.map((stock, idx) => (
+                        <div key={idx} className="p-4 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors" data-testid={`result-stock-${idx}`}>
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-3 mb-2">
+                                <h4 className="text-lg font-bold text-white">{stock.symbol}</h4>
+                                <span className="px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">
+                                  {stock.sector}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-400 mb-3">{stock.name}</p>
+                              
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                <div>
+                                  <p className="text-slate-500">Price</p>
+                                  <p className="text-white font-medium">₹{stock.current_price.toFixed(2)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500">Change</p>
+                                  <p className={stock.change_percent >= 0 ? 'text-emerald-400 font-medium' : 'text-rose-400 font-medium'}>
+                                    {stock.change_percent >= 0 ? '+' : ''}{stock.change_percent.toFixed(2)}%
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500">P/E Ratio</p>
+                                  <p className="text-white font-medium">{stock.pe_ratio?.toFixed(2) || 'N/A'}</p>
+                                </div>
+                                <div>
+                                  <p className="text-slate-500">ROE</p>
+                                  <p className="text-white font-medium">{stock.roe?.toFixed(2) || 'N/A'}%</p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <div className="ml-4">
+                              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                                stock.change_percent >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'
+                              }`}>
+                                <TrendingUp className={`w-6 h-6 ${
+                                  stock.change_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                                } ${stock.change_percent < 0 ? 'rotate-180' : ''}`} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 pt-4 border-t border-slate-700">
+              <Button
+                onClick={closeResults}
+                variant="outline"
+                className="w-full border-slate-700 text-slate-300 hover:bg-slate-800"
+              >
+                Close
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 };
