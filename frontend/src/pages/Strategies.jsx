@@ -274,7 +274,7 @@ const Strategies = () => {
                 className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
                 data-testid="submit-strategy-btn"
               >
-                Create Strategy
+                {editingStrategy ? 'Update Strategy' : 'Create Strategy'}
               </Button>
             </div>
           </DialogContent>
