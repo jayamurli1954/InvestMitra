@@ -19,7 +19,13 @@ export const AuthProvider = ({ children }) => {
 
   // Check for existing session on mount
   useEffect(() => {
-    checkAuth();
+    // Don't check auth if we're processing a Google OAuth callback
+    const hash = window.location.hash;
+    if (!hash || !hash.includes('session_id=')) {
+      checkAuth();
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   const checkAuth = async () => {
