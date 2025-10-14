@@ -155,27 +155,56 @@ const Analytics = () => {
             </div>
           </div>
 
-          {/* Sector Allocation */}
-          <div className="glass-card p-6" data-testid="sector-allocation">
-            <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
-              <BarChart3 className="w-6 h-6 mr-3 text-purple-400" />
-              Sector Allocation
-            </h2>
-            <div className="space-y-4">
-              {Object.entries(analytics.sector_allocation).map(([sector, percent], idx) => (
-                <div key={idx} data-testid={`sector-${idx}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-white font-medium">{sector}</span>
-                    <span className="text-emerald-400 font-bold">{percent}%</span>
-                  </div>
-                  <div className="w-full bg-slate-800 rounded-full h-3">
-                    <div
-                      className="bg-gradient-to-r from-emerald-400 to-blue-500 h-3 rounded-full transition-all"
-                      style={{ width: `${percent}%` }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
+          {/* Sector Allocation Chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Donut Chart */}
+            <div className="glass-card p-6" data-testid="sector-donut-chart">
+              <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+                <PieChart className="w-6 h-6 mr-3 text-purple-400" />
+                Sector Distribution
+              </h2>
+              {Object.keys(analytics.sector_allocation).length > 0 ? (
+                <DonutChart
+                  data={Object.entries(analytics.sector_allocation).map(([sector, percent]) => ({
+                    name: sector,
+                    value: percent
+                  }))}
+                  category="value"
+                  index="name"
+                  valueFormatter={(value) => `${value.toFixed(1)}%`}
+                  colors={["emerald", "blue", "violet", "amber", "rose", "cyan"]}
+                  className="h-72"
+                  showAnimation={true}
+                />
+              ) : (
+                <p className="text-slate-400 text-center py-8">No sector data available</p>
+              )}
+            </div>
+
+            {/* Bar Chart */}
+            <div className="glass-card p-6" data-testid="sector-bar-chart">
+              <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+                <BarChart3 className="w-6 h-6 mr-3 text-purple-400" />
+                Sector Allocation
+              </h2>
+              {Object.keys(analytics.sector_allocation).length > 0 ? (
+                <TremorBarChart
+                  data={Object.entries(analytics.sector_allocation).map(([sector, percent]) => ({
+                    sector: sector,
+                    allocation: percent
+                  }))}
+                  index="sector"
+                  categories={["allocation"]}
+                  colors={["emerald"]}
+                  valueFormatter={(value) => `${value.toFixed(1)}%`}
+                  yAxisWidth={48}
+                  className="h-72"
+                  showAnimation={true}
+                  layout="vertical"
+                />
+              ) : (
+                <p className="text-slate-400 text-center py-8">No sector data available</p>
+              )}
             </div>
           </div>
 
