@@ -257,8 +257,9 @@ const Portfolio = () => {
                   <th>Symbol</th>
                   <th>Quantity</th>
                   <th>Avg. Cost</th>
+                  <th>Invested Value</th>
                   <th>Current Price</th>
-                  <th>Total Value</th>
+                  <th>Current Value</th>
                   <th>Gain/Loss</th>
                   <th>Return %</th>
                   <th>Action</th>
@@ -281,8 +282,9 @@ const Portfolio = () => {
                       </td>
                       <td className="text-white">{holding.quantity}</td>
                       <td className="text-white">₹{holding.purchase_price.toFixed(2)}</td>
+                      <td className="text-blue-400 font-medium">₹{totalCost.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                       <td className="text-white">₹{holding.current_price.toFixed(2)}</td>
-                      <td className="text-white font-medium">₹{currentValue.toLocaleString('en-IN')}</td>
+                      <td className="text-white font-medium">₹{currentValue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                       <td className={gain >= 0 ? 'text-emerald-400 font-medium' : 'text-rose-400 font-medium'}>
                         {gain >= 0 ? '+' : ''}₹{gain.toFixed(2)}
                       </td>
