@@ -217,30 +217,32 @@ const Analytics = () => {
               <TrendingUp className="w-6 h-6 mr-3 text-emerald-400" />
               Stock Performance
             </h2>
-            {analytics.top_performers.length > 0 || analytics.bottom_performers.length > 0 ? (
+            {analytics.top_performers && analytics.top_performers.length > 0 ? (
               <TremorBarChart
                 data={[
                   ...analytics.top_performers.slice(0, 3).map(p => ({
                     stock: p.symbol,
-                    performance: p.gain_percent,
-                    type: 'gain'
+                    "Gain/Loss %": Number(p.gain_percent)
                   })),
-                  ...analytics.bottom_performers.slice(0, 3).reverse().map(p => ({
-                    stock: p.symbol,
-                    performance: p.gain_percent,
-                    type: 'loss'
-                  }))
+                  ...(analytics.bottom_performers && analytics.bottom_performers.length > 0 
+                    ? analytics.bottom_performers.slice(-3).reverse().map(p => ({
+                        stock: p.symbol,
+                        "Gain/Loss %": Number(p.gain_percent)
+                      }))
+                    : [])
                 ]}
                 index="stock"
-                categories={["performance"]}
+                categories={["Gain/Loss %"]}
                 colors={["emerald"]}
                 valueFormatter={(value) => `${value.toFixed(2)}%`}
-                yAxisWidth={48}
+                yAxisWidth={100}
                 className="h-72"
                 showAnimation={true}
+                showLegend={false}
+                showTooltip={true}
               />
             ) : (
-              <p className="text-slate-400 text-center py-8">No performance data available</p>
+              <p className="text-slate-400 text-center py-8">Add stocks to your portfolio to see performance metrics</p>
             )}
           </div>
 
