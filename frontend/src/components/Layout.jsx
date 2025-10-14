@@ -1,12 +1,16 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Briefcase, 
   Filter, 
   TrendingUp, 
   Target,
-  BarChart3
+  BarChart3,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
+import { Button } from '@/components/ui/button';
 
 const Layout = ({ children }) => {
   const location = useLocation();
