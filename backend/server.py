@@ -520,6 +520,85 @@ async def delete_strategy(strategy_id: str, current_user: User = Depends(require
         raise HTTPException(status_code=404, detail="Strategy not found")
     return {"message": "Strategy deleted successfully"}
 
+# ==================== ANALYTICS ENDPOINTS ====================
+
+@api_router.get("/analytics/portfolio")
+async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
+    """Get comprehensive portfolio analytics"""
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    
+    # Update current prices and get stock data
+    stock_data = {}
+    for holding in holdings:
+        current_price = get_current_price(holding["symbol"])
+        if current_price > 0:
+            holding["current_price"] = current_price
+        
+        # Get full stock info
+        stock_info = get_stock_info(holding["symbol"])
+        if stock_info:
+            stock_data[holding["symbol"]] = stock_info
+    
+    analytics = calculate_portfolio_analytics(holdings, stock_data)
+    return analytics
+
+@api_router.post("/analytics/rebalance")
+async def get_rebalancing_suggestions(
+    target_allocation: Dict[str, float],
+    current_user: User = Depends(require_auth)
+):
+    """Get portfolio rebalancing suggestions"""
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    
+    # Update current prices and get stock data
+    stock_data = {}
+    for holding in holdings:
+        current_price = get_current_price(holding["symbol"])
+        if current_price > 0:
+            holding["current_price"] = current_price
+        
+        stock_info = get_stock_info(holding["symbol"])
+        if stock_info:
+            stock_data[holding["symbol"]] = stock_info
+    
+    suggestions = calculate_rebalancing_suggestions(holdings, target_allocation, stock_data)
+    return {"suggestions": suggestions}
+
+@api_router.get("/analytics/recommendations")
+async def get_stock_recommendations(
+    strategy_id: Optional[str] = None,
+    current_user: User = Depends(require_auth)
+):
+    """Get AI-powered stock recommendations"""
+    # Get existing holdings
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    existing_symbols = [h["symbol"] for h in holdings]
+    
+    # Get strategy criteria
+    if strategy_id:
+        strategy = await db.strategies.find_one({"id": strategy_id, "user_id": current_user.id}, {"_id": 0})
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+        criteria = strategy["criteria"]
+    else:
+        # Default criteria
+        criteria = {"min_roe": 10, "max_pe": 30}
+    
+    # Get all stocks with full data
+    all_stocks_basic = get_all_stocks_basic()
+    all_stocks_detailed = []
+    
+    for stock_basic in all_stocks_basic[:30]:  # Limit to avoid timeout
+        stock_detail = get_stock_info(stock_basic["symbol"])
+        if stock_detail:
+            all_stocks_detailed.append(stock_detail)
+    
+    recommendations = generate_stock_recommendations(
+        criteria, all_stocks_detailed, existing_symbols, limit=10
+    )
+    
+    return {"recommendations": recommendations, "criteria": criteria}
+
 app.include_router(api_router)
 
 app.add_middleware(
