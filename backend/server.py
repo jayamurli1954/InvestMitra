@@ -500,10 +500,10 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: User = Depends(require_auth)):
     holding_obj = PortfolioHolding(**holding.model_dump(), user_id=current_user.id)
     
-    # Get current price
-    stock = next((s for s in MOCK_STOCKS if s["symbol"] == holding.symbol), None)
-    if stock:
-        holding_obj.current_price = stock["price"]
+    # Get real-time current price
+    current_price = get_current_price(holding.symbol)
+    if current_price > 0:
+        holding_obj.current_price = current_price
     
     doc = holding_obj.model_dump()
     await db.portfolio.insert_one(doc)
