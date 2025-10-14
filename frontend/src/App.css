@@ -146,3 +146,68 @@ select:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
+
+/* Tremor Chart Styling - Force visible colors */
+.tremor-base {
+  color: #e2e8f0 !important;
+}
+
+/* Chart text labels */
+.recharts-text {
+  fill: #e2e8f0 !important;
+}
+
+/* Chart grid lines */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Axis lines */
+.recharts-cartesian-axis-line {
+  stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Axis ticks */
+.recharts-cartesian-axis-tick-line {
+  stroke: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Legend text */
+.recharts-legend-item-text {
+  color: #e2e8f0 !important;
+}
+
+/* Tooltip */
+.recharts-tooltip-wrapper {
+  outline: none !important;
+}
+
+.recharts-default-tooltip {
+  background-color: rgba(15, 23, 42, 0.95) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+}
+
+/* Force chart area colors to be visible */
+.recharts-area-area {
+  fill: #0ea5e9 !important;
+  fill-opacity: 0.3 !important;
+}
+
+.recharts-area-curve {
+  stroke: #0ea5e9 !important;
+  stroke-width: 2 !important;
+}
+
+/* Force bar colors */
+.recharts-bar-rectangle {
+  fill: #06b6d4 !important;
+}
+
+/* Donut/Pie chart sectors - use bright colors */
+.recharts-pie-sector {
+  stroke: rgba(0, 0, 0, 0.1) !important;
+  stroke-width: 2 !important;
+}
