@@ -464,22 +464,29 @@ async def screen_stocks(
     min_roe: Optional[float] = None,
     sector: Optional[str] = None
 ):
-    """Screen stocks based on criteria"""
-    filtered_stocks = MOCK_STOCKS.copy()
+    """Screen stocks based on criteria with real-time data"""
+    all_stocks = get_all_stocks_basic()
     
-    if sector:
-        filtered_stocks = [s for s in filtered_stocks if s["sector"].lower() == sector.lower()]
+    # Apply sector filter
+    if sector and sector != "All":
+        all_stocks = [s for s in all_stocks if s["sector"].lower() == sector.lower()]
     
     results = []
-    for stock in filtered_stocks:
-        if min_pe and stock.get("pe", 0) < min_pe:
-            continue
-        if max_pe and stock.get("pe", float('inf')) > max_pe:
-            continue
-        if min_roe and stock.get("roe", 0) < min_roe:
+    for stock_basic in all_stocks:
+        # Get detailed real-time info
+        stock_data = get_stock_info(stock_basic["symbol"])
+        if not stock_data:
             continue
         
-        results.append(generate_stock_detail(stock))
+        # Apply filters
+        if min_pe and (not stock_data.get("pe_ratio") or stock_data["pe_ratio"] < min_pe):
+            continue
+        if max_pe and (not stock_data.get("pe_ratio") or stock_data["pe_ratio"] > max_pe):
+            continue
+        if min_roe and (not stock_data.get("roe") or stock_data["roe"] < min_roe):
+            continue
+        
+        results.append(StockDetail(**stock_data))
     
     return results
 
