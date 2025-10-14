@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { DonutChart, BarChart as TremorBarChart, Card } from '@tremor/react';
 
 const Analytics = () => {
   const [analytics, setAnalytics] = useState(null);
