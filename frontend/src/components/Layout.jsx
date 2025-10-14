@@ -14,6 +14,13 @@ import { Button } from '@/components/ui/button';
 
 const Layout = ({ children }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/auth');
+  };
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
