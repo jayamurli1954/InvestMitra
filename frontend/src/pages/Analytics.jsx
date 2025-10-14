@@ -208,6 +208,39 @@ const Analytics = () => {
             </div>
           </div>
 
+          {/* Performance Chart */}
+          <div className="glass-card p-6" data-testid="performance-chart">
+            <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+              <TrendingUp className="w-6 h-6 mr-3 text-emerald-400" />
+              Stock Performance
+            </h2>
+            {analytics.top_performers.length > 0 || analytics.bottom_performers.length > 0 ? (
+              <TremorBarChart
+                data={[
+                  ...analytics.top_performers.slice(0, 3).map(p => ({
+                    stock: p.symbol,
+                    performance: p.gain_percent,
+                    type: 'gain'
+                  })),
+                  ...analytics.bottom_performers.slice(0, 3).reverse().map(p => ({
+                    stock: p.symbol,
+                    performance: p.gain_percent,
+                    type: 'loss'
+                  }))
+                ]}
+                index="stock"
+                categories={["performance"]}
+                colors={["emerald"]}
+                valueFormatter={(value) => `${value.toFixed(2)}%`}
+                yAxisWidth={48}
+                className="h-72"
+                showAnimation={true}
+              />
+            ) : (
+              <p className="text-slate-400 text-center py-8">No performance data available</p>
+            )}
+          </div>
+
           {/* Rebalancing Suggestions */}
           <div className="glass-card p-6" data-testid="rebalancing-section">
             <div className="flex items-center justify-between mb-6">
