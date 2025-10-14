@@ -201,13 +201,12 @@ const Analytics = () => {
                   }))}
                   index="sector"
                   categories={["Allocation"]}
-                  colors={["emerald"]}
+                  colors={["sky"]}
                   valueFormatter={(value) => `${value.toFixed(1)}%`}
                   yAxisWidth={80}
                   className="h-72"
                   showAnimation={true}
                   showLegend={false}
-                  showTooltip={true}
                 />
               ) : (
                 <p className="text-slate-400 text-center py-8">No sector data available</p>
