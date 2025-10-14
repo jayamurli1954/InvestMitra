@@ -27,6 +27,16 @@ INDIAN_STOCKS = {
     "POWERGRID.NS": "Power Grid Corporation",
     "ULTRACEMCO.NS": "UltraTech Cement",
     "TECHM.NS": "Tech Mahindra",
+    "NMDC.NS": "NMDC Limited",
+    "COALINDIA.NS": "Coal India",
+    "HINDALCO.NS": "Hindalco Industries",
+    "TATASTEEL.NS": "Tata Steel",
+    "ADANIENT.NS": "Adani Enterprises",
+    "BAJFINANCE.NS": "Bajaj Finance",
+    "KOTAKBANK.NS": "Kotak Mahindra Bank",
+    "TATAMOTORS.NS": "Tata Motors",
+    "ONGC.NS": "Oil & Natural Gas Corp",
+    "M&M.NS": "Mahindra & Mahindra",
 }
 
 MARKET_INDICES = {
