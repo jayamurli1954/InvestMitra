@@ -26,21 +26,29 @@ const Auth = () => {
       if (hash && hash.includes('session_id=')) {
         const sessionId = hash.split('session_id=')[1].split('&')[0];
         if (sessionId) {
+          console.log('Processing Google OAuth callback with session_id:', sessionId);
           setLoading(true);
           try {
-            await handleGoogleCallback(sessionId);
-            // Clean URL
-            window.history.replaceState({}, document.title, '/');
-            toast.success('Logged in successfully!');
-            // Wait a bit to ensure cookie is set, then redirect
-            await new Promise(resolve => setTimeout(resolve, 200));
-            window.location.href = '/';
+            const result = await handleGoogleCallback(sessionId);
+            console.log('Google auth successful:', result.user.email);
+            
+            // Clean URL hash
+            window.history.replaceState({}, document.title, window.location.pathname);
+            
+            toast.success(`Welcome back, ${result.user.name}!`);
+            
+            // Small delay to ensure state updates, then navigate
+            setTimeout(() => {
+              navigate('/', { replace: true });
+            }, 300);
           } catch (error) {
             console.error('Google auth error:', error);
-            toast.error(error.response?.data?.detail || 'Google authentication failed');
+            const errorMsg = error.response?.data?.detail || 'Google authentication failed. Please try again.';
+            toast.error(errorMsg);
             setLoading(false);
+            
             // Clean the hash to allow retry
-            window.history.replaceState({}, document.title, '/auth');
+            window.history.replaceState({}, document.title, window.location.pathname);
           }
         }
       } else if (isAuthenticated) {
