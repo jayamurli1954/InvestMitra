@@ -36,7 +36,7 @@ async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     session_token: Optional[str] = Cookie(None)
 ) -> Optional[User]:
-    \"\"\"Get current user from session token (cookie or header)\"\"\"
+    """Get current user from session token (cookie or header)"""
     token = None
     
     # Check cookie first, then Authorization header
