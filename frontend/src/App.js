@@ -1,35 +1,75 @@
 import { useState, useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Dashboard from "@/pages/Dashboard";
 import Portfolio from "@/pages/Portfolio";
 import Screener from "@/pages/Screener";
 import StockDetail from "@/pages/StockDetail";
 import Strategies from "@/pages/Strategies";
 import MarketOverview from "@/pages/MarketOverview";
+import Auth from "@/pages/Auth";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+// Protected Route component
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  return children;
+};
+
+function AppRoutes() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/auth" element={<Auth />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/portfolio" element={<Portfolio />} />
+                  <Route path="/screener" element={<Screener />} />
+                  <Route path="/stock/:symbol" element={<StockDetail />} />
+                  <Route path="/strategies" element={<Strategies />} />
+                  <Route path="/market" element={<MarketOverview />} />
+                </Routes>
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+      <Toaster position="top-right" />
+    </BrowserRouter>
+  );
+}
+
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/screener" element={<Screener />} />
-            <Route path="/stock/:symbol" element={<StockDetail />} />
-            <Route path="/strategies" element={<Strategies />} />
-            <Route path="/market" element={<MarketOverview />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
-      <Toaster position="top-right" />
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
     </div>
   );
 }
