@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { TrendingUp, TrendingDown, Briefcase, Eye, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, Briefcase, Eye, ArrowUpRight, ArrowDownRight, Filter, Target, BarChart3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 
