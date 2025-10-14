@@ -113,6 +113,7 @@ class HistoricalData(BaseModel):
 class PortfolioHolding(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
     symbol: str
     name: str
     quantity: int
