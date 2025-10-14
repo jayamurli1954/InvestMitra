@@ -57,19 +57,46 @@ const Strategies = () => {
     if (formData.sector) criteria.sector = formData.sector;
 
     try {
-      await axios.post(`${API}/strategies`, {
-        name: formData.name,
-        description: formData.description,
-        criteria
-      });
-      toast.success('Strategy created successfully');
+      if (editingStrategy) {
+        // Update existing strategy
+        await axios.delete(`${API}/strategies/${editingStrategy.id}`);
+        await axios.post(`${API}/strategies`, {
+          name: formData.name,
+          description: formData.description,
+          criteria
+        });
+        toast.success('Strategy updated successfully');
+      } else {
+        // Create new strategy
+        await axios.post(`${API}/strategies`, {
+          name: formData.name,
+          description: formData.description,
+          criteria
+        });
+        toast.success('Strategy created successfully');
+      }
       setDialogOpen(false);
+      setEditingStrategy(null);
       resetForm();
       fetchStrategies();
     } catch (error) {
-      console.error('Error creating strategy:', error);
-      toast.error('Failed to create strategy');
+      console.error('Error saving strategy:', error);
+      toast.error('Failed to save strategy');
     }
+  };
+
+  const handleEditStrategy = (strategy) => {
+    setEditingStrategy(strategy);
+    setFormData({
+      name: strategy.name,
+      description: strategy.description,
+      min_pe: strategy.criteria.min_pe || '',
+      max_pe: strategy.criteria.max_pe || '',
+      min_roe: strategy.criteria.min_roe || '',
+      min_div_yield: strategy.criteria.min_div_yield || '',
+      sector: strategy.criteria.sector || ''
+    });
+    setDialogOpen(true);
   };
 
   const handleDeleteStrategy = async (id) => {
