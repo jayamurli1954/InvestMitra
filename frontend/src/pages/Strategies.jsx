@@ -120,6 +120,7 @@ const Strategies = () => {
       min_div_yield: '',
       sector: ''
     });
+    setEditingStrategy(null);
   };
 
   const handleRunStrategy = async (strategy) => {
