@@ -228,11 +228,12 @@ const StockDetail = () => {
             }))}
             index="date"
             categories={["Volume"]}
-            colors={["blue"]}
+            colors={["cyan"]}
             valueFormatter={(value) => `${value}M`}
             yAxisWidth={50}
             className="h-64"
             showAnimation={true}
+            showLegend={false}
           />
         ) : (
           <p className="text-slate-400 text-center py-8">No volume data available</p>
