@@ -524,10 +524,11 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
     total_current = 0
     
     for holding in holdings:
-        stock = next((s for s in MOCK_STOCKS if s["symbol"] == holding["symbol"]), None)
-        if stock:
+        # Get real-time current price
+        current_price = get_current_price(holding["symbol"])
+        if current_price > 0:
             invested = holding["quantity"] * holding["purchase_price"]
-            current = holding["quantity"] * stock["price"]
+            current = holding["quantity"] * current_price
             total_invested += invested
             total_current += current
     
