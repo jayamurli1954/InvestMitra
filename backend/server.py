@@ -27,6 +27,49 @@ db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
+security = HTTPBearer(auto_error=False)
+
+# ==================== AUTH DEPENDENCY ====================
+
+async def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    session_token: Optional[str] = Cookie(None)
+) -> Optional[User]:
+    \"\"\"Get current user from session token (cookie or header)\"\"\"
+    token = None
+    
+    # Check cookie first, then Authorization header
+    if session_token:
+        token = session_token
+    elif credentials:
+        token = credentials.credentials
+    
+    if not token:
+        return None
+    
+    # Check session in database
+    session = await db.user_sessions.find_one({
+        \"session_token\": token,
+        \"expires_at\": {\"$gt\": datetime.now(timezone.utc).isoformat()}
+    })
+    
+    if not session:
+        return None
+    
+    # Get user
+    user_doc = await db.users.find_one({\"_id\": session[\"user_id\"]})
+    if not user_doc:
+        return None
+    
+    user_doc[\"id\"] = user_doc.pop(\"_id\")
+    return User(**user_doc)
+
+async def require_auth(current_user: Optional[User] = Depends(get_current_user)) -> User:
+    \"\"\"Require authentication\"\"\"
+    if not current_user:
+        raise HTTPException(status_code=401, detail=\"Not authenticated\")
+    return current_user
 
 # ==================== MODELS ====================
 
