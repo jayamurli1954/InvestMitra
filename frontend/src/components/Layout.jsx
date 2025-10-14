@@ -68,6 +68,7 @@ const Layout = ({ children }) => {
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
+    { path: '/watchlist', icon: Eye, label: 'Watchlist' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
     { path: '/analytics', icon: PieChart, label: 'Analytics' },
