@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Indian stock symbols mapping - Top 50+ NSE/BSE stocks
+# Indian stock symbols mapping - Top 50+ NSE/BSE stocks + User Portfolio
 INDIAN_STOCKS = {
     "RELIANCE.NS": "Reliance Industries",
     "TCS.NS": "Tata Consultancy Services",
@@ -57,6 +57,19 @@ INDIAN_STOCKS = {
     "IOC.NS": "Indian Oil Corporation",
     "JSWSTEEL.NS": "JSW Steel",
     "NESTLEIND.NS": "Nestle India",
+    # User Portfolio Stocks
+    "CASTROLIND.NS": "Castrol India",
+    "HINDPETRO.NS": "Hindustan Petroleum",
+    "PHOENIXLTD.NS": "Phoenix Mills",
+    "RPOWER.NS": "Reliance Power",
+    "YESBANK.NS": "Yes Bank",
+    "HINDZINC.NS": "Hindustan Zinc",
+    "IEX.NS": "Indian Energy Exchange",
+    "INDIGRID.NS": "IndiGrid InvIT",
+    "IRBINVIT.NS": "IRB InvIT Fund",
+    "NTPCGREEN.NS": "NTPC Green Energy",
+    "NIFTYBEES.NS": "Nippon India ETF Nifty BeES",
+    "TATACHEM.NS": "Tata Chemicals",
 }
 
 MARKET_INDICES = {
