@@ -104,7 +104,7 @@ const Analytics = () => {
         </Button>
       </div>
 
-      {analytics && (
+      {analytics && analytics.num_holdings > 0 ? (
         <>
           {/* Key Metrics */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
