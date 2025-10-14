@@ -141,11 +141,14 @@ const Layout = ({ children }) => {
           
           {/* Market Status */}
           <div className="glass-card p-4">
-            <p className="text-xs text-slate-400 mb-2">Market Status</p>
+            <p className="text-xs text-slate-400 mb-2">NSE/BSE Market Status</p>
             <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-white">Markets Open</span>
+              <div className={`w-2 h-2 rounded-full ${marketStatus.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
+              <span className={`text-sm font-medium ${marketStatus.isOpen ? 'text-emerald-400' : 'text-slate-400'}`}>
+                {marketStatus.text}
+              </span>
             </div>
+            <p className="text-xs text-slate-500 mt-1">9:15 AM - 3:30 PM IST</p>
           </div>
         </div>
       </aside>
