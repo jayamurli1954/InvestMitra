@@ -125,7 +125,8 @@ def get_stock_info(symbol: str) -> Optional[Dict]:
             "YESBANK.NS": "Banking", "HINDZINC.NS": "Metals & Mining",
             "IEX.NS": "Power", "INDIGRID.NS": "Infrastructure",
             "IRBINVIT.NS": "Infrastructure", "NTPCGREEN.NS": "Power",
-            "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals"
+            "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals",
+            "OILIETF.NS": "ETF"
         }
         
         return {
