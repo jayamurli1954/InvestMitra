@@ -5,6 +5,7 @@ import { API } from '@/App';
 import { ArrowLeft, TrendingUp, TrendingDown, Eye, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { AreaChart, BarChart, Card } from '@tremor/react';
 
 const StockDetail = () => {
   const { symbol } = useParams();
