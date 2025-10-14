@@ -7,6 +7,7 @@ import {
   TrendingUp, 
   Target,
   BarChart3,
+  PieChart,
   LogOut,
   User as UserIcon
 } from 'lucide-react';
