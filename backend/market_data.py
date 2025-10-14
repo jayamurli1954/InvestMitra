@@ -70,7 +70,11 @@ def get_stock_info(symbol: str) -> Optional[Dict]:
             "ASIANPAINT.NS": "Consumer Goods", "MARUTI.NS": "Automobile",
             "SUNPHARMA.NS": "Pharma", "TITAN.NS": "Consumer Goods",
             "NTPC.NS": "Power", "POWERGRID.NS": "Power", "ULTRACEMCO.NS": "Cement",
-            "TECHM.NS": "IT"
+            "TECHM.NS": "IT", "NMDC.NS": "Metals & Mining", "COALINDIA.NS": "Metals & Mining",
+            "HINDALCO.NS": "Metals & Mining", "TATASTEEL.NS": "Metals & Mining",
+            "ADANIENT.NS": "Infrastructure", "BAJFINANCE.NS": "Finance",
+            "KOTAKBANK.NS": "Banking", "TATAMOTORS.NS": "Automobile",
+            "ONGC.NS": "Energy", "M&M.NS": "Automobile"
         }
         
         return {
