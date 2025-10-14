@@ -446,17 +446,25 @@ async def delete_portfolio_holding(holding_id: str, current_user: User = Depends
 async def get_portfolio_performance(current_user: User = Depends(require_auth)):
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
-    total_invested = 0
-    total_current = 0
+    total_invested = 0.0
+    total_current = 0.0
     
     for holding in holdings:
+        # Calculate invested amount (always included)
+        invested = float(holding["quantity"]) * float(holding["purchase_price"])
+        total_invested += invested
+        
         # Get real-time current price
         current_price = get_current_price(holding["symbol"])
         if current_price > 0:
-            invested = holding["quantity"] * holding["purchase_price"]
-            current = holding["quantity"] * current_price
-            total_invested += invested
+            current = float(holding["quantity"]) * float(current_price)
             total_current += current
+        else:
+            # If can't fetch current price, use stored current_price or purchase_price as fallback
+            fallback_price = holding.get("current_price", holding["purchase_price"])
+            current = float(holding["quantity"]) * float(fallback_price)
+            total_current += current
+            logger.warning(f"Could not fetch current price for {holding['symbol']}, using fallback: {fallback_price}")
     
     total_gain = total_current - total_invested
     total_gain_percent = (total_gain / total_invested * 100) if total_invested > 0 else 0
