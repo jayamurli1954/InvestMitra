@@ -71,14 +71,24 @@ export const AuthProvider = ({ children }) => {
   };
 
   const handleGoogleCallback = async (sessionId) => {
-    const response = await axios.post(
-      `${API}/auth/google?session_id=${sessionId}`,
-      {},
-      { withCredentials: true }
-    );
-    setUser(response.data.user);
-    setIsAuthenticated(true);
-    return response.data;
+    try {
+      const response = await axios.post(
+        `${API}/auth/google?session_id=${sessionId}`,
+        {},
+        { withCredentials: true }
+      );
+      setUser(response.data.user);
+      setIsAuthenticated(true);
+      
+      // Verify the session was set properly
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await checkAuth();
+      
+      return response.data;
+    } catch (error) {
+      console.error('Google callback error:', error);
+      throw error;
+    }
   };
 
   const logout = async () => {
