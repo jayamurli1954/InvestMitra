@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Indian stock symbols mapping
+# Indian stock symbols mapping - Top 50+ NSE/BSE stocks
 INDIAN_STOCKS = {
     "RELIANCE.NS": "Reliance Industries",
     "TCS.NS": "Tata Consultancy Services",
@@ -37,6 +37,26 @@ INDIAN_STOCKS = {
     "TATAMOTORS.NS": "Tata Motors",
     "ONGC.NS": "Oil & Natural Gas Corp",
     "M&M.NS": "Mahindra & Mahindra",
+    "AFCONS.NS": "Afcons Infrastructure",
+    "ADANIPORTS.NS": "Adani Ports",
+    "ADANIPOWER.NS": "Adani Power",
+    "APOLLOHOSP.NS": "Apollo Hospitals",
+    "BAJAJFINSV.NS": "Bajaj Finserv",
+    "BAJAJ-AUTO.NS": "Bajaj Auto",
+    "BEL.NS": "Bharat Electronics",
+    "BPCL.NS": "Bharat Petroleum",
+    "BRITANNIA.NS": "Britannia Industries",
+    "CIPLA.NS": "Cipla",
+    "DIVISLAB.NS": "Divi's Laboratories",
+    "DRREDDY.NS": "Dr. Reddy's Laboratories",
+    "EICHERMOT.NS": "Eicher Motors",
+    "GRASIM.NS": "Grasim Industries",
+    "HEROMOTOCO.NS": "Hero MotoCorp",
+    "HINDUNILVR.NS": "Hindustan Unilever",
+    "INDUSINDBK.NS": "IndusInd Bank",
+    "IOC.NS": "Indian Oil Corporation",
+    "JSWSTEEL.NS": "JSW Steel",
+    "NESTLEIND.NS": "Nestle India",
 }
 
 MARKET_INDICES = {
