@@ -9,6 +9,7 @@ import Screener from "@/pages/Screener";
 import StockDetail from "@/pages/StockDetail";
 import Strategies from "@/pages/Strategies";
 import MarketOverview from "@/pages/MarketOverview";
+import Analytics from "@/pages/Analytics";
 import Auth from "@/pages/Auth";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
