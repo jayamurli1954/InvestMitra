@@ -302,13 +302,22 @@ const Strategies = () => {
                     <p className="text-sm text-slate-400">{strategy.description}</p>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleDeleteStrategy(strategy.id)}
-                  className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                  data-testid={`delete-strategy-${idx}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => handleEditStrategy(strategy)}
+                    className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-colors"
+                    data-testid={`edit-strategy-${idx}`}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteStrategy(strategy.id)}
+                    className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
+                    data-testid={`delete-strategy-${idx}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
               <div className="border-t border-white/10 pt-4">
