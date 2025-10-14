@@ -421,46 +421,35 @@ async def logout(response: Response, current_user: User = Depends(require_auth),
 async def search_stocks(q: str = Query(..., min_length=1)):
     """Search stocks by symbol or name"""
     query = q.lower()
+    all_stocks = get_all_stocks_basic()
     results = [
-        StockBasic(
-            symbol=s["symbol"],
-            name=s["name"],
-            exchange=s["exchange"],
-            sector=s["sector"]
-        )
-        for s in MOCK_STOCKS
-        if query in s["symbol"].lower() or query in s["name"].lower()
+        StockBasic(**stock)
+        for stock in all_stocks
+        if query in stock["symbol"].lower() or query in stock["name"].lower()
     ]
     return results[:10]
 
 @api_router.get("/stocks/all")
 async def get_all_stocks():
     """Get all available stocks"""
-    return [
-        StockBasic(
-            symbol=s["symbol"],
-            name=s["name"],
-            exchange=s["exchange"],
-            sector=s["sector"]
-        )
-        for s in MOCK_STOCKS
-    ]
+    all_stocks = get_all_stocks_basic()
+    return [StockBasic(**stock) for stock in all_stocks]
 
 @api_router.get("/stocks/{symbol}", response_model=StockDetail)
 async def get_stock_detail(symbol: str):
-    """Get detailed stock information"""
-    stock = next((s for s in MOCK_STOCKS if s["symbol"] == symbol), None)
-    if not stock:
+    """Get detailed stock information with real-time data"""
+    stock_data = get_stock_info(symbol)
+    if not stock_data:
         raise HTTPException(status_code=404, detail="Stock not found")
-    return generate_stock_detail(stock)
+    return StockDetail(**stock_data)
 
 @api_router.get("/stocks/{symbol}/historical")
-async def get_historical_data(symbol: str, days: int = Query(90, ge=1, le=365)):
+async def get_stock_historical(symbol: str, days: int = Query(90, ge=1, le=365)):
     """Get historical stock data"""
-    stock = next((s for s in MOCK_STOCKS if s["symbol"] == symbol), None)
-    if not stock:
-        raise HTTPException(status_code=404, detail="Stock not found")
-    return generate_historical_data(symbol, days)
+    hist_data = get_historical_data(symbol, days)
+    if not hist_data:
+        raise HTTPException(status_code=404, detail="No historical data available")
+    return hist_data
 
 @api_router.get("/market/overview")
 async def get_market_overview():
