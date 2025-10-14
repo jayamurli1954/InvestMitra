@@ -346,7 +346,7 @@ async def google_auth_callback(session_id: str, response: Response):
         )
         auth_response.raise_for_status()
         session_data = auth_response.json()
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=400, detail="Invalid session ID")
     
     # Check if user exists
