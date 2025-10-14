@@ -208,13 +208,11 @@ metadata:
   run_ui: false
 
 test_plan:
-  current_focus:
-    - "Watchlist page navigation and functionality"
-    - "StockDetail chart rendering and data display"
-    - "Analytics page chart rendering and data display"
+  current_focus: []
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
+  testing_complete: true
 
 agent_communication:
   - agent: "main"
