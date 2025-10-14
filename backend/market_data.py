@@ -249,6 +249,17 @@ def get_all_stocks_basic() -> List[Dict]:
 
 def get_current_price(symbol: str) -> float:
     """Get current price for a stock"""
+    # Manual price overrides for stocks where Yahoo Finance fails (InvITs, some ETFs)
+    MANUAL_PRICES = {
+        "INDIGRID.NS": 169.00,  # IndiGrid InvIT - manually updated
+        "IRBINVIT.NS": 63.01,   # IRB InvIT - manually updated
+    }
+    
+    # Check manual override first
+    if symbol in MANUAL_PRICES:
+        logger.info(f"Using manual price for {symbol}: {MANUAL_PRICES[symbol]}")
+        return MANUAL_PRICES[symbol]
+    
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period="1d")
