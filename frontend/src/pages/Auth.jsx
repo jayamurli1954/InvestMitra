@@ -28,26 +28,24 @@ const Auth = () => {
         setLoading(true);
         handleGoogleCallback(sessionId)
           .then(() => {
-            // Clean URL
-            window.history.replaceState({}, document.title, window.location.pathname);
+            // Clean URL and redirect
+            window.history.replaceState({}, document.title, '/');
             toast.success('Logged in successfully!');
-            navigate('/');
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 100);
           })
           .catch((error) => {
             console.error('Google auth error:', error);
             toast.error('Google authentication failed');
-          })
-          .finally(() => setLoading(false));
+            setLoading(false);
+          });
       }
-    }
-  }, []);
-
-  // Redirect if already authenticated
-  useEffect(() => {
-    if (isAuthenticated && !location.hash.includes('session_id')) {
+    } else if (isAuthenticated) {
+      // If already authenticated and no session_id in URL, redirect to dashboard
       navigate('/');
     }
-  }, [isAuthenticated, navigate]);
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
