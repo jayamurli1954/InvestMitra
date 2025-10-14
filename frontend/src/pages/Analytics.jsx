@@ -403,6 +403,20 @@ const Analytics = () => {
             )}
           </div>
         </>
+      ) : (
+        <div className="glass-card p-12 text-center">
+          <PieChart className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+          <h3 className="text-xl font-bold text-white mb-2">No Portfolio Data</h3>
+          <p className="text-slate-400 mb-6">
+            Add stocks to your portfolio to see analytics, charts, and AI-powered insights
+          </p>
+          <Button
+            onClick={() => window.location.href = '/portfolio'}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white"
+          >
+            Go to Portfolio
+          </Button>
+        </div>
       )}
     </div>
   );
