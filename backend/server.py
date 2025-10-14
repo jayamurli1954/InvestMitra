@@ -247,6 +247,165 @@ def generate_historical_data(symbol: str, days: int = 90) -> List[HistoricalData
 async def root():
     return {"message": "Investment Framework API"}
 
+# ==================== AUTH ENDPOINTS ====================
+
+@api_router.post("/auth/register", response_model=Token)
+async def register(user_data: UserRegister, response: Response):
+    """Register new user with email/password"""
+    # Check if user exists
+    existing_user = await db.users.find_one({"email": user_data.email})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create user
+    user = User(
+        email=user_data.email,
+        name=user_data.name,
+        password_hash=get_password_hash(user_data.password),
+        auth_provider="email"
+    )
+    
+    user_dict = user.model_dump(by_alias=True)
+    await db.users.insert_one(user_dict)
+    
+    # Create session
+    session_token = str(uuid.uuid4())
+    session = UserSession(
+        user_id=user.id,
+        session_token=session_token,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    )
+    await db.user_sessions.insert_one(session.model_dump())
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=7*24*60*60,
+        path="/"
+    )
+    
+    return Token(
+        access_token=session_token,
+        token_type="bearer",
+        user=UserPublic(**user.model_dump())
+    )
+
+@api_router.post("/auth/login", response_model=Token)
+async def login(user_data: UserLogin, response: Response):
+    """Login with email/password"""
+    # Find user
+    user_doc = await db.users.find_one({"email": user_data.email})
+    if not user_doc:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    user_doc["id"] = user_doc.pop("_id")
+    user = User(**user_doc)
+    
+    # Verify password
+    if not user.password_hash or not verify_password(user_data.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    # Create session
+    session_token = str(uuid.uuid4())
+    session = UserSession(
+        user_id=user.id,
+        session_token=session_token,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    )
+    await db.user_sessions.insert_one(session.model_dump())
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=7*24*60*60,
+        path="/"
+    )
+    
+    return Token(
+        access_token=session_token,
+        token_type="bearer",
+        user=UserPublic(**user.model_dump())
+    )
+
+@api_router.post("/auth/google")
+async def google_auth_callback(session_id: str, response: Response):
+    """Process Google OAuth session ID from Emergent Auth"""
+    # Call Emergent auth service to get session data
+    try:
+        auth_response = requests.get(
+            "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+            headers={"X-Session-ID": session_id}
+        )
+        auth_response.raise_for_status()
+        session_data = auth_response.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid session ID")
+    
+    # Check if user exists
+    user_doc = await db.users.find_one({"email": session_data["email"]})
+    
+    if user_doc:
+        user_doc["id"] = user_doc.pop("_id")
+        user = User(**user_doc)
+    else:
+        # Create new user
+        user = User(
+            email=session_data["email"],
+            name=session_data["name"],
+            picture=session_data.get("picture"),
+            auth_provider="google"
+        )
+        user_dict = user.model_dump(by_alias=True)
+        await db.users.insert_one(user_dict)
+    
+    # Create session with token from Emergent
+    session_token = session_data["session_token"]
+    session = UserSession(
+        user_id=user.id,
+        session_token=session_token,
+        expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    )
+    await db.user_sessions.insert_one(session.model_dump())
+    
+    # Set cookie
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=True,
+        samesite="none",
+        max_age=7*24*60*60,
+        path="/"
+    )
+    
+    return Token(
+        access_token=session_token,
+        token_type="bearer",
+        user=UserPublic(**user.model_dump())
+    )
+
+@api_router.get("/auth/me", response_model=UserPublic)
+async def get_me(current_user: User = Depends(require_auth)):
+    """Get current user info"""
+    return UserPublic(**current_user.model_dump())
+
+@api_router.post("/auth/logout")
+async def logout(response: Response, current_user: User = Depends(require_auth), session_token: Optional[str] = Cookie(None)):
+    """Logout user"""
+    if session_token:
+        await db.user_sessions.delete_one({"session_token": session_token})
+    
+    response.delete_cookie(key="session_token", path="/")
+    return {"message": "Logged out successfully"}
+
 @api_router.get("/stocks/search")
 async def search_stocks(q: str = Query(..., min_length=1)):
     """Search stocks by symbol or name"""
