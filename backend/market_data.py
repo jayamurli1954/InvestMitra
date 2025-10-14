@@ -234,7 +234,8 @@ def get_all_stocks_basic() -> List[Dict]:
         "YESBANK.NS": "Banking", "HINDZINC.NS": "Metals & Mining",
         "IEX.NS": "Power", "INDIGRID.NS": "Infrastructure",
         "IRBINVIT.NS": "Infrastructure", "NTPCGREEN.NS": "Power",
-        "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals"
+        "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals",
+        "OILIETF.NS": "ETF"
     }
     
     for symbol, name in INDIAN_STOCKS.items():
