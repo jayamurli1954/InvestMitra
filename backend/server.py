@@ -20,6 +20,10 @@ from market_data import (
     get_stock_info, get_historical_data, get_market_indices, 
     get_all_stocks_basic, get_current_price
 )
+from analytics import (
+    calculate_portfolio_analytics, calculate_rebalancing_suggestions,
+    generate_stock_recommendations
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
