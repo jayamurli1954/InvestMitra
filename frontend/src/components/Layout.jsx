@@ -69,6 +69,7 @@ const Layout = ({ children }) => {
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
+    { path: '/analytics', icon: PieChart, label: 'Analytics' },
     { path: '/market', icon: BarChart3, label: 'Market' },
   ];
 
