@@ -13,6 +13,7 @@ const Strategies = () => {
   const [strategies, setStrategies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingStrategy, setEditingStrategy] = useState(null);
   const [runningStrategy, setRunningStrategy] = useState(null);
   const [matchingStocks, setMatchingStocks] = useState([]);
   const [loadingResults, setLoadingResults] = useState(false);
