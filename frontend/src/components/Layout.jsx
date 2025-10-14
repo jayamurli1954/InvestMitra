@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -16,11 +17,51 @@ const Layout = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const [marketStatus, setMarketStatus] = useState({ isOpen: false, text: 'Checking...' });
 
   const handleLogout = async () => {
     await logout();
     navigate('/auth');
   };
+
+  // Check Indian market status
+  useEffect(() => {
+    const checkMarketStatus = () => {
+      const now = new Date();
+      
+      // Convert to IST (UTC+5:30)
+      const istOffset = 5.5 * 60 * 60 * 1000;
+      const istTime = new Date(now.getTime() + istOffset);
+      
+      const day = istTime.getUTCDay(); // 0 = Sunday, 6 = Saturday
+      const hours = istTime.getUTCHours();
+      const minutes = istTime.getUTCMinutes();
+      const timeInMinutes = hours * 60 + minutes;
+      
+      // Market hours: Monday-Friday, 9:15 AM - 3:30 PM IST
+      const marketOpen = 9 * 60 + 15;  // 9:15 AM = 555 minutes
+      const marketClose = 15 * 60 + 30; // 3:30 PM = 930 minutes
+      
+      const isWeekday = day >= 1 && day <= 5; // Monday to Friday
+      const isDuringMarketHours = timeInMinutes >= marketOpen && timeInMinutes <= marketClose;
+      
+      if (isWeekday && isDuringMarketHours) {
+        setMarketStatus({ isOpen: true, text: 'Markets Open' });
+      } else if (isWeekday && timeInMinutes < marketOpen) {
+        setMarketStatus({ isOpen: false, text: 'Pre-Market' });
+      } else if (isWeekday && timeInMinutes > marketClose) {
+        setMarketStatus({ isOpen: false, text: 'Markets Closed' });
+      } else {
+        setMarketStatus({ isOpen: false, text: 'Markets Closed' });
+      }
+    };
+
+    checkMarketStatus();
+    // Update every minute
+    const interval = setInterval(checkMarketStatus, 60000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
