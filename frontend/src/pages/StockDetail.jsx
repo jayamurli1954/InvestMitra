@@ -205,11 +205,12 @@ const StockDetail = () => {
             }))}
             index="date"
             categories={["Close"]}
-            colors={["emerald"]}
+            colors={["sky"]}
             valueFormatter={(value) => `₹${value.toFixed(2)}`}
             yAxisWidth={60}
             className="h-80"
             showAnimation={true}
+            showLegend={false}
           />
         ) : (
           <p className="text-slate-400 text-center py-8">No historical data available</p>
