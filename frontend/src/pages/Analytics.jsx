@@ -167,14 +167,16 @@ const Analytics = () => {
                 <DonutChart
                   data={Object.entries(analytics.sector_allocation).map(([sector, percent]) => ({
                     name: sector,
-                    value: percent
+                    value: Number(percent)
                   }))}
                   category="value"
                   index="name"
                   valueFormatter={(value) => `${value.toFixed(1)}%`}
-                  colors={["emerald", "blue", "violet", "amber", "rose", "cyan"]}
+                  colors={["emerald", "blue", "violet", "amber", "rose", "cyan", "indigo", "purple"]}
                   className="h-72"
                   showAnimation={true}
+                  showLabel={true}
+                  showTooltip={true}
                 />
               ) : (
                 <p className="text-slate-400 text-center py-8">No sector data available</p>
@@ -191,16 +193,17 @@ const Analytics = () => {
                 <TremorBarChart
                   data={Object.entries(analytics.sector_allocation).map(([sector, percent]) => ({
                     sector: sector,
-                    allocation: percent
+                    Allocation: Number(percent)
                   }))}
                   index="sector"
-                  categories={["allocation"]}
+                  categories={["Allocation"]}
                   colors={["emerald"]}
                   valueFormatter={(value) => `${value.toFixed(1)}%`}
-                  yAxisWidth={48}
+                  yAxisWidth={80}
                   className="h-72"
                   showAnimation={true}
-                  layout="vertical"
+                  showLegend={false}
+                  showTooltip={true}
                 />
               ) : (
                 <p className="text-slate-400 text-center py-8">No sector data available</p>
