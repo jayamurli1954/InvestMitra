@@ -68,7 +68,37 @@ const Layout = ({ children }) => {
           </nav>
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-6">
+        <div className="absolute bottom-0 left-0 right-0 p-6 space-y-3">
+          {/* User Info */}
+          {user && (
+            <div className="glass-card p-4">
+              <div className="flex items-center space-x-3 mb-3">
+                {user.picture ? (
+                  <img src={user.picture} alt={user.name} className="w-10 h-10 rounded-full" />
+                ) : (
+                  <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                    <UserIcon className="w-5 h-5 text-emerald-400" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-white truncate">{user.name}</p>
+                  <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                </div>
+              </div>
+              <Button
+                onClick={handleLogout}
+                variant="outline"
+                size="sm"
+                className="w-full border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+                data-testid="logout-btn"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          )}
+          
+          {/* Market Status */}
           <div className="glass-card p-4">
             <p className="text-xs text-slate-400 mb-2">Market Status</p>
             <div className="flex items-center space-x-2">
