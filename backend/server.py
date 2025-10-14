@@ -551,40 +551,40 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
 
 # Watchlist endpoints
 @api_router.get("/watchlist", response_model=List[WatchlistItem])
-async def get_watchlist():
-    items = await db.watchlist.find({}, {"_id": 0}).to_list(1000)
+async def get_watchlist(current_user: User = Depends(require_auth)):
+    items = await db.watchlist.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     return items
 
 @api_router.post("/watchlist", response_model=WatchlistItem)
-async def add_watchlist_item(item: WatchlistItemCreate):
-    item_obj = WatchlistItem(**item.model_dump())
+async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Depends(require_auth)):
+    item_obj = WatchlistItem(**item.model_dump(), user_id=current_user.id)
     doc = item_obj.model_dump()
     await db.watchlist.insert_one(doc)
     return item_obj
 
 @api_router.delete("/watchlist/{item_id}")
-async def delete_watchlist_item(item_id: str):
-    result = await db.watchlist.delete_one({"id": item_id})
+async def delete_watchlist_item(item_id: str, current_user: User = Depends(require_auth)):
+    result = await db.watchlist.delete_one({"id": item_id, "user_id": current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Watchlist item not found")
     return {"message": "Item removed from watchlist"}
 
 # Strategy endpoints
 @api_router.get("/strategies", response_model=List[Strategy])
-async def get_strategies():
-    strategies = await db.strategies.find({}, {"_id": 0}).to_list(1000)
+async def get_strategies(current_user: User = Depends(require_auth)):
+    strategies = await db.strategies.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     return strategies
 
 @api_router.post("/strategies", response_model=Strategy)
-async def create_strategy(strategy: StrategyCreate):
-    strategy_obj = Strategy(**strategy.model_dump())
+async def create_strategy(strategy: StrategyCreate, current_user: User = Depends(require_auth)):
+    strategy_obj = Strategy(**strategy.model_dump(), user_id=current_user.id)
     doc = strategy_obj.model_dump()
     await db.strategies.insert_one(doc)
     return strategy_obj
 
 @api_router.delete("/strategies/{strategy_id}")
-async def delete_strategy(strategy_id: str):
-    result = await db.strategies.delete_one({"id": strategy_id})
+async def delete_strategy(strategy_id: str, current_user: User = Depends(require_auth)):
+    result = await db.strategies.delete_one({"id": strategy_id, "user_id": current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Strategy not found")
     return {"message": "Strategy deleted successfully"}
