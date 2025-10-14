@@ -16,6 +16,9 @@ import { Toaster } from "@/components/ui/sonner";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 export const API = `${BACKEND_URL}/api`;
 
+// Configure axios to send credentials with every request
+axios.defaults.withCredentials = true;
+
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
