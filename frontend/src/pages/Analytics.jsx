@@ -176,11 +176,11 @@ const Analytics = () => {
                   category="value"
                   index="name"
                   valueFormatter={(value) => `${value.toFixed(1)}%`}
-                  colors={["emerald", "blue", "violet", "amber", "rose", "cyan", "indigo", "purple"]}
+                  colors={["emerald", "sky", "violet", "amber", "rose", "cyan", "indigo", "fuchsia"]}
+                  variant="donut"
                   className="h-72"
                   showAnimation={true}
                   showLabel={true}
-                  showTooltip={true}
                 />
               ) : (
                 <p className="text-slate-400 text-center py-8">No sector data available</p>
