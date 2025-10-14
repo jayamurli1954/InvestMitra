@@ -295,9 +295,20 @@ const Strategies = () => {
               </div>
 
               <div className="mt-4 pt-4 border-t border-white/10">
-                <p className="text-xs text-slate-500">
-                  Created: {new Date(strategy.created_date).toLocaleDateString('en-IN')}
-                </p>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-slate-500">
+                    Created: {new Date(strategy.created_date).toLocaleDateString('en-IN')}
+                  </p>
+                  <Button
+                    onClick={() => handleRunStrategy(strategy)}
+                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                    size="sm"
+                    data-testid={`run-strategy-${idx}`}
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    Run Strategy
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
