@@ -94,6 +94,35 @@ const Strategies = () => {
     });
   };
 
+  const handleRunStrategy = async (strategy) => {
+    setRunningStrategy(strategy);
+    setLoadingResults(true);
+    
+    try {
+      // Build query string from strategy criteria
+      const params = new URLSearchParams();
+      if (strategy.criteria.min_pe) params.append('min_pe', strategy.criteria.min_pe);
+      if (strategy.criteria.max_pe) params.append('max_pe', strategy.criteria.max_pe);
+      if (strategy.criteria.min_roe) params.append('min_roe', strategy.criteria.min_roe);
+      if (strategy.criteria.sector) params.append('sector', strategy.criteria.sector);
+      
+      const response = await axios.get(`${API}/screener?${params.toString()}`);
+      setMatchingStocks(response.data);
+      toast.success(`Found ${response.data.length} stocks matching your strategy!`);
+    } catch (error) {
+      console.error('Error running strategy:', error);
+      toast.error('Failed to run strategy');
+      setMatchingStocks([]);
+    } finally {
+      setLoadingResults(false);
+    }
+  };
+
+  const closeResults = () => {
+    setRunningStrategy(null);
+    setMatchingStocks([]);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen" data-testid="loading-spinner">
