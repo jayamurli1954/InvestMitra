@@ -153,17 +153,22 @@ def get_market_indices() -> List[Dict]:
 def get_all_stocks_basic() -> List[Dict]:
     """Get basic info for all available stocks"""
     stocks = []
+    sector_map = {
+        "RELIANCE.NS": "Energy", "TCS.NS": "IT", "HDFCBANK.NS": "Banking",
+        "INFY.NS": "IT", "ICICIBANK.NS": "Banking", "BHARTIARTL.NS": "Telecom",
+        "ITC.NS": "FMCG", "SBIN.NS": "Banking", "LT.NS": "Infrastructure",
+        "HCLTECH.NS": "IT", "AXISBANK.NS": "Banking", "WIPRO.NS": "IT",
+        "ASIANPAINT.NS": "Consumer Goods", "MARUTI.NS": "Automobile",
+        "SUNPHARMA.NS": "Pharma", "TITAN.NS": "Consumer Goods",
+        "NTPC.NS": "Power", "POWERGRID.NS": "Power", "ULTRACEMCO.NS": "Cement",
+        "TECHM.NS": "IT", "NMDC.NS": "Metals & Mining", "COALINDIA.NS": "Metals & Mining",
+        "HINDALCO.NS": "Metals & Mining", "TATASTEEL.NS": "Metals & Mining",
+        "ADANIENT.NS": "Infrastructure", "BAJFINANCE.NS": "Finance",
+        "KOTAKBANK.NS": "Banking", "TATAMOTORS.NS": "Automobile",
+        "ONGC.NS": "Energy", "M&M.NS": "Automobile"
+    }
+    
     for symbol, name in INDIAN_STOCKS.items():
-        sector_map = {
-            "RELIANCE.NS": "Energy", "TCS.NS": "IT", "HDFCBANK.NS": "Banking",
-            "INFY.NS": "IT", "ICICIBANK.NS": "Banking", "BHARTIARTL.NS": "Telecom",
-            "ITC.NS": "FMCG", "SBIN.NS": "Banking", "LT.NS": "Infrastructure",
-            "HCLTECH.NS": "IT", "AXISBANK.NS": "Banking", "WIPRO.NS": "IT",
-            "ASIANPAINT.NS": "Consumer Goods", "MARUTI.NS": "Automobile",
-            "SUNPHARMA.NS": "Pharma", "TITAN.NS": "Consumer Goods",
-            "NTPC.NS": "Power", "POWERGRID.NS": "Power", "ULTRACEMCO.NS": "Cement",
-            "TECHM.NS": "IT"
-        }
         stocks.append({
             "symbol": symbol,
             "name": name,
