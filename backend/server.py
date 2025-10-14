@@ -493,8 +493,8 @@ async def screen_stocks(
 
 # Portfolio endpoints
 @api_router.get("/portfolio", response_model=List[PortfolioHolding])
-async def get_portfolio():
-    holdings = await db.portfolio.find({}, {"_id": 0}).to_list(1000)
+async def get_portfolio(current_user: User = Depends(require_auth)):
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
     # Update current prices
     for holding in holdings:
@@ -505,8 +505,8 @@ async def get_portfolio():
     return holdings
 
 @api_router.post("/portfolio", response_model=PortfolioHolding)
-async def add_portfolio_holding(holding: PortfolioHoldingCreate):
-    holding_obj = PortfolioHolding(**holding.model_dump())
+async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: User = Depends(require_auth)):
+    holding_obj = PortfolioHolding(**holding.model_dump(), user_id=current_user.id)
     
     # Get current price
     stock = next((s for s in MOCK_STOCKS if s["symbol"] == holding.symbol), None)
@@ -518,15 +518,15 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate):
     return holding_obj
 
 @api_router.delete("/portfolio/{holding_id}")
-async def delete_portfolio_holding(holding_id: str):
-    result = await db.portfolio.delete_one({"id": holding_id})
+async def delete_portfolio_holding(holding_id: str, current_user: User = Depends(require_auth)):
+    result = await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Holding not found")
     return {"message": "Holding deleted successfully"}
 
 @api_router.get("/portfolio/performance")
-async def get_portfolio_performance():
-    holdings = await db.portfolio.find({}, {"_id": 0}).to_list(1000)
+async def get_portfolio_performance(current_user: User = Depends(require_auth)):
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
     total_invested = 0
     total_current = 0
