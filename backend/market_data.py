@@ -195,7 +195,17 @@ def get_all_stocks_basic() -> List[Dict]:
         "HINDALCO.NS": "Metals & Mining", "TATASTEEL.NS": "Metals & Mining",
         "ADANIENT.NS": "Infrastructure", "BAJFINANCE.NS": "Finance",
         "KOTAKBANK.NS": "Banking", "TATAMOTORS.NS": "Automobile",
-        "ONGC.NS": "Energy", "M&M.NS": "Automobile"
+        "ONGC.NS": "Energy", "M&M.NS": "Automobile",
+        "AFCONS.NS": "Infrastructure", "ADANIPORTS.NS": "Infrastructure",
+        "ADANIPOWER.NS": "Power", "APOLLOHOSP.NS": "Healthcare",
+        "BAJAJFINSV.NS": "Finance", "BAJAJ-AUTO.NS": "Automobile",
+        "BEL.NS": "Defence", "BPCL.NS": "Energy",
+        "BRITANNIA.NS": "FMCG", "CIPLA.NS": "Pharma",
+        "DIVISLAB.NS": "Pharma", "DRREDDY.NS": "Pharma",
+        "EICHERMOT.NS": "Automobile", "GRASIM.NS": "Cement",
+        "HEROMOTOCO.NS": "Automobile", "HINDUNILVR.NS": "FMCG",
+        "INDUSINDBK.NS": "Banking", "IOC.NS": "Energy",
+        "JSWSTEEL.NS": "Metals & Mining", "NESTLEIND.NS": "FMCG"
     }
     
     for symbol, name in INDIAN_STOCKS.items():
