@@ -16,6 +16,10 @@ from auth_utils import (
     User, UserPublic, UserSession, UserRegister, UserLogin, Token,
     verify_password, get_password_hash, create_access_token, decode_access_token
 )
+from market_data import (
+    get_stock_info, get_historical_data, get_market_indices, 
+    get_all_stocks_basic, get_current_price
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
