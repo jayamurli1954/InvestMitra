@@ -56,6 +56,7 @@ function AppRoutes() {
                   <Route path="/screener" element={<Screener />} />
                   <Route path="/stock/:symbol" element={<StockDetail />} />
                   <Route path="/strategies" element={<Strategies />} />
+                  <Route path="/analytics" element={<Analytics />} />
                   <Route path="/market" element={<MarketOverview />} />
                 </Routes>
               </Layout>
