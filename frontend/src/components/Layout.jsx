@@ -75,7 +75,7 @@ const Layout = ({ children }) => {
     <div className="flex min-h-screen">
       {/* Sidebar */}
       <aside className="w-64 border-r border-white/10 bg-black/20 backdrop-blur-xl fixed h-screen">
-        <div className="p-6">
+        <div className="p-6 h-full flex flex-col">
           <div className="flex items-center space-x-3 mb-8">
             <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-xl flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-white" />
@@ -86,7 +86,7 @@ const Layout = ({ children }) => {
             </div>
           </div>
 
-          <nav className="space-y-2">
+          <nav className="space-y-2 flex-1">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
@@ -107,54 +107,59 @@ const Layout = ({ children }) => {
               );
             })}
           </nav>
-        </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-6 space-y-3">
-          {/* User Info */}
-          {user && (
+          {/* Market Status - Bottom of sidebar */}
+          <div className="mt-auto">
             <div className="glass-card p-4">
-              <div className="flex items-center space-x-3 mb-3">
-                {user.picture ? (
-                  <img src={user.picture} alt={user.name} className="w-10 h-10 rounded-full" />
-                ) : (
-                  <div className="w-10 h-10 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                    <UserIcon className="w-5 h-5 text-emerald-400" />
-                  </div>
-                )}
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-white truncate">{user.name}</p>
-                  <p className="text-xs text-slate-400 truncate">{user.email}</p>
-                </div>
+              <p className="text-xs text-slate-400 mb-2">NSE/BSE Market Status</p>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${marketStatus.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
+                <span className={`text-sm font-medium ${marketStatus.isOpen ? 'text-emerald-400' : 'text-slate-400'}`}>
+                  {marketStatus.text}
+                </span>
               </div>
-              <Button
-                onClick={handleLogout}
-                variant="outline"
-                size="sm"
-                className="w-full border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
-                data-testid="logout-btn"
-              >
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
+              <p className="text-xs text-slate-500 mt-1">9:15 AM - 3:30 PM IST</p>
             </div>
-          )}
-          
-          {/* Market Status */}
-          <div className="glass-card p-4">
-            <p className="text-xs text-slate-400 mb-2">NSE/BSE Market Status</p>
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full ${marketStatus.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
-              <span className={`text-sm font-medium ${marketStatus.isOpen ? 'text-emerald-400' : 'text-slate-400'}`}>
-                {marketStatus.text}
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">9:15 AM - 3:30 PM IST</p>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 ml-64">
+        {/* Top Bar with User Profile */}
+        <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-white/10">
+          <div className="px-8 py-4 flex items-center justify-end">
+            {user && (
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-3 glass-card px-4 py-2">
+                  {user.picture ? (
+                    <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
+                  ) : (
+                    <div className="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                      <UserIcon className="w-4 h-4 text-emerald-400" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm font-medium text-white">{user.name}</p>
+                    <p className="text-xs text-slate-400">{user.email}</p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  size="sm"
+                  className="border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+                  data-testid="logout-btn"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Page Content */}
         <div className="p-8">
           {children}
         </div>
