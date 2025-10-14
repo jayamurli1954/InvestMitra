@@ -24,6 +24,10 @@ const Analytics = () => {
   const fetchAnalytics = async () => {
     try {
       const response = await axios.get(`${API}/analytics/portfolio`);
+      console.log('Analytics data received:', response.data);
+      console.log('Sector allocation:', response.data.sector_allocation);
+      console.log('Top performers:', response.data.top_performers);
+      console.log('Bottom performers:', response.data.bottom_performers);
       setAnalytics(response.data);
     } catch (error) {
       console.error('Error fetching analytics:', error);
