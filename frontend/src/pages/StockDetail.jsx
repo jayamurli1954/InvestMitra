@@ -192,9 +192,55 @@ const StockDetail = () => {
         </div>
       </div>
 
-      {/* Historical Data */}
+      {/* Price Chart */}
+      <div className="glass-card p-6" data-testid="price-chart">
+        <h2 className="text-2xl font-bold text-white mb-6">30-Day Price Chart</h2>
+        {historicalData.length > 0 ? (
+          <AreaChart
+            data={historicalData.map(d => ({
+              date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+              Close: d.close,
+              High: d.high,
+              Low: d.low
+            }))}
+            index="date"
+            categories={["Close"]}
+            colors={["emerald"]}
+            valueFormatter={(value) => `₹${value.toFixed(2)}`}
+            yAxisWidth={60}
+            className="h-80"
+            showAnimation={true}
+          />
+        ) : (
+          <p className="text-slate-400 text-center py-8">No historical data available</p>
+        )}
+      </div>
+
+      {/* Volume Chart */}
+      <div className="glass-card p-6" data-testid="volume-chart">
+        <h2 className="text-2xl font-bold text-white mb-6">Trading Volume</h2>
+        {historicalData.length > 0 ? (
+          <BarChart
+            data={historicalData.map(d => ({
+              date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+              Volume: Math.round(d.volume / 1000000) // Convert to millions
+            }))}
+            index="date"
+            categories={["Volume"]}
+            colors={["blue"]}
+            valueFormatter={(value) => `${value}M`}
+            yAxisWidth={50}
+            className="h-64"
+            showAnimation={true}
+          />
+        ) : (
+          <p className="text-slate-400 text-center py-8">No volume data available</p>
+        )}
+      </div>
+
+      {/* Historical Data Table (Last 10 Days) */}
       <div className="glass-card p-6" data-testid="historical-data">
-        <h2 className="text-2xl font-bold text-white mb-6">30-Day Price History</h2>
+        <h2 className="text-2xl font-bold text-white mb-6">Recent Price History</h2>
         <div className="overflow-x-auto">
           <table>
             <thead>
