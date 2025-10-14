@@ -70,6 +70,7 @@ INDIAN_STOCKS = {
     "NTPCGREEN.NS": "NTPC Green Energy",
     "NIFTYBEES.NS": "Nippon India ETF Nifty BeES",
     "TATACHEM.NS": "Tata Chemicals",
+    "OILIETF.NS": "ICICI Pru Nifty Oil & Gas ETF",
 }
 
 MARKET_INDICES = {
