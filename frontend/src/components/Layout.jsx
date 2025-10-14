@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Briefcase, 
+  Eye,
   Filter, 
   TrendingUp, 
   Target,
