@@ -117,7 +117,14 @@ def get_stock_info(symbol: str) -> Optional[Dict]:
             "EICHERMOT.NS": "Automobile", "GRASIM.NS": "Cement",
             "HEROMOTOCO.NS": "Automobile", "HINDUNILVR.NS": "FMCG",
             "INDUSINDBK.NS": "Banking", "IOC.NS": "Energy",
-            "JSWSTEEL.NS": "Metals & Mining", "NESTLEIND.NS": "FMCG"
+            "JSWSTEEL.NS": "Metals & Mining", "NESTLEIND.NS": "FMCG",
+            # User Portfolio Stocks
+            "CASTROLIND.NS": "Energy", "HINDPETRO.NS": "Energy",
+            "PHOENIXLTD.NS": "Real Estate", "RPOWER.NS": "Power",
+            "YESBANK.NS": "Banking", "HINDZINC.NS": "Metals & Mining",
+            "IEX.NS": "Power", "INDIGRID.NS": "Infrastructure",
+            "IRBINVIT.NS": "Infrastructure", "NTPCGREEN.NS": "Power",
+            "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals"
         }
         
         return {
