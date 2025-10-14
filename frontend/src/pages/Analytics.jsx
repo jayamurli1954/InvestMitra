@@ -236,13 +236,12 @@ const Analytics = () => {
                 ]}
                 index="stock"
                 categories={["Gain/Loss %"]}
-                colors={["emerald"]}
+                colors={["cyan"]}
                 valueFormatter={(value) => `${value.toFixed(2)}%`}
                 yAxisWidth={100}
                 className="h-72"
                 showAnimation={true}
                 showLegend={false}
-                showTooltip={true}
               />
             ) : (
               <p className="text-slate-400 text-center py-8">Add stocks to your portfolio to see performance metrics</p>
