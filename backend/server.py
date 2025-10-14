@@ -66,9 +66,9 @@ async def get_current_user(
     return User(**user_doc)
 
 async def require_auth(current_user: Optional[User] = Depends(get_current_user)) -> User:
-    \"\"\"Require authentication\"\"\"
+    """Require authentication"""
     if not current_user:
-        raise HTTPException(status_code=401, detail=\"Not authenticated\")
+        raise HTTPException(status_code=401, detail="Not authenticated")
     return current_user
 
 # ==================== MODELS ====================
