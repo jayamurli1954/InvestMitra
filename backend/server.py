@@ -453,14 +453,9 @@ async def get_stock_historical(symbol: str, days: int = Query(90, ge=1, le=365))
 
 @api_router.get("/market/overview")
 async def get_market_overview():
-    """Get market indices overview"""
-    indices = [
-        MarketIndex(name="NIFTY 50", value=22156.75, change=145.30, change_percent=0.66),
-        MarketIndex(name="SENSEX", value=73085.20, change=352.90, change_percent=0.49),
-        MarketIndex(name="NIFTY Bank", value=47823.65, change=-89.45, change_percent=-0.19),
-        MarketIndex(name="NIFTY IT", value=31245.80, change=287.60, change_percent=0.93),
-    ]
-    return indices
+    """Get real-time market indices overview"""
+    indices_data = get_market_indices()
+    return [MarketIndex(**index) for index in indices_data]
 
 @api_router.get("/screener")
 async def screen_stocks(
