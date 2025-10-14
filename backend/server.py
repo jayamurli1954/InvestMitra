@@ -488,11 +488,11 @@ async def screen_stocks(
 async def get_portfolio(current_user: User = Depends(require_auth)):
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
-    # Update current prices
+    # Update current prices with real-time data
     for holding in holdings:
-        stock = next((s for s in MOCK_STOCKS if s["symbol"] == holding["symbol"]), None)
-        if stock:
-            holding["current_price"] = stock["price"]
+        current_price = get_current_price(holding["symbol"])
+        if current_price > 0:
+            holding["current_price"] = current_price
     
     return holdings
 
