@@ -58,11 +58,11 @@ async def get_current_user(
         return None
     
     # Get user
-    user_doc = await db.users.find_one({\"_id\": session[\"user_id\"]})
+    user_doc = await db.users.find_one({"_id": session["user_id"]})
     if not user_doc:
         return None
     
-    user_doc[\"id\"] = user_doc.pop(\"_id\")
+    user_doc["id"] = user_doc.pop("_id")
     return User(**user_doc)
 
 async def require_auth(current_user: Optional[User] = Depends(get_current_user)) -> User:
