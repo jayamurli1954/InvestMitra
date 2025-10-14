@@ -341,6 +341,8 @@ async def login(user_data: UserLogin, response: Response):
 @api_router.post("/auth/google")
 async def google_auth_callback(session_id: str, response: Response):
     """Process Google OAuth session ID from Emergent Auth"""
+    logger.info(f"Processing Google OAuth callback with session_id: {session_id[:20]}...")
+    
     # Call Emergent auth service to get session data
     try:
         auth_response = requests.get(
@@ -349,7 +351,9 @@ async def google_auth_callback(session_id: str, response: Response):
         )
         auth_response.raise_for_status()
         session_data = auth_response.json()
-    except Exception:
+        logger.info(f"Google OAuth successful for user: {session_data.get('email')}")
+    except Exception as e:
+        logger.error(f"Google OAuth failed: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid session ID")
     
     # Check if user exists
