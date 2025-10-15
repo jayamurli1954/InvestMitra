@@ -11,6 +11,8 @@ import Strategies from "@/pages/Strategies";
 import MarketOverview from "@/pages/MarketOverview";
 import Analytics from "@/pages/Analytics";
 import Watchlist from "@/pages/Watchlist";
+import Transactions from "@/pages/Transactions";
+import TaxReport from "@/pages/TaxReport";
 import Auth from "@/pages/Auth";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
