@@ -77,6 +77,11 @@ async def get_current_user(
         return None
     
     user_doc["id"] = user_doc.pop("_id")
+    
+    # Convert datetime to string if needed
+    if "created_at" in user_doc and isinstance(user_doc["created_at"], datetime):
+        user_doc["created_at"] = user_doc["created_at"].isoformat()
+    
     return User(**user_doc)
 
 async def require_auth(current_user: Optional[User] = Depends(get_current_user)) -> User:
