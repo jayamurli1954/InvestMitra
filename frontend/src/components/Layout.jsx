@@ -74,6 +74,8 @@ const Layout = ({ children }) => {
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { path: '/watchlist', icon: Eye, label: 'Watchlist' },
     { path: '/transactions', icon: Receipt, label: 'Transactions' },
+    { path: '/dividends', icon: DollarSign, label: 'Dividends' },
+    { path: '/alerts', icon: Bell, label: 'Alerts' },
     { path: '/tax-report', icon: FileText, label: 'Tax Report' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
