@@ -1227,8 +1227,12 @@ async def get_ai_portfolio_optimization(
 ):
     """Generate AI-powered portfolio optimization suggestions"""
     try:
+        logger.info(f"AI optimization requested by user: {current_user.id}")
+        
         # Get portfolio
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
+        
+        logger.info(f"Found {len(holdings)} holdings")
         
         if not holdings:
             raise HTTPException(status_code=404, detail="No portfolio found")
