@@ -34,14 +34,38 @@ const Screener = () => {
     fetchStocks();
   }, []);
 
+  const addFilter = () => {
+    setFiltersList([...filtersList, { type: '', value: '', id: Date.now() }]);
+  };
+
+  const removeFilter = (id) => {
+    setFiltersList(filtersList.filter(f => f.id !== id));
+  };
+
+  const updateFilter = (id, field, value) => {
+    setFiltersList(filtersList.map(f => 
+      f.id === id ? { ...f, [field]: value } : f
+    ));
+  };
+
   const fetchStocks = async () => {
     setLoading(true);
     try {
       let url = `${API}/screener?`;
-      if (filters.sector && filters.sector !== 'All') url += `sector=${filters.sector}&`;
-      if (filters.min_pe) url += `min_pe=${filters.min_pe}&`;
-      if (filters.max_pe) url += `max_pe=${filters.max_pe}&`;
-      if (filters.min_roe) url += `min_roe=${filters.min_roe}&`;
+      
+      // Build URL from dynamic filters
+      filtersList.forEach(filter => {
+        if (filter.type && filter.value) {
+          const filterType = FILTER_TYPES.find(ft => ft.value === filter.type);
+          if (filterType) {
+            if (filter.type === 'sector' && filter.value !== 'All') {
+              url += `${filter.type}=${filter.value}&`;
+            } else if (filter.type !== 'sector') {
+              url += `${filter.type}=${filter.value}&`;
+            }
+          }
+        }
+      });
 
       const response = await axios.get(url);
       setStocks(response.data);
