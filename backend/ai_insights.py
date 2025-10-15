@@ -176,11 +176,15 @@ async def generate_predictive_insights(
         user_message = UserMessage(text=context)
         response = await chat.send_message(user_message)
         
+        # Extract JSON from markdown formatting if present
+        json_str = extract_json_from_markdown(response)
+        
         # Parse response
-        import json
         try:
-            insights = json.loads(response)
-        except:
+            insights = json.loads(json_str)
+        except Exception as parse_error:
+            print(f"JSON parsing error: {parse_error}")
+            print(f"Raw response: {response[:500]}")
             insights = {
                 "outlook_3m": response[:200],
                 "risks": ["Market volatility", "Sector-specific risks"],
