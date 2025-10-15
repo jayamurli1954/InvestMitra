@@ -78,6 +78,7 @@ const Layout = ({ children }) => {
     { path: '/dividends', icon: DollarSign, label: 'Dividends' },
     { path: '/alerts', icon: Bell, label: 'Alerts' },
     { path: '/performance', icon: Activity, label: 'Performance' },
+    { path: '/backtesting', icon: TrendingUp, label: 'Backtest' },
     { path: '/tax-report', icon: FileText, label: 'Tax Report' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
