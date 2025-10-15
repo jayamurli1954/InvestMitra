@@ -168,12 +168,12 @@ const AIInsights = () => {
                   {Array.isArray(optimization.optimization_suggestions.rebalancing) ? (
                     optimization.optimization_suggestions.rebalancing.map((item, idx) => (
                       <div key={idx} className="p-3 bg-slate-800 rounded-lg">
-                        <p className="text-slate-300">{item}</p>
+                        {renderContent(item)}
                       </div>
                     ))
                   ) : (
                     <div className="p-3 bg-slate-800 rounded-lg">
-                      <p className="text-slate-300">{optimization.optimization_suggestions.rebalancing}</p>
+                      {renderContent(optimization.optimization_suggestions.rebalancing)}
                     </div>
                   )}
                 </div>
