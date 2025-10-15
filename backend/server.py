@@ -336,7 +336,7 @@ async def login(user_data: UserLogin, response: Response):
     )
 
 @api_router.post("/auth/google")
-async def google_auth_callback(session_id: str, response: Response):
+async def google_auth_callback(session_id: str = Query(...), response: Response = None):
     """Process Google OAuth session ID from Emergent Auth"""
     logger.info(f"Processing Google OAuth callback with session_id: {session_id[:20]}...")
     
