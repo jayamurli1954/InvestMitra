@@ -207,11 +207,11 @@ backend:
 frontend:
   - task: "AI Insights page - Portfolio Optimization UI"
     implemented: true
-    working: "NA"
+    working: false
     file: "/app/frontend/src/pages/AIInsights.jsx"
-    stuck_count: 1
+    stuck_count: 2
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
@@ -225,14 +225,35 @@ frontend:
           3. Verify JSON response is properly displayed with recommendations
           4. Check loading states and error handling
           Ready for frontend testing.
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ CRITICAL ISSUE CONFIRMED - RAW JSON DISPLAYED IN UI
+          
+          **TESTING RESULTS:**
+          ✅ AI Insights page loads correctly
+          ✅ Portfolio Optimization button functional and clickable
+          ✅ Loading states work properly (spinner and "Generating..." text)
+          ✅ Backend API returns structured JSON data correctly
+          ✅ Authentication working with test session
+          ✅ Toast notifications show "AI optimization generated"
+          ✅ Results sections display (Rebalancing, Diversification, Risk Management, Tactical Moves)
+          
+          **CRITICAL PROBLEM:**
+          ❌ Raw JSON text is displayed in the UI instead of parsed content
+          ❌ Users see: ```json { "rebalancing": [{ "action": "Reduce holding in TCS.NS"...
+          ❌ This confirms the original user complaint about JSON text being shown
+          
+          **ROOT CAUSE:**
+          The backend is returning JSON wrapped in markdown code blocks (```json), but the frontend is displaying this raw text instead of parsing and formatting it properly. The LLM response includes markdown formatting that needs to be stripped and parsed.
 
   - task: "AI Insights page - Predictive Analysis UI"
     implemented: true
-    working: "NA"
+    working: false
     file: "/app/frontend/src/pages/AIInsights.jsx"
-    stuck_count: 1
+    stuck_count: 2
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
@@ -245,6 +266,25 @@ frontend:
           2. Verify predictive analysis data displays correctly
           3. Check for proper formatting and readability
           Ready for frontend testing.
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ CRITICAL ISSUE CONFIRMED - RAW JSON DISPLAYED IN UI
+          
+          **TESTING RESULTS:**
+          ✅ Predictive Insights button functional and clickable
+          ✅ Loading states work properly
+          ✅ Backend API returns structured JSON data correctly
+          ✅ Toast notifications show "Predictions generated"
+          ✅ Results sections display (3-Month Outlook, Risks, Opportunities, Action Items)
+          
+          **CRITICAL PROBLEM:**
+          ❌ Raw JSON text is displayed in the UI instead of parsed content
+          ❌ Users see markdown-formatted JSON instead of readable insights
+          ❌ Same issue as Portfolio Optimization - confirms systematic problem
+          
+          **ROOT CAUSE:**
+          Backend LLM responses contain markdown code blocks (```json) that need to be stripped and parsed before displaying to users. The frontend is not handling this markdown formatting properly.
 
   - task: "Enhanced Watchlist page with real-time price updates and quick actions"
     implemented: true
