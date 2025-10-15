@@ -437,8 +437,7 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Re-test AI endpoints after markdown JSON parsing fix"
-    - "Verify frontend displays formatted data correctly"
+    - "Frontend testing needed for AI Insights UI"
   stuck_tasks: 
     - "AI Insights page - Portfolio Optimization UI"
     - "AI Insights page - Predictive Analysis UI"
