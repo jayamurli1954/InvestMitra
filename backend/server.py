@@ -1219,6 +1219,119 @@ async def get_backtest_presets(current_user: User = Depends(require_auth)):
     
     return presets
 
+# ==================== AI INSIGHTS ROUTES ====================
+
+@api_router.post("/ai/portfolio-optimization")
+async def get_ai_portfolio_optimization(
+    current_user: User = Depends(require_auth)
+):
+    """Generate AI-powered portfolio optimization suggestions"""
+    try:
+        # Get portfolio
+        holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
+        
+        if not holdings:
+            raise HTTPException(status_code=404, detail="No portfolio found")
+        
+        # Get current prices
+        holdings_with_prices = []
+        for holding in holdings:
+            try:
+                stock_data = await get_stock_info(holding["symbol"])
+                holdings_with_prices.append({
+                    **holding,
+                    "current_price": stock_data.get("current_price", 0),
+                    "current_value": holding["quantity"] * stock_data.get("current_price", 0)
+                })
+            except Exception as e:
+                logger.error(f"Error fetching price for {holding['symbol']}: {e}")
+        
+        # Calculate analytics
+        analytics_data = calculate_portfolio_analytics(holdings_with_prices)
+        
+        # Generate AI insights
+        portfolio_data = {
+            "holdings": holdings_with_prices
+        }
+        
+        insights = await generate_portfolio_optimization(portfolio_data, analytics_data)
+        
+        return insights
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating AI optimization: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/ai/predictive-insights")
+async def get_ai_predictive_insights(
+    current_user: User = Depends(require_auth)
+):
+    """Generate AI-powered predictive insights for portfolio"""
+    try:
+        # Get portfolio
+        holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
+        
+        if not holdings:
+            raise HTTPException(status_code=404, detail="No portfolio found")
+        
+        # Get current prices
+        holdings_with_prices = []
+        for holding in holdings:
+            try:
+                stock_data = await get_stock_info(holding["symbol"])
+                holdings_with_prices.append({
+                    **holding,
+                    "current_price": stock_data.get("current_price", 0),
+                    "sector": stock_data.get("sector", "Other")
+                })
+            except Exception as e:
+                logger.error(f"Error fetching data for {holding['symbol']}: {e}")
+        
+        # Get market trends (simplified)
+        market_trends = {
+            "nifty_trend": "Bullish",  # In production, fetch real data
+            "sentiment": "Positive"
+        }
+        
+        # Generate AI insights
+        portfolio_data = {
+            "holdings": holdings_with_prices
+        }
+        
+        insights = await generate_predictive_insights(portfolio_data, market_trends)
+        
+        return insights
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating predictive insights: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/ai/stock-analysis/{symbol}")
+async def get_ai_stock_analysis(
+    symbol: str,
+    current_user: User = Depends(require_auth)
+):
+    """Generate AI-powered analysis for a specific stock"""
+    try:
+        # Get stock data
+        stock_data = await get_stock_info(symbol)
+        
+        # Generate AI analysis
+        analysis = await generate_stock_analysis(symbol, stock_data)
+        
+        return {
+            "symbol": symbol,
+            "analysis": analysis
+        }
+        
+    except Exception as e:
+        logger.error(f"Error generating stock analysis: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
