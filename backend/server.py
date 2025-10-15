@@ -1258,14 +1258,16 @@ async def get_ai_portfolio_optimization(
             "holdings": holdings_with_prices
         }
         
+        logger.info("Calling AI optimization function...")
         insights = await generate_portfolio_optimization(portfolio_data, analytics_data)
         
+        logger.info("AI optimization successful")
         return insights
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating AI optimization: {e}")
+        logger.error(f"Error generating AI optimization: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.post("/ai/predictive-insights")
