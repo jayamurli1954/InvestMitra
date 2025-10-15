@@ -54,20 +54,17 @@ class AIInsightsBackendTester:
             var sessionToken = '{session_token}';
             var email = '{TEST_USER_EMAIL}';
             
-            // Create or update user
-            db.users.replaceOne(
-                {{email: email}},
-                {{
-                    _id: userId,
-                    id: userId,
-                    email: email,
-                    name: 'Test User AI Insights',
-                    picture: 'https://via.placeholder.com/150',
-                    auth_provider: 'test',
-                    created_at: new Date().toISOString()
-                }},
-                {{upsert: true}}
-            );
+            // Delete existing user and create new one
+            db.users.deleteOne({{email: email}});
+            db.users.insertOne({{
+                _id: userId,
+                id: userId,
+                email: email,
+                name: 'Test User AI Insights',
+                picture: 'https://via.placeholder.com/150',
+                auth_provider: 'test',
+                created_at: new Date().toISOString()
+            }});
             
             // Create session
             db.user_sessions.insertOne({{
