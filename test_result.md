@@ -448,48 +448,44 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: |
-      🎯 **AI INSIGHTS FRONTEND TESTING COMPLETED - CRITICAL ISSUE IDENTIFIED**
+      🎉 **AI INSIGHTS BACKEND RE-TESTING COMPLETED - MARKDOWN JSON PARSING FIX VERIFIED**
       
-      **AUTHENTICATION & NAVIGATION** - ✅ WORKING
-      - Successfully created authenticated test session (test_session_1760507979587)
-      - AI Insights page loads correctly with proper navigation
-      - User authentication working with session cookies
-      - Page title and layout display properly
+      **CRITICAL FIX VERIFICATION RESULTS:**
       
-      **BACKEND API INTEGRATION** - ✅ WORKING
-      - POST /api/ai/portfolio-optimization: Returns 200 OK with valid JSON
-      - POST /api/ai/predictive-insights: Returns 200 OK with valid JSON
-      - LLM integration working (gpt-4o-mini via LiteLLM)
-      - Portfolio data requirement satisfied (5 test holdings created)
-      - Authentication and authorization working correctly
+      **✅ MARKDOWN JSON PARSING FIX WORKING PERFECTLY**
+      - ✅ extract_json_from_markdown() function successfully implemented
+      - ✅ NO markdown code blocks (```json) detected in API responses
+      - ✅ Clean JSON responses without formatting artifacts
+      - ✅ LLM responses properly parsed and structured
       
-      **UI FUNCTIONALITY** - ✅ WORKING
-      - Both "Generate Optimization" and "Generate Predictions" buttons functional
-      - Loading states display correctly (spinner + "Generating..." text)
-      - Toast notifications working ("AI optimization generated", "Predictions generated")
-      - All result sections render (Rebalancing, Diversification, Risk Management, etc.)
+      **✅ AI PORTFOLIO OPTIMIZATION ENDPOINT**
+      - POST /api/ai/portfolio-optimization: ✅ Status 200 OK
+      - Authentication: ✅ Working with JWT tokens
+      - Portfolio data: ✅ Tested with 5 realistic holdings
+      - Response structure: ✅ All required fields present (rebalancing, diversification, risk_management, tactical_moves)
+      - Content quality: ✅ Meaningful recommendations (not truncated fallback text)
+      - Markdown parsing: ✅ NO ```json formatting in responses
       
-      **❌ CRITICAL ISSUE CONFIRMED: RAW JSON DISPLAYED IN UI**
+      **✅ AI PREDICTIVE INSIGHTS ENDPOINT**
+      - POST /api/ai/predictive-insights: ✅ Status 200 OK
+      - Authentication: ✅ Working with JWT tokens
+      - Portfolio data: ✅ Same test portfolio used successfully
+      - Response structure: ✅ All required fields present (outlook_3m, risks, opportunities, action_items)
+      - Content quality: ✅ Meaningful insights (not truncated fallback text)
+      - Markdown parsing: ✅ NO ```json formatting in responses
       
-      **PROBLEM DETAILS:**
-      - Backend returns LLM responses wrapped in markdown code blocks: ```json { ... }```
-      - Frontend displays this raw markdown text instead of parsing it
-      - Users see: "```json { "rebalancing": [{ "action": "Reduce holding..." instead of formatted recommendations
-      - This confirms the original user complaint about "showing JSON text instead of parsed data"
+      **✅ TECHNICAL VERIFICATION**
+      - Backend logs: Successful AI calls at 06:08:25, 06:08:38, 06:08:39, 06:08:50
+      - LiteLLM integration: Working correctly (gpt-4o-mini)
+      - Error handling: ✅ Returns 401 for unauthenticated requests
+      - Budget management: ✅ Graceful fallback when LLM budget exceeded
+      - No Python errors or stack traces in responses
       
-      **ROOT CAUSE:**
-      The LLM responses include markdown formatting (```json) that needs to be stripped and parsed before displaying. The frontend AIInsights.jsx component is not handling this markdown formatting properly.
+      **🎯 ORIGINAL ISSUE FULLY RESOLVED:**
+      The main agent's markdown JSON parsing fix has successfully resolved the critical issue where LLM responses contained markdown formatting. Both AI endpoints now return clean, properly parsed JSON that can be directly consumed by the frontend without additional processing.
       
-      **IMPACT:**
-      - User experience severely degraded - insights are unreadable
-      - Original user complaint is valid and still exists
-      - Both Portfolio Optimization and Predictive Insights affected
-      
-      **RECOMMENDATION:**
-      Main agent needs to fix the JSON parsing in the frontend to:
-      1. Strip markdown code block formatting (```json and ```)
-      2. Parse the JSON content properly
-      3. Display formatted, readable recommendations instead of raw JSON text
+      **NEXT STEPS:**
+      Backend testing complete. Frontend testing needed to verify that the clean JSON responses are now properly displayed in the UI without raw JSON text.
   - agent: "main"
     message: |
       Phase 1 implementation completed:
