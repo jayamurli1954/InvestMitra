@@ -394,6 +394,27 @@ frontend:
           
           **FRONTEND ISSUE:**
           The AIInsights.jsx component needs to handle object rendering properly for predictive insights data. The Portfolio Optimization works because it has simpler data structures, but Predictive Insights contains nested objects that cause React rendering errors.
+      - working: "NA"
+        agent: "main"
+        comment: |
+          🔧 **FRONTEND RENDERING FIX APPLIED - HANDLE NESTED OBJECTS**
+          
+          **ISSUE:**
+          React error when LLM returns nested objects instead of simple strings (e.g., outlook_3m as object with expected_portfolio_trajectory key).
+          
+          **FIX APPLIED to /app/frontend/src/pages/AIInsights.jsx:**
+          1. ✅ Added renderContent() helper function to handle string, array, and object types
+          2. ✅ Updated outlook_3m section to use renderContent()
+          3. ✅ Updated risks, opportunities, action_items to handle both arrays and objects
+          4. ✅ Component now renders nested objects with proper formatting
+          5. ✅ Displays object keys as headers with values
+          
+          **EXPECTED RESULT:**
+          - Predictive Insights should display properly regardless of LLM response structure
+          - No more React rendering errors
+          - Users should see formatted insights data
+          
+          Ready for re-testing.
 
   - task: "Enhanced Watchlist page with real-time price updates and quick actions"
     implemented: true
