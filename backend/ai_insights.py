@@ -4,12 +4,37 @@ Uses LLM to generate personalized investment recommendations and portfolio optim
 """
 
 import os
+import re
+import json
 from typing import List, Dict, Any
 import asyncio
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from dotenv import load_dotenv
 
 load_dotenv()
+
+def extract_json_from_markdown(text: str) -> str:
+    """
+    Extract JSON content from markdown code blocks
+    
+    Handles formats like:
+    - ```json {...}```
+    - ``` {...}```
+    - {...} (plain JSON)
+    """
+    # Try to find JSON in markdown code blocks
+    patterns = [
+        r'```json\s*(\{.*?\})\s*```',  # ```json {...}```
+        r'```\s*(\{.*?\})\s*```',      # ``` {...}```
+        r'(\{.*?\})',                   # {...} (plain)
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.DOTALL)
+        if match:
+            return match.group(1)
+    
+    return text
 
 async def generate_portfolio_optimization(
     portfolio_data: Dict[str, Any],
