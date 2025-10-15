@@ -24,6 +24,7 @@ from analytics import (
     calculate_portfolio_analytics, calculate_rebalancing_suggestions,
     generate_stock_recommendations
 )
+from performance import generate_performance_summary
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
