@@ -288,51 +288,91 @@ const Strategies = () => {
                     {criteriaList.map((criteria, idx) => {
                       const selectedType = CRITERIA_TYPES.find(ct => ct.value === criteria.type);
                       return (
-                        <div key={criteria.id} className="flex items-end gap-2 p-3 bg-slate-800 rounded-lg">
-                          <div className="flex-1">
-                            <Label className="text-slate-400 text-xs mb-1">Criteria Type</Label>
-                            <Select
-                              value={criteria.type}
-                              onValueChange={(value) => updateCriteria(criteria.id, 'type', value)}
+                        <div key={criteria.id} className="p-3 bg-slate-800 rounded-lg">
+                          <div className="flex items-end gap-2">
+                            <div className="flex-1">
+                              <Label className="text-slate-400 text-xs mb-1">Criteria Type</Label>
+                              <Select
+                                value={criteria.type}
+                                onValueChange={(value) => updateCriteria(criteria.id, 'type', value)}
+                              >
+                                <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                                  <SelectValue placeholder="Select criteria..." />
+                                </SelectTrigger>
+                                <SelectContent className="bg-slate-800 border-slate-700 max-h-[300px]">
+                                  <div className="px-2 py-1.5 text-xs font-semibold text-emerald-400 sticky top-0 bg-slate-800">
+                                    📊 FUNDAMENTAL CRITERIA
+                                  </div>
+                                  {CRITERIA_TYPES.filter(ct => ct.category === 'fundamental').map(ct => (
+                                    <SelectItem 
+                                      key={ct.value} 
+                                      value={ct.value}
+                                      className="text-white hover:bg-slate-700"
+                                    >
+                                      {ct.label}
+                                    </SelectItem>
+                                  ))}
+                                  <div className="px-2 py-1.5 text-xs font-semibold text-blue-400 sticky top-0 bg-slate-800 mt-2">
+                                    📈 TECHNICAL INDICATORS
+                                  </div>
+                                  {CRITERIA_TYPES.filter(ct => ct.category === 'technical').map(ct => (
+                                    <SelectItem 
+                                      key={ct.value} 
+                                      value={ct.value}
+                                      className="text-white hover:bg-slate-700"
+                                    >
+                                      {ct.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            
+                            <div className="flex-1">
+                              <Label className="text-slate-400 text-xs mb-1">Value</Label>
+                              {selectedType?.type === 'boolean' ? (
+                                <Select
+                                  value={criteria.value}
+                                  onValueChange={(value) => updateCriteria(criteria.id, 'value', value)}
+                                  disabled={!criteria.type}
+                                >
+                                  <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                                    <SelectValue placeholder="Select..." />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-slate-800 border-slate-700">
+                                    <SelectItem value="true" className="text-white hover:bg-slate-700">Yes</SelectItem>
+                                    <SelectItem value="false" className="text-white hover:bg-slate-700">No</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  type={selectedType?.type || 'text'}
+                                  placeholder={selectedType?.placeholder || 'Enter value'}
+                                  value={criteria.value}
+                                  onChange={(e) => updateCriteria(criteria.id, 'value', e.target.value)}
+                                  className="bg-slate-700 border-slate-600 text-white"
+                                  disabled={!criteria.type}
+                                />
+                              )}
+                            </div>
+
+                            <Button
+                              type="button"
+                              onClick={() => removeCriteria(criteria.id)}
+                              variant="outline"
+                              size="sm"
+                              className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
                             >
-                              <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
-                                <SelectValue placeholder="Select criteria..." />
-                              </SelectTrigger>
-                              <SelectContent className="bg-slate-800 border-slate-700">
-                                {CRITERIA_TYPES.map(ct => (
-                                  <SelectItem 
-                                    key={ct.value} 
-                                    value={ct.value}
-                                    className="text-white hover:bg-slate-700"
-                                  >
-                                    {ct.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              <X className="w-4 h-4" />
+                            </Button>
                           </div>
                           
-                          <div className="flex-1">
-                            <Label className="text-slate-400 text-xs mb-1">Value</Label>
-                            <Input
-                              type={selectedType?.type || 'text'}
-                              placeholder={selectedType?.placeholder || 'Enter value'}
-                              value={criteria.value}
-                              onChange={(e) => updateCriteria(criteria.id, 'value', e.target.value)}
-                              className="bg-slate-700 border-slate-600 text-white"
-                              disabled={!criteria.type}
-                            />
-                          </div>
-
-                          <Button
-                            type="button"
-                            onClick={() => removeCriteria(criteria.id)}
-                            variant="outline"
-                            size="sm"
-                            className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
+                          {selectedType?.help && (
+                            <div className="mt-2 text-xs text-slate-500 flex items-center">
+                              <span className="mr-1">💡</span>
+                              {selectedType.help}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
