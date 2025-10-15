@@ -17,6 +17,7 @@ import Alerts from "@/pages/Alerts";
 import Dividends from "@/pages/Dividends";
 import PerformanceReport from "@/pages/PerformanceReport";
 import Backtesting from "@/pages/Backtesting";
+import AIInsights from "@/pages/AIInsights";
 import Auth from "@/pages/Auth";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
