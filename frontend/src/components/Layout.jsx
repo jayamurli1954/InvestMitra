@@ -4,6 +4,8 @@ import {
   LayoutDashboard, 
   Briefcase, 
   Eye,
+  Receipt,
+  FileText,
   Filter, 
   TrendingUp, 
   Target,
