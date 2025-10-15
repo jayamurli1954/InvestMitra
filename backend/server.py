@@ -1097,6 +1097,127 @@ async def get_performance_report(
         logger.error(f"Error generating performance report: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== BACKTESTING ROUTES ====================
+
+@api_router.post("/backtest/strategy")
+async def run_backtest(
+    strategy_id: str,
+    start_date: str,
+    end_date: str,
+    initial_capital: float = 100000,
+    current_user: User = Depends(require_auth)
+):
+    """Run backtest for a strategy"""
+    try:
+        # Get strategy
+        strategy = await db.strategies.find_one({
+            "id": strategy_id,
+            "user_id": current_user.id
+        })
+        
+        if not strategy:
+            raise HTTPException(status_code=404, detail="Strategy not found")
+        
+        # Run backtest
+        result = backtest_strategy(
+            strategy["criteria"],
+            start_date,
+            end_date,
+            initial_capital
+        )
+        
+        # Calculate score and recommendations
+        score = calculate_strategy_score(result)
+        recommendations = generate_backtest_recommendations(result)
+        
+        # Add strategy info
+        result["strategy_info"] = {
+            "id": strategy["id"],
+            "name": strategy["name"],
+            "description": strategy["description"]
+        }
+        result["score"] = score
+        result["recommendations"] = recommendations
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running backtest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/backtest/custom")
+async def run_custom_backtest(
+    criteria: Dict[str, Any],
+    start_date: str,
+    end_date: str,
+    initial_capital: float = 100000,
+    current_user: User = Depends(require_auth)
+):
+    """Run backtest with custom criteria without saving strategy"""
+    try:
+        # Run backtest
+        result = backtest_strategy(
+            criteria,
+            start_date,
+            end_date,
+            initial_capital
+        )
+        
+        # Calculate score and recommendations
+        score = calculate_strategy_score(result)
+        recommendations = generate_backtest_recommendations(result)
+        
+        result["score"] = score
+        result["recommendations"] = recommendations
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error running custom backtest: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/backtest/presets")
+async def get_backtest_presets(current_user: User = Depends(require_auth)):
+    """Get preset time periods for backtesting"""
+    today = datetime.now()
+    
+    presets = [
+        {
+            "label": "Last 1 Year",
+            "start_date": (today - timedelta(days=365)).strftime("%Y-%m-%d"),
+            "end_date": today.strftime("%Y-%m-%d")
+        },
+        {
+            "label": "Last 2 Years",
+            "start_date": (today - timedelta(days=730)).strftime("%Y-%m-%d"),
+            "end_date": today.strftime("%Y-%m-%d")
+        },
+        {
+            "label": "Last 3 Years",
+            "start_date": (today - timedelta(days=1095)).strftime("%Y-%m-%d"),
+            "end_date": today.strftime("%Y-%m-%d")
+        },
+        {
+            "label": "Last 5 Years",
+            "start_date": (today - timedelta(days=1825)).strftime("%Y-%m-%d"),
+            "end_date": today.strftime("%Y-%m-%d")
+        },
+        {
+            "label": "2020-2024 (Post-COVID)",
+            "start_date": "2020-01-01",
+            "end_date": "2024-12-31"
+        },
+        {
+            "label": "2015-2020 (Pre-COVID)",
+            "start_date": "2015-01-01",
+            "end_date": "2019-12-31"
+        }
+    ]
+    
+    return presets
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
