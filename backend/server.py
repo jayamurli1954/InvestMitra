@@ -1045,6 +1045,57 @@ async def get_dividend_summary(
         "by_stock": list(by_stock.values())
     }
 
+# ==================== PERFORMANCE REPORTS ====================
+
+@api_router.get("/performance/report")
+async def get_performance_report(
+    current_user: User = Depends(require_auth)
+):
+    """Generate advanced performance report"""
+    try:
+        # Get transactions
+        transactions = await db.transactions.find({
+            "user_id": current_user.id
+        }).to_list(length=None)
+        
+        # Get portfolio
+        holdings = await db.portfolio.find({
+            "user_id": current_user.id
+        }).to_list(length=None)
+        
+        # Calculate current portfolio value
+        current_value = 0
+        holdings_with_prices = []
+        
+        for holding in holdings:
+            try:
+                stock_data = await get_stock_info(holding["symbol"])
+                current_price = stock_data.get("current_price", 0)
+                holding_value = holding["quantity"] * current_price
+                current_value += holding_value
+                
+                holdings_with_prices.append({
+                    **holding,
+                    "current_price": current_price,
+                    "current_value": holding_value
+                })
+            except Exception as e:
+                logger.error(f"Error fetching price for {holding['symbol']}: {e}")
+                holdings_with_prices.append(holding)
+        
+        # Generate performance summary
+        performance_data = generate_performance_summary(
+            transactions,
+            holdings_with_prices,
+            current_value
+        )
+        
+        return performance_data
+        
+    except Exception as e:
+        logger.error(f"Error generating performance report: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
