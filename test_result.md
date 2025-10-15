@@ -332,7 +332,7 @@ frontend:
 
   - task: "AI Insights page - Predictive Analysis UI"
     implemented: true
-    working: "NA"
+    working: false
     file: "/app/frontend/src/pages/AIInsights.jsx"
     stuck_count: 2
     priority: "high"
@@ -368,6 +368,32 @@ frontend:
           
           **ROOT CAUSE:**
           Backend LLM responses contain markdown code blocks (```json) that need to be stripped and parsed before displaying to users. The frontend is not handling this markdown formatting properly.
+      - working: false
+        agent: "testing"
+        comment: |
+          ❌ PREDICTIVE INSIGHTS STILL HAS ISSUES - PARTIAL SUCCESS
+          
+          **RE-TESTING RESULTS AFTER BACKEND FIX:**
+          ✅ Predictive Insights button functional and clickable
+          ✅ Loading states work properly ("Generating..." text with spinner)
+          ✅ Backend API returns clean, structured JSON (verified via direct API testing)
+          ✅ Authentication working with test session
+          
+          **CRITICAL ISSUE IDENTIFIED:**
+          ❌ Predictive Insights results section NOT displaying after clicking button
+          ❌ No "Predictive Insights" results section found in UI after generation
+          ❌ Console shows React error: "Objects are not valid as a React child (found: object with keys {expected_portfolio_trajectory})"
+          
+          **ROOT CAUSE:**
+          Frontend React component has a rendering issue when displaying predictive insights data. The backend API returns proper JSON, but the frontend component cannot render certain object structures properly, specifically the "expected_portfolio_trajectory" field.
+          
+          **BACKEND API VERIFICATION:**
+          ✅ Direct API testing confirms clean JSON responses without markdown
+          ✅ All required fields present: outlook_3m, risks, opportunities, action_items
+          ✅ No markdown formatting in backend responses
+          
+          **FRONTEND ISSUE:**
+          The AIInsights.jsx component needs to handle object rendering properly for predictive insights data. The Portfolio Optimization works because it has simpler data structures, but Predictive Insights contains nested objects that cause React rendering errors.
 
   - task: "Enhanced Watchlist page with real-time price updates and quick actions"
     implemented: true
