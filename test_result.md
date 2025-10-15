@@ -394,6 +394,50 @@ test_plan:
   testing_complete: true
 
 agent_communication:
+  - agent: "testing"
+    message: |
+      🎯 **AI INSIGHTS FRONTEND TESTING COMPLETED - CRITICAL ISSUE IDENTIFIED**
+      
+      **AUTHENTICATION & NAVIGATION** - ✅ WORKING
+      - Successfully created authenticated test session (test_session_1760507979587)
+      - AI Insights page loads correctly with proper navigation
+      - User authentication working with session cookies
+      - Page title and layout display properly
+      
+      **BACKEND API INTEGRATION** - ✅ WORKING
+      - POST /api/ai/portfolio-optimization: Returns 200 OK with valid JSON
+      - POST /api/ai/predictive-insights: Returns 200 OK with valid JSON
+      - LLM integration working (gpt-4o-mini via LiteLLM)
+      - Portfolio data requirement satisfied (5 test holdings created)
+      - Authentication and authorization working correctly
+      
+      **UI FUNCTIONALITY** - ✅ WORKING
+      - Both "Generate Optimization" and "Generate Predictions" buttons functional
+      - Loading states display correctly (spinner + "Generating..." text)
+      - Toast notifications working ("AI optimization generated", "Predictions generated")
+      - All result sections render (Rebalancing, Diversification, Risk Management, etc.)
+      
+      **❌ CRITICAL ISSUE CONFIRMED: RAW JSON DISPLAYED IN UI**
+      
+      **PROBLEM DETAILS:**
+      - Backend returns LLM responses wrapped in markdown code blocks: ```json { ... }```
+      - Frontend displays this raw markdown text instead of parsing it
+      - Users see: "```json { "rebalancing": [{ "action": "Reduce holding..." instead of formatted recommendations
+      - This confirms the original user complaint about "showing JSON text instead of parsed data"
+      
+      **ROOT CAUSE:**
+      The LLM responses include markdown formatting (```json) that needs to be stripped and parsed before displaying. The frontend AIInsights.jsx component is not handling this markdown formatting properly.
+      
+      **IMPACT:**
+      - User experience severely degraded - insights are unreadable
+      - Original user complaint is valid and still exists
+      - Both Portfolio Optimization and Predictive Insights affected
+      
+      **RECOMMENDATION:**
+      Main agent needs to fix the JSON parsing in the frontend to:
+      1. Strip markdown code block formatting (```json and ```)
+      2. Parse the JSON content properly
+      3. Display formatted, readable recommendations instead of raw JSON text
   - agent: "main"
     message: |
       Phase 1 implementation completed:
