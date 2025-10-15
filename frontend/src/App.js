@@ -66,6 +66,7 @@ function AppRoutes() {
                   <Route path="/alerts" element={<Alerts />} />
                   <Route path="/dividends" element={<Dividends />} />
                   <Route path="/performance" element={<PerformanceReport />} />
+                  <Route path="/backtesting" element={<Backtesting />} />
                   <Route path="/screener" element={<Screener />} />
                   <Route path="/stock/:symbol" element={<StockDetail />} />
                   <Route path="/strategies" element={<Strategies />} />
