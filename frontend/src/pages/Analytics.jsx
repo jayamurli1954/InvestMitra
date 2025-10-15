@@ -384,14 +384,21 @@ const Analytics = () => {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      {rec.reasons.map((reason, i) => (
-                        <span
-                          key={i}
-                          className="px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded text-xs"
-                        >
-                          ✓ {reason}
-                        </span>
-                      ))}
+                      {rec.reasons && rec.reasons.map((reason, i) => {
+                        // Handle both string and object formats
+                        const reasonText = typeof reason === 'string' 
+                          ? reason 
+                          : reason.action || reason.rationale || JSON.stringify(reason);
+                        
+                        return (
+                          <span
+                            key={i}
+                            className="px-2 py-1 bg-emerald-500/10 text-emerald-400 rounded text-xs"
+                          >
+                            ✓ {reasonText}
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
