@@ -272,18 +272,28 @@ const AIInsights = () => {
             )}
 
             {/* Risks to Watch */}
-            {predictions.predictive_insights.risks && predictions.predictive_insights.risks.length > 0 && (
+            {predictions.predictive_insights.risks && (
               <div>
                 <h3 className="text-lg font-semibold text-rose-400 mb-3 flex items-center">
                   <AlertTriangle className="w-5 h-5 mr-2" />
                   Risks to Watch
                 </h3>
                 <div className="space-y-2">
-                  {predictions.predictive_insights.risks.map((risk, idx) => (
-                    <div key={idx} className="p-3 bg-rose-500/10 rounded-lg border border-rose-500/20">
-                      <p className="text-slate-300">{risk}</p>
+                  {Array.isArray(predictions.predictive_insights.risks) ? (
+                    predictions.predictive_insights.risks.map((risk, idx) => (
+                      <div key={idx} className="p-3 bg-rose-500/10 rounded-lg border border-rose-500/20">
+                        {typeof risk === 'string' ? (
+                          <p className="text-slate-300">{risk}</p>
+                        ) : (
+                          renderContent(risk)
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 bg-rose-500/10 rounded-lg border border-rose-500/20">
+                      {renderContent(predictions.predictive_insights.risks)}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
