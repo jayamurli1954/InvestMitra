@@ -209,7 +209,9 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Chart color visibility testing after fixes"
+    - "Dynamic Strategy Criteria Feature testing"
+    - "Chart visibility and color verification"
+    - "Comprehensive feature validation"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
