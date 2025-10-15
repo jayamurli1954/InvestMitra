@@ -370,7 +370,7 @@ class AIInsightsBackendTester:
             return False
     
     def test_predictive_insights_endpoint(self):
-        """Test AI Predictive Insights endpoint"""
+        """Test AI Predictive Insights endpoint - Focus on markdown JSON parsing fix"""
         print("\n🔮 Testing AI Predictive Insights endpoint...")
         
         try:
@@ -398,19 +398,42 @@ class AIInsightsBackendTester:
                         missing_fields = [field for field in required_fields if field not in insights]
                         
                         if not missing_fields:
-                            self.log_result(
-                                "AI Predictive Insights",
-                                True,
-                                "Predictive insights endpoint working correctly",
-                                f"Response contains all required fields: {required_fields}"
-                            )
+                            # CRITICAL CHECK: Verify no markdown formatting in response
+                            raw_response = response.text
+                            has_markdown = "```json" in raw_response or "```" in raw_response
                             
-                            # Log sample insights
-                            if insights.get("outlook_3m"):
-                                outlook = str(insights["outlook_3m"])
-                                print(f"   Sample 3M outlook: {outlook[:100]}...")
+                            if has_markdown:
+                                self.log_result(
+                                    "AI Predictive Insights - Markdown Check",
+                                    False,
+                                    "❌ CRITICAL: Response contains markdown formatting",
+                                    f"Found markdown code blocks in response: {raw_response[:200]}..."
+                                )
+                                return False
                             
-                            return True
+                            # Check that insights are properly structured (not truncated text)
+                            outlook = str(insights.get("outlook_3m", ""))
+                            if len(outlook) > 10 and not outlook.startswith("Unable to"):
+                                self.log_result(
+                                    "AI Predictive Insights",
+                                    True,
+                                    "✅ Predictive insights working - Clean JSON response without markdown",
+                                    f"Response contains all required fields: {required_fields}"
+                                )
+                                
+                                # Log sample insights
+                                print(f"   ✅ Sample 3M outlook: {outlook[:100]}...")
+                                print(f"   ✅ No markdown formatting detected in response")
+                                
+                                return True
+                            else:
+                                self.log_result(
+                                    "AI Predictive Insights",
+                                    False,
+                                    "Response contains fallback/truncated content",
+                                    f"Outlook content: {outlook}"
+                                )
+                                return False
                         else:
                             self.log_result(
                                 "AI Predictive Insights",
