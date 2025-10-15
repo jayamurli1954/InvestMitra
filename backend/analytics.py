@@ -216,6 +216,76 @@ def generate_stock_recommendations(
                 score += 10
                 reasons.append(f"Dividend yield {stock['dividend_yield']:.2f}%")
         
+        # === TECHNICAL INDICATORS ===
+        
+        # RSI checks
+        if "min_rsi" in strategy_criteria and stock.get("rsi"):
+            if stock["rsi"] >= strategy_criteria["min_rsi"]:
+                score += 15
+                reasons.append(f"RSI {stock['rsi']:.1f} above {strategy_criteria['min_rsi']}")
+        
+        if "max_rsi" in strategy_criteria and stock.get("rsi"):
+            if stock["rsi"] <= strategy_criteria["max_rsi"]:
+                score += 15
+                reasons.append(f"RSI {stock['rsi']:.1f} below {strategy_criteria['max_rsi']}")
+        
+        # Moving Average checks
+        if "min_ma_50" in strategy_criteria and stock.get("ma_50"):
+            if stock["ma_50"] >= strategy_criteria["min_ma_50"]:
+                score += 10
+                reasons.append(f"50-Day MA meets criteria")
+        
+        if "min_ma_200" in strategy_criteria and stock.get("ma_200"):
+            if stock["ma_200"] >= strategy_criteria["min_ma_200"]:
+                score += 10
+                reasons.append(f"200-Day MA meets criteria")
+        
+        # Price above MA checks
+        if "price_above_ma_50" in strategy_criteria:
+            if strategy_criteria["price_above_ma_50"] in [True, "true"]:
+                if stock.get("ma_50") and stock["current_price"] > stock["ma_50"]:
+                    score += 15
+                    reasons.append("Price above 50-Day MA (Bullish)")
+        
+        if "price_above_ma_200" in strategy_criteria:
+            if strategy_criteria["price_above_ma_200"] in [True, "true"]:
+                if stock.get("ma_200") and stock["current_price"] > stock["ma_200"]:
+                    score += 15
+                    reasons.append("Price above 200-Day MA (Bullish)")
+        
+        # Golden/Death Cross
+        if "golden_cross" in strategy_criteria:
+            if strategy_criteria["golden_cross"] in [True, "true"]:
+                if stock.get("ma_50") and stock.get("ma_200") and stock["ma_50"] > stock["ma_200"]:
+                    score += 20
+                    reasons.append("Golden Cross detected")
+        
+        if "death_cross" in strategy_criteria:
+            if strategy_criteria["death_cross"] in [True, "true"]:
+                if stock.get("ma_50") and stock.get("ma_200") and stock["ma_50"] < stock["ma_200"]:
+                    score += 20
+                    reasons.append("Death Cross detected")
+        
+        # Volume check
+        if "min_volume" in strategy_criteria and stock.get("volume"):
+            volume_lakhs = stock["volume"] / 100000
+            if volume_lakhs >= strategy_criteria["min_volume"]:
+                score += 10
+                reasons.append(f"High volume {volume_lakhs:.1f}L")
+        
+        # 52-week high/low proximity
+        if "min_52w_high_pct" in strategy_criteria and stock.get("week_52_high"):
+            pct_from_high = ((stock["current_price"] - stock["week_52_high"]) / stock["week_52_high"]) * 100
+            if pct_from_high >= strategy_criteria["min_52w_high_pct"]:
+                score += 10
+                reasons.append(f"{abs(pct_from_high):.1f}% from 52W high")
+        
+        if "min_52w_low_pct" in strategy_criteria and stock.get("week_52_low"):
+            pct_from_low = ((stock["current_price"] - stock["week_52_low"]) / stock["week_52_low"]) * 100
+            if pct_from_low >= strategy_criteria["min_52w_low_pct"]:
+                score += 10
+                reasons.append(f"{pct_from_low:.1f}% above 52W low")
+        
         # Price momentum (positive change)
         if stock.get("change_percent", 0) > 0:
             score += 10
