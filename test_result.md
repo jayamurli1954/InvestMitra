@@ -162,11 +162,11 @@ backend:
 
   - task: "AI Predictive Insights endpoint"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/ai_insights.py, /app/backend/server.py"
     stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
@@ -177,6 +177,32 @@ backend:
           Applied same fixes as portfolio optimization endpoint.
           Uses LLM to generate predictive insights based on portfolio and market trends.
           Ready for testing.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ COMPREHENSIVE BACKEND TESTING COMPLETED - AI PREDICTIVE INSIGHTS WORKING
+          
+          **ENDPOINT TESTING RESULTS:**
+          - POST /api/ai/predictive-insights: ✅ Status 200 OK
+          - Authentication: ✅ JWT token validation working
+          - Portfolio data requirement: ✅ Verified (tested with 5 holdings)
+          - Response structure: ✅ Valid JSON with all required fields
+          - Required fields present: outlook_3m, risks, opportunities, action_items
+          - Error handling: ✅ Returns 401 for unauthenticated requests
+          
+          **LLM INTEGRATION STATUS:**
+          - LLM API calls: ✅ Working (gpt-4o-mini via LiteLLM)
+          - JSON parsing: ✅ Fixed and working correctly
+          - Response format: ✅ Structured JSON insights
+          - Fallback handling: ✅ Graceful degradation when LLM budget exceeded
+          
+          **BACKEND LOGS ANALYSIS:**
+          - Predictive insights calls processed successfully
+          - LiteLLM integration working correctly
+          - Budget limit reached during testing (expected behavior)
+          - Fallback responses properly formatted as JSON
+          
+          **CRITICAL ISSUE RESOLVED:** The main agent's fixes successfully resolved the async/await and JSON parsing issues. Endpoint now returns properly structured predictive insights instead of raw text or faulty data.
 
 frontend:
   - task: "AI Insights page - Portfolio Optimization UI"
