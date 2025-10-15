@@ -5,6 +5,44 @@ import { Sparkles, TrendingUp, AlertTriangle, Target, Lightbulb, RefreshCw } fro
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+// Helper function to render data that might be string, array, or object
+const renderContent = (data) => {
+  if (typeof data === 'string') {
+    return <p className="text-slate-300">{data}</p>;
+  }
+  
+  if (Array.isArray(data)) {
+    return data.map((item, idx) => (
+      <div key={idx} className="mb-2 last:mb-0">
+        {typeof item === 'string' ? (
+          <p className="text-slate-300">{item}</p>
+        ) : (
+          <pre className="text-slate-300 whitespace-pre-wrap">{JSON.stringify(item, null, 2)}</pre>
+        )}
+      </div>
+    ));
+  }
+  
+  if (typeof data === 'object' && data !== null) {
+    return (
+      <div className="space-y-2">
+        {Object.entries(data).map(([key, value]) => (
+          <div key={key}>
+            <p className="text-blue-300 font-semibold capitalize mb-1">
+              {key.replace(/_/g, ' ')}:
+            </p>
+            <p className="text-slate-300 ml-4">
+              {typeof value === 'object' ? JSON.stringify(value, null, 2) : value}
+            </p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  
+  return <p className="text-slate-300">{String(data)}</p>;
+};
+
 const AIInsights = () => {
   const [optimization, setOptimization] = useState(null);
   const [predictions, setPredictions] = useState(null);
