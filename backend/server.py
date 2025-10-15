@@ -363,6 +363,9 @@ async def google_auth_callback(session_id: str = Query(...), response: Response 
     
     if user_doc:
         user_doc["id"] = user_doc.pop("_id")
+        # Convert datetime to string if needed
+        if "created_at" in user_doc and isinstance(user_doc["created_at"], datetime):
+            user_doc["created_at"] = user_doc["created_at"].isoformat()
         user = User(**user_doc)
     else:
         # Create new user
