@@ -77,6 +77,7 @@ const Layout = ({ children }) => {
     { path: '/transactions', icon: Receipt, label: 'Transactions' },
     { path: '/dividends', icon: DollarSign, label: 'Dividends' },
     { path: '/alerts', icon: Bell, label: 'Alerts' },
+    { path: '/performance', icon: Activity, label: 'Performance' },
     { path: '/tax-report', icon: FileText, label: 'Tax Report' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
