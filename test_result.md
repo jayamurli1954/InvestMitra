@@ -188,11 +188,11 @@ backend:
 
   - task: "AI Predictive Insights endpoint"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/ai_insights.py, /app/backend/server.py"
     stuck_count: 1
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
@@ -229,6 +229,32 @@ backend:
           - Fallback responses properly formatted as JSON
           
           **CRITICAL ISSUE RESOLVED:** The main agent's fixes successfully resolved the async/await and JSON parsing issues. Endpoint now returns properly structured predictive insights instead of raw text or faulty data.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ RE-TESTED AFTER MARKDOWN JSON PARSING FIX - FULLY WORKING
+          
+          **CRITICAL FIX VERIFICATION:**
+          - ✅ Markdown JSON parsing fix working correctly
+          - ✅ NO markdown code blocks (```json) in responses
+          - ✅ Clean JSON responses without formatting artifacts
+          - ✅ LLM responses properly parsed and structured
+          - ✅ All required fields present: outlook_3m, risks, opportunities, action_items
+          
+          **TESTING RESULTS:**
+          - POST /api/ai/predictive-insights: ✅ Status 200 OK
+          - Authentication: ✅ Working with test session
+          - Portfolio data: ✅ 5 test holdings (RELIANCE, TCS, HDFC, INFY, ITC)
+          - Response validation: ✅ Proper JSON structure
+          - Content quality: ✅ Meaningful insights (not truncated fallback text)
+          - Error handling: ✅ 401 for unauthenticated requests
+          
+          **BACKEND LOGS:**
+          - Predictive insights calls successful at 06:08:39 and 06:08:50
+          - LiteLLM integration working (gpt-4o-mini)
+          - Budget management working (graceful fallback when exceeded)
+          
+          **ORIGINAL ISSUE FULLY RESOLVED:** The extract_json_from_markdown() function successfully strips markdown formatting from LLM responses, ensuring clean JSON parsing and proper display in frontend.
 
 frontend:
   - task: "AI Insights page - Portfolio Optimization UI"
