@@ -131,13 +131,16 @@ const Strategies = () => {
     setEditingStrategy(strategy);
     setFormData({
       name: strategy.name,
-      description: strategy.description,
-      min_pe: strategy.criteria.min_pe || '',
-      max_pe: strategy.criteria.max_pe || '',
-      min_roe: strategy.criteria.min_roe || '',
-      min_div_yield: strategy.criteria.min_div_yield || '',
-      sector: strategy.criteria.sector || ''
+      description: strategy.description
     });
+    
+    // Convert existing criteria to dynamic list
+    const existingCriteria = Object.entries(strategy.criteria).map(([type, value]) => ({
+      id: Date.now() + Math.random(),
+      type,
+      value: value.toString()
+    }));
+    setCriteriaList(existingCriteria);
     setDialogOpen(true);
   };
 
