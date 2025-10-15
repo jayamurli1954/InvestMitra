@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Search, Filter, Eye, TrendingUp, Plus } from 'lucide-react';
+import { Search, Filter, Eye, TrendingUp, Plus, X, Trash2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,20 +9,26 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
+// Available filter types
+const FILTER_TYPES = [
+  { value: 'sector', label: 'Sector', type: 'select', options: ['All', 'Banking', 'IT', 'Energy', 'Pharma', 'Telecom', 'FMCG', 'Infrastructure', 'Consumer Goods', 'Automobile', 'Power', 'Cement'] },
+  { value: 'min_pe', label: 'Min P/E Ratio', type: 'number', placeholder: '10' },
+  { value: 'max_pe', label: 'Max P/E Ratio', type: 'number', placeholder: '25' },
+  { value: 'min_roe', label: 'Min ROE %', type: 'number', placeholder: '15' },
+  { value: 'max_roe', label: 'Max ROE %', type: 'number', placeholder: '30' },
+  { value: 'min_div_yield', label: 'Min Dividend Yield %', type: 'number', placeholder: '2' },
+  { value: 'max_div_yield', label: 'Max Dividend Yield %', type: 'number', placeholder: '5' },
+  { value: 'min_pb', label: 'Min P/B Ratio', type: 'number', placeholder: '1' },
+  { value: 'max_pb', label: 'Max P/B Ratio', type: 'number', placeholder: '3' },
+  { value: 'min_market_cap', label: 'Min Market Cap (Cr)', type: 'number', placeholder: '1000' },
+  { value: 'max_market_cap', label: 'Max Market Cap (Cr)', type: 'number', placeholder: '100000' }
+];
+
 const Screener = () => {
   const navigate = useNavigate();
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [filters, setFilters] = useState({
-    sector: '',
-    min_pe: '',
-    max_pe: '',
-    min_roe: ''
-  });
-  const [sectors] = useState([
-    'All', 'Banking', 'IT', 'Energy', 'Pharma', 'Telecom', 'FMCG', 
-    'Infrastructure', 'Consumer Goods', 'Automobile', 'Power', 'Cement'
-  ]);
+  const [filtersList, setFiltersList] = useState([]);
 
   useEffect(() => {
     fetchStocks();
