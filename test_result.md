@@ -154,12 +154,53 @@ backend:
           Ready for testing.
 
 frontend:
+  - task: "AI Insights page - Portfolio Optimization UI"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/AIInsights.jsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "user"
+        comment: "User reported insights failed to generate data, showing JSON text instead of parsed data"
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Backend fixes applied. Need to test:
+          1. Navigate to AI Insights page
+          2. Click "Get Portfolio Optimization" button
+          3. Verify JSON response is properly displayed with recommendations
+          4. Check loading states and error handling
+          Ready for frontend testing.
+
+  - task: "AI Insights page - Predictive Analysis UI"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/pages/AIInsights.jsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "user"
+        comment: "Predictive analysis faulty, no data displayed"
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Backend fixes applied. Need to test:
+          1. Click "Get Predictive Insights" button
+          2. Verify predictive analysis data displays correctly
+          3. Check for proper formatting and readability
+          Ready for frontend testing.
+
   - task: "Enhanced Watchlist page with real-time price updates and quick actions"
     implemented: true
     working: true
     file: "/app/frontend/src/pages/Watchlist.jsx"
     stuck_count: 0
-    priority: "high"
+    priority: "low"
     needs_retesting: false
     status_history:
       - working: true
