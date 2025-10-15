@@ -162,11 +162,11 @@ backend:
 
   - task: "AI Predictive Insights endpoint"
     implemented: true
-    working: true
+    working: "NA"
     file: "/app/backend/ai_insights.py, /app/backend/server.py"
     stuck_count: 1
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: false
         agent: "user"
