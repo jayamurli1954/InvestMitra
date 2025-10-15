@@ -211,3 +211,52 @@ select:focus {
   stroke: rgba(0, 0, 0, 0.1) !important;
   stroke-width: 2 !important;
 }
+
+/* Force visible colors for pie/donut sectors */
+.recharts-pie-sector:nth-child(1) {
+  fill: #10b981 !important; /* emerald */
+}
+
+.recharts-pie-sector:nth-child(2) {
+  fill: #0ea5e9 !important; /* sky */
+}
+
+.recharts-pie-sector:nth-child(3) {
+  fill: #8b5cf6 !important; /* violet */
+}
+
+.recharts-pie-sector:nth-child(4) {
+  fill: #f59e0b !important; /* amber */
+}
+
+.recharts-pie-sector:nth-child(5) {
+  fill: #f43f5e !important; /* rose */
+}
+
+.recharts-pie-sector:nth-child(6) {
+  fill: #06b6d4 !important; /* cyan */
+}
+
+.recharts-pie-sector:nth-child(7) {
+  fill: #6366f1 !important; /* indigo */
+}
+
+.recharts-pie-sector:nth-child(8) {
+  fill: #d946ef !important; /* fuchsia */
+}
+
+/* Ensure SVG is visible */
+.recharts-surface {
+  overflow: visible !important;
+}
+
+/* Force all chart paths to be visible */
+.recharts-layer path {
+  opacity: 1 !important;
+}
+
+/* DonutChart specific overrides */
+[data-testid="sector-donut-chart"] .recharts-pie path {
+  opacity: 1 !important;
+  stroke-opacity: 1 !important;
+}
