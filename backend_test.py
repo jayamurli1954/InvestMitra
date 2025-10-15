@@ -254,7 +254,7 @@ class AIInsightsBackendTester:
             return False
     
     def test_portfolio_optimization_endpoint(self):
-        """Test AI Portfolio Optimization endpoint"""
+        """Test AI Portfolio Optimization endpoint - Focus on markdown JSON parsing fix"""
         print("\n🤖 Testing AI Portfolio Optimization endpoint...")
         
         try:
@@ -282,18 +282,51 @@ class AIInsightsBackendTester:
                         missing_fields = [field for field in required_fields if field not in suggestions]
                         
                         if not missing_fields:
-                            self.log_result(
-                                "AI Portfolio Optimization",
-                                True,
-                                "Portfolio optimization endpoint working correctly",
-                                f"Response contains all required fields: {required_fields}"
-                            )
+                            # CRITICAL CHECK: Verify no markdown formatting in response
+                            raw_response = response.text
+                            has_markdown = "```json" in raw_response or "```" in raw_response
                             
-                            # Log sample recommendations
-                            if suggestions.get("rebalancing"):
-                                print(f"   Sample rebalancing advice: {suggestions['rebalancing'][0][:100]}...")
+                            if has_markdown:
+                                self.log_result(
+                                    "AI Portfolio Optimization - Markdown Check",
+                                    False,
+                                    "❌ CRITICAL: Response contains markdown formatting",
+                                    f"Found markdown code blocks in response: {raw_response[:200]}..."
+                                )
+                                return False
                             
-                            return True
+                            # Check that recommendations are properly structured (not truncated text)
+                            rebalancing_items = suggestions.get("rebalancing", [])
+                            if isinstance(rebalancing_items, list) and len(rebalancing_items) > 0:
+                                first_item = str(rebalancing_items[0])
+                                if len(first_item) > 10 and not first_item.startswith("Unable to"):
+                                    self.log_result(
+                                        "AI Portfolio Optimization",
+                                        True,
+                                        "✅ Portfolio optimization working - Clean JSON response without markdown",
+                                        f"Response contains all required fields: {required_fields}"
+                                    )
+                                    
+                                    # Log sample recommendations
+                                    print(f"   ✅ Sample rebalancing advice: {first_item[:100]}...")
+                                    print(f"   ✅ No markdown formatting detected in response")
+                                    
+                                    return True
+                                else:
+                                    self.log_result(
+                                        "AI Portfolio Optimization",
+                                        False,
+                                        "Response contains fallback/truncated content",
+                                        f"First rebalancing item: {first_item}"
+                                    )
+                                    return False
+                            else:
+                                self.log_result(
+                                    "AI Portfolio Optimization",
+                                    False,
+                                    "Rebalancing recommendations are empty or invalid format"
+                                )
+                                return False
                         else:
                             self.log_result(
                                 "AI Portfolio Optimization",
