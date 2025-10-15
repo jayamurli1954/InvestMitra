@@ -103,7 +103,7 @@ const Layout = ({ children }) => {
             </div>
           </div>
 
-          <nav className="space-y-2 flex-1">
+          <nav className="space-y-2 flex-1 overflow-y-auto pr-2" style={{ maxHeight: 'calc(100vh - 300px)' }}>
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
@@ -118,8 +118,8 @@ const Layout = ({ children }) => {
                       : 'text-slate-400 hover:bg-white/5 hover:text-white'
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium text-base">{item.label}</span>
+                  <Icon className="w-6 h-6" />
+                  <span className="font-semibold text-lg">{item.label}</span>
                 </Link>
               );
             })}
