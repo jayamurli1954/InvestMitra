@@ -114,17 +114,44 @@ user_problem_statement: |
   - Improved JSON parsing for LLM responses
 
 backend:
-  - task: "No backend changes required - using existing endpoints"
+  - task: "AI Portfolio Optimization endpoint"
     implemented: true
-    working: true
-    file: "N/A"
-    stuck_count: 0
-    priority: "low"
-    needs_retesting: false
+    working: "NA"
+    file: "/app/backend/ai_insights.py, /app/backend/server.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
     status_history:
-      - working: true
+      - working: false
+        agent: "user"
+        comment: "User reported: 'insight failed to generate any data. predictive analysis is faulty no data'. JSON text being returned but not parsed correctly."
+      - working: "NA"
         agent: "main"
-        comment: "No backend modifications needed. Using existing watchlist, stocks, and analytics endpoints."
+        comment: |
+          Applied fixes to /app/backend/ai_insights.py:
+          1. Fixed async/await usage - added 'await' for get_stock_info() calls
+          2. Fixed calculate_portfolio_analytics() arguments
+          3. Improved JSON parsing for LLM responses
+          Backend restarted successfully. Backend logs show previous successful AI optimization call.
+          Ready for comprehensive testing.
+
+  - task: "AI Predictive Insights endpoint"
+    implemented: true
+    working: "NA"
+    file: "/app/backend/ai_insights.py, /app/backend/server.py"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: false
+        agent: "user"
+        comment: "User reported predictive analysis not returning data correctly"
+      - working: "NA"
+        agent: "main"
+        comment: |
+          Applied same fixes as portfolio optimization endpoint.
+          Uses LLM to generate predictive insights based on portfolio and market trends.
+          Ready for testing.
 
 frontend:
   - task: "Enhanced Watchlist page with real-time price updates and quick actions"
