@@ -294,13 +294,16 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Dynamic Strategy Criteria Feature testing"
-    - "Chart visibility and color verification"
-    - "Comprehensive feature validation"
-  stuck_tasks: []
+    - "AI Portfolio Optimization endpoint testing"
+    - "AI Predictive Insights endpoint testing"
+    - "AI Insights page UI testing"
+    - "JSON response parsing verification"
+  stuck_tasks:
+    - "AI Portfolio Optimization endpoint"
+    - "AI Predictive Insights endpoint"
   test_all: false
   test_priority: "high_first"
-  testing_complete: true
+  testing_complete: false
 
 agent_communication:
   - agent: "main"
