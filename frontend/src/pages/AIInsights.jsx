@@ -266,7 +266,7 @@ const AIInsights = () => {
               <div>
                 <h3 className="text-lg font-semibold text-blue-400 mb-3">3-Month Outlook</h3>
                 <div className="p-4 bg-slate-800 rounded-lg">
-                  <p className="text-slate-300">{predictions.predictive_insights.outlook_3m}</p>
+                  {renderContent(predictions.predictive_insights.outlook_3m)}
                 </div>
               </div>
             )}
