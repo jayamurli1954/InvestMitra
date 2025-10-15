@@ -168,6 +168,70 @@ class MarketIndex(BaseModel):
     change: float
     change_percent: float
 
+# ==================== TRANSACTION & TAX MODELS ====================
+
+class Transaction(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    symbol: str
+    name: str
+    transaction_type: str  # "buy" or "sell"
+    quantity: int
+    price: float
+    total_amount: float
+    transaction_date: str
+    notes: Optional[str] = None
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class TransactionCreate(BaseModel):
+    symbol: str
+    name: str
+    transaction_type: str
+    quantity: int
+    price: float
+    transaction_date: str
+    notes: Optional[str] = None
+
+class PriceAlert(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    symbol: str
+    name: str
+    alert_type: str  # "price_above", "price_below", "percent_change"
+    target_value: float
+    is_active: bool = True
+    triggered: bool = False
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class PriceAlertCreate(BaseModel):
+    symbol: str
+    name: str
+    alert_type: str
+    target_value: float
+
+class DividendRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    symbol: str
+    name: str
+    dividend_per_share: float
+    quantity: int
+    total_dividend: float
+    ex_date: str
+    payment_date: str
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class DividendRecordCreate(BaseModel):
+    symbol: str
+    name: str
+    dividend_per_share: float
+    quantity: int
+    ex_date: str
+    payment_date: str
+
 # ==================== REAL-TIME DATA ====================
 # All stock data now fetched from Yahoo Finance via market_data.py
 
