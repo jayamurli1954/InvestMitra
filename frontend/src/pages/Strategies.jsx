@@ -10,21 +10,39 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
-// Available criteria types
+// Available criteria types - Fundamentals + Technical Indicators
 const CRITERIA_TYPES = [
-  { value: 'min_pe', label: 'Min P/E Ratio', type: 'number', placeholder: '10' },
-  { value: 'max_pe', label: 'Max P/E Ratio', type: 'number', placeholder: '25' },
-  { value: 'min_roe', label: 'Min ROE %', type: 'number', placeholder: '15' },
-  { value: 'max_roe', label: 'Max ROE %', type: 'number', placeholder: '30' },
-  { value: 'min_div_yield', label: 'Min Dividend Yield %', type: 'number', placeholder: '2' },
-  { value: 'max_div_yield', label: 'Max Dividend Yield %', type: 'number', placeholder: '5' },
-  { value: 'min_pb', label: 'Min P/B Ratio', type: 'number', placeholder: '1' },
-  { value: 'max_pb', label: 'Max P/B Ratio', type: 'number', placeholder: '3' },
-  { value: 'min_debt_equity', label: 'Min Debt to Equity', type: 'number', placeholder: '0' },
-  { value: 'max_debt_equity', label: 'Max Debt to Equity', type: 'number', placeholder: '1' },
-  { value: 'min_market_cap', label: 'Min Market Cap (Cr)', type: 'number', placeholder: '1000' },
-  { value: 'max_market_cap', label: 'Max Market Cap (Cr)', type: 'number', placeholder: '100000' },
-  { value: 'sector', label: 'Sector', type: 'text', placeholder: 'Banking, IT, Energy' }
+  // === FUNDAMENTAL CRITERIA ===
+  { value: 'min_pe', label: '📊 Min P/E Ratio', type: 'number', placeholder: '10', category: 'fundamental' },
+  { value: 'max_pe', label: '📊 Max P/E Ratio', type: 'number', placeholder: '25', category: 'fundamental' },
+  { value: 'min_roe', label: '📊 Min ROE %', type: 'number', placeholder: '15', category: 'fundamental' },
+  { value: 'max_roe', label: '📊 Max ROE %', type: 'number', placeholder: '30', category: 'fundamental' },
+  { value: 'min_div_yield', label: '📊 Min Dividend Yield %', type: 'number', placeholder: '2', category: 'fundamental' },
+  { value: 'max_div_yield', label: '📊 Max Dividend Yield %', type: 'number', placeholder: '5', category: 'fundamental' },
+  { value: 'min_pb', label: '📊 Min P/B Ratio', type: 'number', placeholder: '1', category: 'fundamental' },
+  { value: 'max_pb', label: '📊 Max P/B Ratio', type: 'number', placeholder: '3', category: 'fundamental' },
+  { value: 'min_debt_equity', label: '📊 Min Debt to Equity', type: 'number', placeholder: '0', category: 'fundamental' },
+  { value: 'max_debt_equity', label: '📊 Max Debt to Equity', type: 'number', placeholder: '1', category: 'fundamental' },
+  { value: 'min_market_cap', label: '📊 Min Market Cap (Cr)', type: 'number', placeholder: '1000', category: 'fundamental' },
+  { value: 'max_market_cap', label: '📊 Max Market Cap (Cr)', type: 'number', placeholder: '100000', category: 'fundamental' },
+  { value: 'sector', label: '📊 Sector', type: 'text', placeholder: 'Banking, IT, Energy', category: 'fundamental' },
+  
+  // === TECHNICAL INDICATORS ===
+  { value: 'min_rsi', label: '📈 Min RSI (14)', type: 'number', placeholder: '30', category: 'technical', help: 'Below 30 = Oversold' },
+  { value: 'max_rsi', label: '📈 Max RSI (14)', type: 'number', placeholder: '70', category: 'technical', help: 'Above 70 = Overbought' },
+  { value: 'min_ma_50', label: '📈 Min 50-Day MA', type: 'number', placeholder: '100', category: 'technical', help: '50-day moving average' },
+  { value: 'max_ma_50', label: '📈 Max 50-Day MA', type: 'number', placeholder: '500', category: 'technical', help: '50-day moving average' },
+  { value: 'min_ma_200', label: '📈 Min 200-Day MA', type: 'number', placeholder: '100', category: 'technical', help: '200-day moving average' },
+  { value: 'max_ma_200', label: '📈 Max 200-Day MA', type: 'number', placeholder: '500', category: 'technical', help: '200-day moving average' },
+  { value: 'price_above_ma_50', label: '📈 Price Above 50-Day MA', type: 'boolean', category: 'technical', help: 'Bullish signal' },
+  { value: 'price_above_ma_200', label: '📈 Price Above 200-Day MA', type: 'boolean', category: 'technical', help: 'Long-term bullish' },
+  { value: 'golden_cross', label: '📈 Golden Cross (MA50 > MA200)', type: 'boolean', category: 'technical', help: 'Bullish crossover' },
+  { value: 'death_cross', label: '📈 Death Cross (MA50 < MA200)', type: 'boolean', category: 'technical', help: 'Bearish crossover' },
+  { value: 'min_volume', label: '📈 Min Volume (in Lakhs)', type: 'number', placeholder: '10', category: 'technical', help: 'Daily trading volume' },
+  { value: 'min_52w_high_pct', label: '📈 Min % from 52W High', type: 'number', placeholder: '-20', category: 'technical', help: 'Negative = below high' },
+  { value: 'max_52w_high_pct', label: '📈 Max % from 52W High', type: 'number', placeholder: '0', category: 'technical', help: '0 = at 52W high' },
+  { value: 'min_52w_low_pct', label: '📈 Min % from 52W Low', type: 'number', placeholder: '0', category: 'technical', help: '0 = at 52W low' },
+  { value: 'max_52w_low_pct', label: '📈 Max % from 52W Low', type: 'number', placeholder: '50', category: 'technical', help: 'Positive = above low' }
 ];
 
 const Strategies = () => {
