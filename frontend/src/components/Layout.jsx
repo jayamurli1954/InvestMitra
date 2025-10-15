@@ -6,6 +6,8 @@ import {
   Eye,
   Receipt,
   FileText,
+  Bell,
+  DollarSign,
   Filter, 
   TrendingUp, 
   Target,
