@@ -103,10 +103,15 @@
 #====================================================================================================
 
 user_problem_statement: |
-  Implement Phase 1 enhancements for Investment Framework App:
-  1. Enhanced Watchlist page with real-time price updates and quick actions
-  2. Chart visualizations for Analytics page (sector allocation, performance charts)
-  3. Chart visualizations for StockDetail page (price history, volume)
+  Fix AI-Powered Insights feature for Investment Framework App:
+  1. Portfolio Optimization endpoint (/api/ai/portfolio-optimization) - failing to generate data
+  2. Predictive Insights endpoint (/api/ai/predictive-insights) - not returning parsed JSON data
+  3. Frontend AIInsights page - not displaying data correctly
+  
+  Recent fixes applied:
+  - Fixed async/await usage in get_stock_info calls
+  - Corrected arguments for calculate_portfolio_analytics()
+  - Improved JSON parsing for LLM responses
 
 backend:
   - task: "No backend changes required - using existing endpoints"
