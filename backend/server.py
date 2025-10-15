@@ -25,6 +25,7 @@ from analytics import (
     generate_stock_recommendations
 )
 from performance import generate_performance_summary
+from backtesting import backtest_strategy, calculate_strategy_score, generate_backtest_recommendations
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
