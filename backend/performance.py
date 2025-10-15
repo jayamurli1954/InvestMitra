@@ -271,12 +271,30 @@ def generate_performance_summary(
         if holdings:
             earliest_dates = [h.get("purchase_date") for h in holdings if h.get("purchase_date")]
             if earliest_dates:
-                earliest_date = min(datetime.fromisoformat(d) for d in earliest_dates)
-                years = max(0.01, (datetime.now() - earliest_date).days / 365.25)
+                try:
+                    # Parse dates in YYYY-MM-DD format
+                    parsed_dates = []
+                    for d in earliest_dates:
+                        try:
+                            parsed_dates.append(datetime.strptime(d, "%Y-%m-%d"))
+                        except:
+                            # Try ISO format as fallback
+                            try:
+                                parsed_dates.append(datetime.fromisoformat(d))
+                            except:
+                                pass
+                    
+                    if parsed_dates:
+                        earliest_date = min(parsed_dates)
+                        years = max(0.01, (datetime.now() - earliest_date).days / 365.25)
+                    else:
+                        years = 1.0  # Default to 1 year if parsing fails
+                except Exception as e:
+                    years = 1.0
             else:
-                years = 0.01
+                years = 1.0
         else:
-            years = 0.01
+            years = 1.0
         
         cagr = calculate_cagr(total_invested, current_portfolio_value, years) if total_invested > 0 else 0
         
