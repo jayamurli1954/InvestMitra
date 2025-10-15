@@ -256,22 +256,86 @@ def generate_performance_summary(
 ) -> Dict[str, Any]:
     """Generate comprehensive performance summary"""
     
-    # Annualized returns
-    annualized = calculate_annualized_return(transactions, current_portfolio_value)
-    
-    # Monthly returns for Sharpe ratio
-    monthly_data = calculate_monthly_returns(transactions, current_portfolio_value)
-    returns_list = [m["return"] for m in monthly_data] if monthly_data else []
-    
-    # Risk metrics
-    sharpe = calculate_sharpe_ratio(returns_list)
-    volatility = calculate_volatility(returns_list)
-    
-    # Sector performance
-    sector_perf = calculate_sector_performance(holdings, transactions)
+    # If no transactions, calculate from portfolio holdings
+    if not transactions:
+        # Calculate invested amount from holdings
+        total_invested = sum(
+            h["quantity"] * h.get("purchase_price", 0) 
+            for h in holdings
+        )
+        
+        # Calculate returns based on holdings
+        total_return = ((current_portfolio_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
+        
+        # Calculate time period from earliest purchase date
+        if holdings:
+            earliest_dates = [h.get("purchase_date") for h in holdings if h.get("purchase_date")]
+            if earliest_dates:
+                earliest_date = min(datetime.fromisoformat(d) for d in earliest_dates)
+                years = max(0.01, (datetime.now() - earliest_date).days / 365.25)
+            else:
+                years = 0.01
+        else:
+            years = 0.01
+        
+        cagr = calculate_cagr(total_invested, current_portfolio_value, years) if total_invested > 0 else 0
+        
+        annualized = {
+            "cagr": round(cagr, 2),
+            "years": round(years, 2),
+            "total_return": round(total_return, 2),
+            "total_invested": total_invested,
+            "current_value": current_portfolio_value
+        }
+        
+        # Sector performance from holdings only
+        sector_perf = []
+        sector_data = {}
+        for holding in holdings:
+            sector = holding.get("sector", "Other")
+            invested = holding["quantity"] * holding.get("purchase_price", 0)
+            current_value = holding["quantity"] * holding.get("current_price", 0)
+            
+            if sector not in sector_data:
+                sector_data[sector] = {
+                    "sector": sector,
+                    "invested": 0,
+                    "current_value": 0,
+                    "stocks": 0
+                }
+            
+            sector_data[sector]["invested"] += invested
+            sector_data[sector]["current_value"] += current_value
+            sector_data[sector]["stocks"] += 1
+        
+        for sector, data in sector_data.items():
+            gain = data["current_value"] - data["invested"]
+            gain_percent = (gain / data["invested"] * 100) if data["invested"] > 0 else 0
+            sector_perf.append({
+                "sector": sector,
+                "invested": round(data["invested"], 2),
+                "current_value": round(data["current_value"], 2),
+                "gain": round(gain, 2),
+                "gain_percent": round(gain_percent, 2),
+                "stocks": data["stocks"]
+            })
+        
+        sector_perf = sorted(sector_perf, key=lambda x: x["gain_percent"], reverse=True)
+        
+        # No transaction data, so no monthly returns or Sharpe ratio
+        sharpe = 0
+        volatility = 0
+        monthly_data = []
+    else:
+        # Original logic with transactions
+        annualized = calculate_annualized_return(transactions, current_portfolio_value)
+        monthly_data = calculate_monthly_returns(transactions, current_portfolio_value)
+        returns_list = [m["return"] for m in monthly_data] if monthly_data else []
+        sharpe = calculate_sharpe_ratio(returns_list)
+        volatility = calculate_volatility(returns_list)
+        sector_perf = calculate_sector_performance(holdings, transactions)
     
     # Benchmark comparison (Nifty 50 - using approximate 1-year return)
-    # In production, fetch real benchmark data
     nifty_return = 15.0  # Approximate 1-year return
     benchmark_comparison = compare_with_benchmark(annualized["total_return"], nifty_return)
     
