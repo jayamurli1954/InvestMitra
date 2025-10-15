@@ -8,6 +8,7 @@ import {
   FileText,
   Bell,
   DollarSign,
+  Activity,
   Filter, 
   TrendingUp, 
   Target,
