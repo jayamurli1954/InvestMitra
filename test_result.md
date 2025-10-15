@@ -332,9 +332,9 @@ frontend:
 
   - task: "AI Insights page - Predictive Analysis UI"
     implemented: true
-    working: false
+    working: "NA"
     file: "/app/frontend/src/pages/AIInsights.jsx"
-    stuck_count: 2
+    stuck_count: 3
     priority: "high"
     needs_retesting: true
     status_history:
