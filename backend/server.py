@@ -1239,21 +1239,25 @@ async def get_ai_portfolio_optimization(
         if not holdings:
             raise HTTPException(status_code=404, detail="No portfolio found")
         
-        # Get current prices
+        # Get current prices and full stock data
         holdings_with_prices = []
+        all_stock_data = {}
+        
         for holding in holdings:
             try:
-                stock_data = await get_stock_info(holding["symbol"])
+                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
                 holdings_with_prices.append({
                     **holding,
-                    "current_price": stock_data.get("current_price", 0),
-                    "current_value": holding["quantity"] * stock_data.get("current_price", 0)
+                    "current_price": stock_info.get("current_price", 0),
+                    "current_value": holding["quantity"] * stock_info.get("current_price", 0),
+                    "sector": stock_info.get("sector", "Other")
                 })
+                all_stock_data[holding["symbol"]] = stock_info
             except Exception as e:
                 logger.error(f"Error fetching price for {holding['symbol']}: {e}")
         
         # Calculate analytics
-        analytics_data = calculate_portfolio_analytics(holdings_with_prices)
+        analytics_data = calculate_portfolio_analytics(holdings_with_prices, all_stock_data)
         
         # Generate AI insights
         portfolio_data = {
