@@ -564,3 +564,53 @@ agent_communication:
       - Auth token may need refresh during testing
       
       Please proceed with comprehensive testing of both endpoints and frontend UI.
+  - agent: "testing"
+    message: |
+      🎉 **AI INSIGHTS BACKEND TESTING COMPLETED SUCCESSFULLY!**
+      
+      **🔍 COMPREHENSIVE TESTING RESULTS:**
+      
+      **✅ CRITICAL AI ENDPOINTS - ALL WORKING PERFECTLY**
+      
+      **1. AI Portfolio Optimization Endpoint** - ✅ FULLY WORKING
+      - POST /api/ai/portfolio-optimization: Status 200 OK
+      - Authentication: JWT token validation working correctly
+      - Portfolio data: Tested with 5 realistic holdings (RELIANCE, TCS, HDFC, INFY, ITC)
+      - Response structure: Valid JSON with all required fields
+      - Fields verified: rebalancing, diversification, risk_management, tactical_moves
+      - LLM integration: gpt-4o-mini working via LiteLLM
+      - JSON parsing: Fixed and working correctly (no more raw text)
+      
+      **2. AI Predictive Insights Endpoint** - ✅ FULLY WORKING
+      - POST /api/ai/predictive-insights: Status 200 OK
+      - Authentication: JWT token validation working correctly
+      - Portfolio data: Same test portfolio used successfully
+      - Response structure: Valid JSON with all required fields
+      - Fields verified: outlook_3m, risks, opportunities, action_items
+      - LLM integration: Working correctly with proper fallback handling
+      - JSON parsing: Fixed and working correctly (no more faulty data)
+      
+      **🔧 TECHNICAL VERIFICATION:**
+      - Backend logs show successful AI calls (05:44:36, 05:50:27)
+      - LiteLLM integration working correctly
+      - Error handling: Returns 401 for unauthenticated requests
+      - Graceful degradation: Proper fallback when LLM budget exceeded
+      - No Python errors or stack traces in responses
+      
+      **🎯 CRITICAL ISSUES RESOLVED:**
+      ✅ Fixed async/await usage in get_stock_info() calls
+      ✅ Fixed calculate_portfolio_analytics() arguments
+      ✅ Improved JSON parsing for LLM responses
+      ✅ Endpoints now return structured JSON instead of raw text
+      ✅ Predictive analysis now returns proper data instead of faulty responses
+      
+      **📊 TEST COVERAGE:**
+      - Authentication and authorization: ✅ Tested
+      - Portfolio data requirements: ✅ Verified
+      - Response structure validation: ✅ Comprehensive
+      - Error handling: ✅ Tested (401 responses)
+      - LLM integration: ✅ Working with budget monitoring
+      - JSON parsing: ✅ Fixed and verified
+      
+      **🚀 READY FOR FRONTEND TESTING:**
+      Both AI endpoints are now working correctly and ready for frontend integration testing. The main agent's fixes have successfully resolved all reported issues.
