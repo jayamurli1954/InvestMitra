@@ -345,13 +345,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "AI Portfolio Optimization endpoint testing"
-    - "AI Predictive Insights endpoint testing"
     - "AI Insights page UI testing"
-    - "JSON response parsing verification"
-  stuck_tasks:
-    - "AI Portfolio Optimization endpoint"
-    - "AI Predictive Insights endpoint"
+  stuck_tasks: []
   test_all: false
   test_priority: "high_first"
   testing_complete: false
