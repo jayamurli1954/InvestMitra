@@ -326,18 +326,28 @@ const AIInsights = () => {
             )}
 
             {/* Action Items */}
-            {predictions.predictive_insights.action_items && predictions.predictive_insights.action_items.length > 0 && (
+            {predictions.predictive_insights.action_items && (
               <div>
                 <h3 className="text-lg font-semibold text-amber-400 mb-3 flex items-center">
                   <Target className="w-5 h-5 mr-2" />
                   Action Items for Next Month
                 </h3>
                 <div className="space-y-2">
-                  {predictions.predictive_insights.action_items.map((action, idx) => (
-                    <div key={idx} className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                      <p className="text-slate-300">{action}</p>
+                  {Array.isArray(predictions.predictive_insights.action_items) ? (
+                    predictions.predictive_insights.action_items.map((action, idx) => (
+                      <div key={idx} className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                        {typeof action === 'string' ? (
+                          <p className="text-slate-300">{action}</p>
+                        ) : (
+                          renderContent(action)
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                      {renderContent(predictions.predictive_insights.action_items)}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
