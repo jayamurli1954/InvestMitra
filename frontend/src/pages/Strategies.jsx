@@ -246,68 +246,80 @@ const Strategies = () => {
               </div>
 
               <div className="border-t border-slate-700 pt-4">
-                <h3 className="text-white font-medium mb-3">Screening Criteria</h3>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-slate-300 text-sm">Min P/E Ratio</Label>
-                    <Input
-                      type="number"
-                      placeholder="e.g., 10"
-                      value={formData.min_pe}
-                      onChange={(e) => setFormData({ ...formData, min_pe: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                      data-testid="criteria-min-pe"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-slate-300 text-sm">Max P/E Ratio</Label>
-                    <Input
-                      type="number"
-                      placeholder="e.g., 25"
-                      value={formData.max_pe}
-                      onChange={(e) => setFormData({ ...formData, max_pe: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                      data-testid="criteria-max-pe"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-slate-300 text-sm">Min ROE %</Label>
-                    <Input
-                      type="number"
-                      placeholder="e.g., 15"
-                      value={formData.min_roe}
-                      onChange={(e) => setFormData({ ...formData, min_roe: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                      data-testid="criteria-min-roe"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-slate-300 text-sm">Min Dividend Yield %</Label>
-                    <Input
-                      type="number"
-                      placeholder="e.g., 2"
-                      value={formData.min_div_yield}
-                      onChange={(e) => setFormData({ ...formData, min_div_yield: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                      data-testid="criteria-min-div"
-                    />
-                  </div>
-
-                  <div className="col-span-2">
-                    <Label className="text-slate-300 text-sm">Sector (Optional)</Label>
-                    <Input
-                      placeholder="e.g., Banking, IT"
-                      value={formData.sector}
-                      onChange={(e) => setFormData({ ...formData, sector: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                      data-testid="criteria-sector"
-                    />
-                  </div>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-white font-medium">Screening Criteria</h3>
+                  <Button
+                    type="button"
+                    onClick={addCriteria}
+                    variant="outline"
+                    size="sm"
+                    className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10"
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add Criteria
+                  </Button>
                 </div>
+
+                {criteriaList.length === 0 ? (
+                  <div className="text-center py-8 bg-slate-800/50 rounded-lg border border-slate-700 border-dashed">
+                    <Target className="w-12 h-12 text-slate-600 mx-auto mb-2" />
+                    <p className="text-slate-400 text-sm">Click "Add Criteria" to define your screening rules</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {criteriaList.map((criteria, idx) => {
+                      const selectedType = CRITERIA_TYPES.find(ct => ct.value === criteria.type);
+                      return (
+                        <div key={criteria.id} className="flex items-end gap-2 p-3 bg-slate-800 rounded-lg">
+                          <div className="flex-1">
+                            <Label className="text-slate-400 text-xs mb-1">Criteria Type</Label>
+                            <Select
+                              value={criteria.type}
+                              onValueChange={(value) => updateCriteria(criteria.id, 'type', value)}
+                            >
+                              <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                                <SelectValue placeholder="Select criteria..." />
+                              </SelectTrigger>
+                              <SelectContent className="bg-slate-800 border-slate-700">
+                                {CRITERIA_TYPES.map(ct => (
+                                  <SelectItem 
+                                    key={ct.value} 
+                                    value={ct.value}
+                                    className="text-white hover:bg-slate-700"
+                                  >
+                                    {ct.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          <div className="flex-1">
+                            <Label className="text-slate-400 text-xs mb-1">Value</Label>
+                            <Input
+                              type={selectedType?.type || 'text'}
+                              placeholder={selectedType?.placeholder || 'Enter value'}
+                              value={criteria.value}
+                              onChange={(e) => updateCriteria(criteria.id, 'value', e.target.value)}
+                              className="bg-slate-700 border-slate-600 text-white"
+                              disabled={!criteria.type}
+                            />
+                          </div>
+
+                          <Button
+                            type="button"
+                            onClick={() => removeCriteria(criteria.id)}
+                            variant="outline"
+                            size="sm"
+                            className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <Button
