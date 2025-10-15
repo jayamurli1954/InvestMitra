@@ -259,11 +259,11 @@ backend:
 frontend:
   - task: "AI Insights page - Portfolio Optimization UI"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/pages/AIInsights.jsx"
     stuck_count: 2
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
@@ -298,6 +298,37 @@ frontend:
           
           **ROOT CAUSE:**
           The backend is returning JSON wrapped in markdown code blocks (```json), but the frontend is displaying this raw text instead of parsing and formatting it properly. The LLM response includes markdown formatting that needs to be stripped and parsed.
+      - working: true
+        agent: "testing"
+        comment: |
+          ✅ CRITICAL SUCCESS - MARKDOWN JSON PARSING FIX VERIFIED AND WORKING
+          
+          **RE-TESTING RESULTS AFTER BACKEND FIX:**
+          ✅ AI Insights page loads correctly with "AI-Powered Insights" heading
+          ✅ Portfolio Optimization button functional and clickable
+          ✅ Loading states work properly ("Generating..." text with spinner)
+          ✅ Backend API returns clean, structured JSON without markdown formatting
+          ✅ Authentication working with test session (registered test user successfully)
+          ✅ Portfolio Optimization results section displays correctly
+          
+          **CRITICAL VERIFICATION - ORIGINAL ISSUE RESOLVED:**
+          ✅ NO markdown JSON formatting (```json) detected in page content
+          ✅ NO raw JSON structure visible in UI (no {"rebalancing": or "diversification": text)
+          ✅ All 4 expected sections found and displaying properly:
+             - Rebalancing Recommendations ✅ (441 chars of meaningful content)
+             - Sector Diversification Advice ✅ (356 chars of meaningful content)
+             - Risk Management Suggestions ✅ (447 chars of meaningful content)
+             - Tactical Allocation Changes ✅ (341 chars of meaningful content)
+          ✅ Content is formatted, readable text instead of raw JSON
+          ✅ Sample content verified: "Sell a portion of RELIANCE.NS to reduce exposure to 30%..."
+          
+          **BACKEND API TESTING CONFIRMED:**
+          - Direct API testing shows clean JSON responses without markdown
+          - extract_json_from_markdown() function working correctly
+          - LLM integration (gpt-4o-mini) working properly
+          
+          **ORIGINAL USER COMPLAINT FULLY RESOLVED:**
+          The markdown JSON parsing fix has successfully resolved the issue where users saw raw JSON text with markdown formatting. Users now see properly formatted, readable recommendations as intended.
 
   - task: "AI Insights page - Predictive Analysis UI"
     implemented: true
