@@ -480,3 +480,41 @@ agent_communication:
       ✅ All navigation and core functionality working
       
       **CONCLUSION:** All requested features are working as expected. The Dynamic Strategy Criteria feature is the major new addition and is fully functional. Chart visibility issues have been resolved with proper color configurations.
+  - agent: "main"
+    message: |
+      🔧 **AI INSIGHTS FEATURE - FIXES APPLIED & READY FOR TESTING**
+      
+      **ISSUE REPORTED BY USER:**
+      - Portfolio Optimization failing to generate data
+      - Predictive Analysis showing raw JSON instead of parsed data
+      
+      **FIXES APPLIED to /app/backend/ai_insights.py:**
+      1. ✅ Fixed async/await usage - added 'await' keyword for all get_stock_info() async calls
+      2. ✅ Corrected calculate_portfolio_analytics() function arguments
+      3. ✅ Improved JSON parsing to handle LLM responses correctly
+      
+      **BACKEND STATUS:**
+      - Backend restarted successfully
+      - Backend logs show previous successful AI optimization call (05:44:36)
+      - Server running on port 8001
+      
+      **TESTING REQUIREMENTS:**
+      
+      **Backend Testing (deep_testing_backend_v2):**
+      - Test POST /api/ai/portfolio-optimization endpoint
+      - Test POST /api/ai/predictive-insights endpoint
+      - Verify JSON responses are properly formatted
+      - Check error handling and loading states
+      
+      **Frontend Testing (auto_frontend_testing_agent):**
+      - Navigate to AI Insights page
+      - Test "Get Portfolio Optimization" button
+      - Test "Get Predictive Insights" button
+      - Verify data displays correctly (not raw JSON)
+      - Check loading states and error messages
+      
+      **AUTHENTICATION:**
+      - User: jayamurli1954@gmail.com (Google OAuth)
+      - Auth token may need refresh during testing
+      
+      Please proceed with comprehensive testing of both endpoints and frontend UI.
