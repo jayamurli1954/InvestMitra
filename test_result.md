@@ -385,13 +385,14 @@ metadata:
 
 test_plan:
   current_focus:
-    - "AI Insights JSON parsing fix needed"
+    - "Re-test AI endpoints after markdown JSON parsing fix"
+    - "Verify frontend displays formatted data correctly"
   stuck_tasks: 
     - "AI Insights page - Portfolio Optimization UI"
     - "AI Insights page - Predictive Analysis UI"
   test_all: false
   test_priority: "high_first"
-  testing_complete: true
+  testing_complete: false
 
 agent_communication:
   - agent: "testing"
