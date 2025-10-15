@@ -299,18 +299,28 @@ const AIInsights = () => {
             )}
 
             {/* Opportunities */}
-            {predictions.predictive_insights.opportunities && predictions.predictive_insights.opportunities.length > 0 && (
+            {predictions.predictive_insights.opportunities && (
               <div>
                 <h3 className="text-lg font-semibold text-emerald-400 mb-3 flex items-center">
                   <Lightbulb className="w-5 h-5 mr-2" />
                   Opportunities
                 </h3>
                 <div className="space-y-2">
-                  {predictions.predictive_insights.opportunities.map((opp, idx) => (
-                    <div key={idx} className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                      <p className="text-slate-300">{opp}</p>
+                  {Array.isArray(predictions.predictive_insights.opportunities) ? (
+                    predictions.predictive_insights.opportunities.map((opp, idx) => (
+                      <div key={idx} className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                        {typeof opp === 'string' ? (
+                          <p className="text-slate-300">{opp}</p>
+                        ) : (
+                          renderContent(opp)
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                      {renderContent(predictions.predictive_insights.opportunities)}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             )}
