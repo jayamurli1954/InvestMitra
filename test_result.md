@@ -650,6 +650,32 @@ agent_communication:
       - Auth token may need refresh during testing
       
       Please proceed with comprehensive testing of both endpoints and frontend UI.
+  - agent: "main"
+    message: |
+      🔧 **CRITICAL FIX APPLIED - MARKDOWN JSON PARSING**
+      
+      **ISSUE IDENTIFIED FROM TESTING:**
+      Frontend testing revealed that LLM responses include markdown code block formatting:
+      ```json { "rebalancing": [...] }```
+      
+      This was causing the backend JSON parsing to fail and fall back to truncated text.
+      
+      **NEW FIX APPLIED to /app/backend/ai_insights.py:**
+      1. ✅ Added extract_json_from_markdown() function
+      2. ✅ Strips markdown code blocks (```json and ```) before parsing
+      3. ✅ Handles multiple markdown formats
+      4. ✅ Applied to both portfolio optimization and predictive insights endpoints
+      5. ✅ Added better error logging for debugging
+      
+      **BACKEND STATUS:**
+      - Backend restarted successfully
+      - JSON extraction function added
+      - Ready for re-testing
+      
+      **EXPECTED RESULT:**
+      - LLM responses should now be properly parsed
+      - Frontend should display formatted recommendations (not raw JSON text)
+      - Users should see readable, structured insights
   - agent: "testing"
     message: |
       🎉 **AI INSIGHTS BACKEND TESTING COMPLETED SUCCESSFULLY!**
