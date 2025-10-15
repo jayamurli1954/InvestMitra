@@ -57,18 +57,46 @@ const Strategies = () => {
     }
   };
 
+  const addCriteria = () => {
+    setCriteriaList([...criteriaList, { type: '', value: '', id: Date.now() }]);
+  };
+
+  const removeCriteria = (id) => {
+    setCriteriaList(criteriaList.filter(c => c.id !== id));
+  };
+
+  const updateCriteria = (id, field, value) => {
+    setCriteriaList(criteriaList.map(c => 
+      c.id === id ? { ...c, [field]: value } : c
+    ));
+  };
+
   const handleCreateStrategy = async () => {
     if (!formData.name || !formData.description) {
       toast.error('Please fill name and description');
       return;
     }
 
+    if (criteriaList.length === 0) {
+      toast.error('Please add at least one criteria');
+      return;
+    }
+
+    // Build criteria object from dynamic list
     const criteria = {};
-    if (formData.min_pe) criteria.min_pe = parseFloat(formData.min_pe);
-    if (formData.max_pe) criteria.max_pe = parseFloat(formData.max_pe);
-    if (formData.min_roe) criteria.min_roe = parseFloat(formData.min_roe);
-    if (formData.min_div_yield) criteria.min_div_yield = parseFloat(formData.min_div_yield);
-    if (formData.sector) criteria.sector = formData.sector;
+    criteriaList.forEach(item => {
+      if (item.type && item.value) {
+        const criteriaType = CRITERIA_TYPES.find(ct => ct.value === item.type);
+        if (criteriaType) {
+          criteria[item.type] = criteriaType.type === 'number' ? parseFloat(item.value) : item.value;
+        }
+      }
+    });
+
+    if (Object.keys(criteria).length === 0) {
+      toast.error('Please complete at least one criteria');
+      return;
+    }
 
     try {
       if (editingStrategy) {
