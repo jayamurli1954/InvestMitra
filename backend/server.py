@@ -666,12 +666,11 @@ async def get_stock_recommendations(
     
     return {"recommendations": recommendations, "criteria": criteria}
 
-app.include_router(api_router)
-
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
