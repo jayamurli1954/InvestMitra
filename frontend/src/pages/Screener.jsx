@@ -109,64 +109,105 @@ const Screener = () => {
 
       {/* Filters */}
       <div className="glass-card p-6" data-testid="filter-panel">
-        <div className="flex items-center space-x-3 mb-6">
-          <Filter className="w-6 h-6 text-emerald-400" />
-          <h2 className="text-xl font-bold text-white">Filters</h2>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <Filter className="w-6 h-6 text-emerald-400" />
+            <h2 className="text-xl font-bold text-white">Dynamic Filters</h2>
+          </div>
+          <Button
+            onClick={addFilter}
+            variant="outline"
+            size="sm"
+            className="border-emerald-500 text-emerald-400 hover:bg-emerald-500/10"
+            data-testid="add-filter-btn"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Add Filter
+          </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
-          <div>
-            <Label className="text-slate-300 mb-2 block">Sector</Label>
-            <Select value={filters.sector} onValueChange={(value) => setFilters({ ...filters, sector: value })}>
-              <SelectTrigger className="bg-slate-800 border-slate-700 text-white" data-testid="sector-select">
-                <SelectValue placeholder="All Sectors" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                {sectors.map((sector, idx) => (
-                  <SelectItem key={idx} value={sector} className="text-white" data-testid={`sector-option-${idx}`}>
-                    {sector}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {filtersList.length === 0 ? (
+          <div className="text-center py-8 bg-slate-800/50 rounded-lg border border-slate-700 border-dashed mb-4">
+            <Filter className="w-12 h-12 text-slate-600 mx-auto mb-2" />
+            <p className="text-slate-400 text-sm">Click "Add Filter" to start screening stocks</p>
           </div>
+        ) : (
+          <div className="space-y-3 mb-4">
+            {filtersList.map((filter) => {
+              const selectedType = FILTER_TYPES.find(ft => ft.value === filter.type);
+              return (
+                <div key={filter.id} className="flex items-end gap-2 p-3 bg-slate-800 rounded-lg">
+                  <div className="flex-1">
+                    <Label className="text-slate-400 text-xs mb-1">Filter Type</Label>
+                    <Select
+                      value={filter.type}
+                      onValueChange={(value) => updateFilter(filter.id, 'type', value)}
+                    >
+                      <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                        <SelectValue placeholder="Select filter..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-800 border-slate-700">
+                        {FILTER_TYPES.map(ft => (
+                          <SelectItem 
+                            key={ft.value} 
+                            value={ft.value}
+                            className="text-white hover:bg-slate-700"
+                          >
+                            {ft.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="flex-1">
+                    <Label className="text-slate-400 text-xs mb-1">Value</Label>
+                    {selectedType?.type === 'select' ? (
+                      <Select
+                        value={filter.value}
+                        onValueChange={(value) => updateFilter(filter.id, 'value', value)}
+                        disabled={!filter.type}
+                      >
+                        <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                          <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-800 border-slate-700">
+                          {selectedType.options.map((option, idx) => (
+                            <SelectItem 
+                              key={idx} 
+                              value={option}
+                              className="text-white hover:bg-slate-700"
+                            >
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        type={selectedType?.type || 'text'}
+                        placeholder={selectedType?.placeholder || 'Enter value'}
+                        value={filter.value}
+                        onChange={(e) => updateFilter(filter.id, 'value', e.target.value)}
+                        className="bg-slate-700 border-slate-600 text-white"
+                        disabled={!filter.type}
+                      />
+                    )}
+                  </div>
 
-          <div>
-            <Label className="text-slate-300 mb-2 block">Min P/E Ratio</Label>
-            <Input
-              type="number"
-              placeholder="e.g., 10"
-              value={filters.min_pe}
-              onChange={(e) => setFilters({ ...filters, min_pe: e.target.value })}
-              className="bg-slate-800 border-slate-700 text-white"
-              data-testid="min-pe-input"
-            />
+                  <Button
+                    onClick={() => removeFilter(filter.id)}
+                    variant="outline"
+                    size="sm"
+                    className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              );
+            })}
           </div>
-
-          <div>
-            <Label className="text-slate-300 mb-2 block">Max P/E Ratio</Label>
-            <Input
-              type="number"
-              placeholder="e.g., 30"
-              value={filters.max_pe}
-              onChange={(e) => setFilters({ ...filters, max_pe: e.target.value })}
-              className="bg-slate-800 border-slate-700 text-white"
-              data-testid="max-pe-input"
-            />
-          </div>
-
-          <div>
-            <Label className="text-slate-300 mb-2 block">Min ROE %</Label>
-            <Input
-              type="number"
-              placeholder="e.g., 15"
-              value={filters.min_roe}
-              onChange={(e) => setFilters({ ...filters, min_roe: e.target.value })}
-              className="bg-slate-800 border-slate-700 text-white"
-              data-testid="min-roe-input"
-            />
-          </div>
-        </div>
+        )}
 
         <div className="flex space-x-3">
           <Button
@@ -183,7 +224,8 @@ const Screener = () => {
             className="border-slate-700 text-slate-300 hover:bg-slate-800"
             data-testid="reset-filters-btn"
           >
-            Reset
+            <Trash2 className="w-4 h-4 mr-2" />
+            Clear All
           </Button>
         </div>
       </div>
