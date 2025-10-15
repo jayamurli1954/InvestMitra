@@ -142,7 +142,7 @@ const Layout = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64">
+      <main className="flex-1 ml-64 h-screen overflow-y-auto">
         {/* Top Bar with User Profile */}
         <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-white/10">
           <div className="px-8 py-4 flex items-center justify-end">
@@ -177,7 +177,7 @@ const Layout = ({ children }) => {
         </div>
 
         {/* Page Content */}
-        <div className="p-8">
+        <div className="p-8 min-h-full">
           {children}
         </div>
       </main>
