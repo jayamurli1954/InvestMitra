@@ -207,11 +207,11 @@ backend:
 frontend:
   - task: "AI Insights page - Portfolio Optimization UI"
     implemented: true
-    working: false
+    working: "NA"
     file: "/app/frontend/src/pages/AIInsights.jsx"
     stuck_count: 2
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
       - working: false
         agent: "user"
