@@ -119,7 +119,7 @@ const Layout = ({ children }) => {
                   }`}
                 >
                   <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.label}</span>
+                  <span className="font-medium text-base">{item.label}</span>
                 </Link>
               );
             })}
