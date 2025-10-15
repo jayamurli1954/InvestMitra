@@ -158,13 +158,9 @@ const Strategies = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      description: '',
-      min_pe: '',
-      max_pe: '',
-      min_roe: '',
-      min_div_yield: '',
-      sector: ''
+      description: ''
     });
+    setCriteriaList([]);
     setEditingStrategy(null);
   };
 
