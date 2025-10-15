@@ -1292,11 +1292,11 @@ async def get_ai_predictive_insights(
         holdings_with_prices = []
         for holding in holdings:
             try:
-                stock_data = await get_stock_info(holding["symbol"])
+                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
                 holdings_with_prices.append({
                     **holding,
-                    "current_price": stock_data.get("current_price", 0),
-                    "sector": stock_data.get("sector", "Other")
+                    "current_price": stock_info.get("current_price", 0),
+                    "sector": stock_info.get("sector", "Other")
                 })
             except Exception as e:
                 logger.error(f"Error fetching data for {holding['symbol']}: {e}")
