@@ -36,6 +36,9 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+# CORS configuration
+CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
+
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
