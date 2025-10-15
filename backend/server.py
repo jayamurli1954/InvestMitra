@@ -1081,8 +1081,8 @@ async def get_performance_report(
         
         for holding in holdings:
             try:
-                stock_data = await get_stock_info(holding["symbol"])
-                current_price = stock_data.get("current_price", 0)
+                stock_data = get_stock_info(holding["symbol"])
+                current_price = stock_data.get("current_price", 0) if stock_data else 0
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
                 
@@ -1093,7 +1093,15 @@ async def get_performance_report(
                 })
             except Exception as e:
                 logger.error(f"Error fetching price for {holding['symbol']}: {e}")
-                holdings_with_prices.append(holding)
+                # Use existing price if fetch fails
+                current_price = holding.get("current_price", holding.get("purchase_price", 0))
+                holding_value = holding["quantity"] * current_price
+                current_value += holding_value
+                holdings_with_prices.append({
+                    **holding,
+                    "current_price": current_price,
+                    "current_value": holding_value
+                })
         
         # Generate performance summary
         performance_data = generate_performance_summary(
