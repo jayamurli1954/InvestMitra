@@ -201,6 +201,18 @@ frontend:
         agent: "testing"
         comment: "✅ TESTED & VERIFIED: All Analytics charts working perfectly! Sector Distribution DonutChart rendering, Sector Allocation BarChart working, Stock Performance BarChart functional. Key metric cards (Diversification, Risk, Top/Bottom performers) all visible and working. Generate Suggestions button working. AI-Powered Stock Recommendations displaying correctly. All Tremor chart components integrated successfully."
 
+  - task: "Dynamic Strategy Criteria Feature"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/Strategies.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ TESTED & VERIFIED: Dynamic Strategy Criteria Feature fully working! Create Strategy button functional, Add Criteria button working, successfully tested adding 4 criteria dynamically. All 13 criteria types available in dropdown (Min/Max P/E, ROE%, Dividend Yield%, P/B, Debt to Equity, Market Cap, Sector). Remove criteria (X button) functional. Strategy name/description inputs working. Dynamic criteria builder fully operational."
+
 metadata:
   created_by: "main_agent"
   version: "1.0"
