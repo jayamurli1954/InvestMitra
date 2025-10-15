@@ -1,13 +1,31 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, Trash2, Target, CheckCircle, Play, TrendingUp, Edit } from 'lucide-react';
+import { Plus, Trash2, Target, CheckCircle, Play, TrendingUp, Edit, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+
+// Available criteria types
+const CRITERIA_TYPES = [
+  { value: 'min_pe', label: 'Min P/E Ratio', type: 'number', placeholder: '10' },
+  { value: 'max_pe', label: 'Max P/E Ratio', type: 'number', placeholder: '25' },
+  { value: 'min_roe', label: 'Min ROE %', type: 'number', placeholder: '15' },
+  { value: 'max_roe', label: 'Max ROE %', type: 'number', placeholder: '30' },
+  { value: 'min_div_yield', label: 'Min Dividend Yield %', type: 'number', placeholder: '2' },
+  { value: 'max_div_yield', label: 'Max Dividend Yield %', type: 'number', placeholder: '5' },
+  { value: 'min_pb', label: 'Min P/B Ratio', type: 'number', placeholder: '1' },
+  { value: 'max_pb', label: 'Max P/B Ratio', type: 'number', placeholder: '3' },
+  { value: 'min_debt_equity', label: 'Min Debt to Equity', type: 'number', placeholder: '0' },
+  { value: 'max_debt_equity', label: 'Max Debt to Equity', type: 'number', placeholder: '1' },
+  { value: 'min_market_cap', label: 'Min Market Cap (Cr)', type: 'number', placeholder: '1000' },
+  { value: 'max_market_cap', label: 'Max Market Cap (Cr)', type: 'number', placeholder: '100000' },
+  { value: 'sector', label: 'Sector', type: 'text', placeholder: 'Banking, IT, Energy' }
+];
 
 const Strategies = () => {
   const [strategies, setStrategies] = useState([]);
@@ -19,13 +37,9 @@ const Strategies = () => {
   const [loadingResults, setLoadingResults] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
-    min_pe: '',
-    max_pe: '',
-    min_roe: '',
-    min_div_yield: '',
-    sector: ''
+    description: ''
   });
+  const [criteriaList, setCriteriaList] = useState([]);
 
   useEffect(() => {
     fetchStrategies();
