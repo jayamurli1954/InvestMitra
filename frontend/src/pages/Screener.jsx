@@ -95,12 +95,7 @@ const Screener = () => {
   };
 
   const handleResetFilters = () => {
-    setFilters({
-      sector: '',
-      min_pe: '',
-      max_pe: '',
-      min_roe: ''
-    });
+    setFiltersList([]);
     setTimeout(() => fetchStocks(), 100);
   };
 
