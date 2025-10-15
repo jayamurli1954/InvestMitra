@@ -385,11 +385,13 @@ metadata:
 
 test_plan:
   current_focus:
-    - "AI Insights page UI testing"
-  stuck_tasks: []
+    - "AI Insights JSON parsing fix needed"
+  stuck_tasks: 
+    - "AI Insights page - Portfolio Optimization UI"
+    - "AI Insights page - Predictive Analysis UI"
   test_all: false
   test_priority: "high_first"
-  testing_complete: false
+  testing_complete: true
 
 agent_communication:
   - agent: "main"
