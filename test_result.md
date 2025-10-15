@@ -494,9 +494,8 @@ metadata:
 
 test_plan:
   current_focus:
-    - "Frontend testing needed for AI Insights UI"
+    - "AI Insights page - Predictive Analysis UI" 
   stuck_tasks: 
-    - "AI Insights page - Portfolio Optimization UI"
     - "AI Insights page - Predictive Analysis UI"
   test_all: false
   test_priority: "high_first"
