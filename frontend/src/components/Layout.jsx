@@ -80,6 +80,7 @@ const Layout = ({ children }) => {
     { path: '/alerts', icon: Bell, label: 'Alerts' },
     { path: '/performance', icon: Activity, label: 'Performance' },
     { path: '/backtesting', icon: TrendingUp, label: 'Backtest' },
+    { path: '/ai-insights', icon: Sparkles, label: 'AI Insights' },
     { path: '/tax-report', icon: FileText, label: 'Tax Report' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
