@@ -64,6 +64,7 @@ function AppRoutes() {
                   <Route path="/tax-report" element={<TaxReport />} />
                   <Route path="/alerts" element={<Alerts />} />
                   <Route path="/dividends" element={<Dividends />} />
+                  <Route path="/performance" element={<PerformanceReport />} />
                   <Route path="/screener" element={<Screener />} />
                   <Route path="/stock/:symbol" element={<StockDetail />} />
                   <Route path="/strategies" element={<Strategies />} />
