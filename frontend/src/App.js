@@ -13,6 +13,8 @@ import Analytics from "@/pages/Analytics";
 import Watchlist from "@/pages/Watchlist";
 import Transactions from "@/pages/Transactions";
 import TaxReport from "@/pages/TaxReport";
+import Alerts from "@/pages/Alerts";
+import Dividends from "@/pages/Dividends";
 import Auth from "@/pages/Auth";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
