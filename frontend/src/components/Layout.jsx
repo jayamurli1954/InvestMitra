@@ -9,6 +9,7 @@ import {
   Bell,
   DollarSign,
   Activity,
+  Sparkles,
   Filter, 
   TrendingUp, 
   Target,
