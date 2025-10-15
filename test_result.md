@@ -504,44 +504,46 @@ test_plan:
 agent_communication:
   - agent: "testing"
     message: |
-      🎉 **AI INSIGHTS BACKEND RE-TESTING COMPLETED - MARKDOWN JSON PARSING FIX VERIFIED**
+      🎉 **AI INSIGHTS FRONTEND RE-TESTING COMPLETED - MARKDOWN JSON PARSING FIX VERIFIED**
       
-      **CRITICAL FIX VERIFICATION RESULTS:**
+      **COMPREHENSIVE FRONTEND TESTING RESULTS:**
       
-      **✅ MARKDOWN JSON PARSING FIX WORKING PERFECTLY**
-      - ✅ extract_json_from_markdown() function successfully implemented
-      - ✅ NO markdown code blocks (```json) detected in API responses
-      - ✅ Clean JSON responses without formatting artifacts
-      - ✅ LLM responses properly parsed and structured
+      **✅ PORTFOLIO OPTIMIZATION - FULLY WORKING**
+      - ✅ AI Insights page loads correctly with proper heading
+      - ✅ "Generate Optimization" button functional and clickable
+      - ✅ Loading states work properly ("Generating..." with spinner)
+      - ✅ Results section displays correctly after generation
+      - ✅ All 4 sections found with meaningful content:
+        * Rebalancing Recommendations (441 chars)
+        * Sector Diversification Advice (356 chars) 
+        * Risk Management Suggestions (447 chars)
+        * Tactical Allocation Changes (341 chars)
       
-      **✅ AI PORTFOLIO OPTIMIZATION ENDPOINT**
-      - POST /api/ai/portfolio-optimization: ✅ Status 200 OK
-      - Authentication: ✅ Working with JWT tokens
-      - Portfolio data: ✅ Tested with 5 realistic holdings
-      - Response structure: ✅ All required fields present (rebalancing, diversification, risk_management, tactical_moves)
-      - Content quality: ✅ Meaningful recommendations (not truncated fallback text)
-      - Markdown parsing: ✅ NO ```json formatting in responses
+      **🎯 CRITICAL SUCCESS - ORIGINAL ISSUE RESOLVED:**
+      - ✅ NO markdown JSON formatting (```json) detected in UI
+      - ✅ NO raw JSON structure visible to users
+      - ✅ Content displays as formatted, readable text
+      - ✅ Sample verified: "Sell a portion of RELIANCE.NS to reduce exposure to 30%..."
       
-      **✅ AI PREDICTIVE INSIGHTS ENDPOINT**
-      - POST /api/ai/predictive-insights: ✅ Status 200 OK
-      - Authentication: ✅ Working with JWT tokens
-      - Portfolio data: ✅ Same test portfolio used successfully
-      - Response structure: ✅ All required fields present (outlook_3m, risks, opportunities, action_items)
-      - Content quality: ✅ Meaningful insights (not truncated fallback text)
-      - Markdown parsing: ✅ NO ```json formatting in responses
+      **❌ PREDICTIVE INSIGHTS - FRONTEND RENDERING ISSUE**
+      - ✅ "Generate Predictions" button functional and clickable
+      - ✅ Loading states work properly
+      - ✅ Backend API returns clean JSON (verified via direct testing)
+      - ❌ Results section NOT displaying in UI after generation
+      - ❌ React error: "Objects are not valid as a React child (found: object with keys {expected_portfolio_trajectory})"
       
-      **✅ TECHNICAL VERIFICATION**
-      - Backend logs: Successful AI calls at 06:08:25, 06:08:38, 06:08:39, 06:08:50
-      - LiteLLM integration: Working correctly (gpt-4o-mini)
-      - Error handling: ✅ Returns 401 for unauthenticated requests
-      - Budget management: ✅ Graceful fallback when LLM budget exceeded
-      - No Python errors or stack traces in responses
+      **ROOT CAUSE IDENTIFIED:**
+      The AIInsights.jsx component has a React rendering issue when displaying predictive insights data. The backend returns proper JSON, but the frontend cannot render nested objects like "expected_portfolio_trajectory" properly.
       
-      **🎯 ORIGINAL ISSUE FULLY RESOLVED:**
-      The main agent's markdown JSON parsing fix has successfully resolved the critical issue where LLM responses contained markdown formatting. Both AI endpoints now return clean, properly parsed JSON that can be directly consumed by the frontend without additional processing.
+      **BACKEND VERIFICATION COMPLETED:**
+      - Both AI endpoints return clean JSON without markdown formatting
+      - extract_json_from_markdown() function working correctly
+      - LLM integration (gpt-4o-mini) working properly
+      - Authentication and portfolio data handling working
       
-      **NEXT STEPS:**
-      Backend testing complete. Frontend testing needed to verify that the clean JSON responses are now properly displayed in the UI without raw JSON text.
+      **SUMMARY:**
+      ✅ Portfolio Optimization: Original user complaint FULLY RESOLVED
+      ❌ Predictive Insights: Frontend component needs React rendering fix for nested objects
   - agent: "main"
     message: |
       Phase 1 implementation completed:
