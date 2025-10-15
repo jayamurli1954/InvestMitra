@@ -679,6 +679,371 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ==================== TRANSACTION ROUTES ====================
+
+@api_router.post("/transactions", response_model=Transaction)
+async def create_transaction(
+    transaction: TransactionCreate,
+    current_user: User = Depends(require_auth)
+):
+    """Create a new buy/sell transaction"""
+    transaction_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "symbol": transaction.symbol,
+        "name": transaction.name,
+        "transaction_type": transaction.transaction_type,
+        "quantity": transaction.quantity,
+        "price": transaction.price,
+        "total_amount": transaction.quantity * transaction.price,
+        "transaction_date": transaction.transaction_date,
+        "notes": transaction.notes,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.transactions.insert_one(transaction_doc)
+    return Transaction(**transaction_doc)
+
+@api_router.get("/transactions", response_model=List[Transaction])
+async def get_transactions(
+    current_user: User = Depends(require_auth),
+    symbol: Optional[str] = None
+):
+    """Get all transactions for the current user"""
+    query = {"user_id": current_user.id}
+    if symbol:
+        query["symbol"] = symbol
+    
+    transactions = await db.transactions.find(query).sort("transaction_date", -1).to_list(length=None)
+    return [Transaction(**t) for t in transactions]
+
+@api_router.delete("/transactions/{transaction_id}")
+async def delete_transaction(
+    transaction_id: str,
+    current_user: User = Depends(require_auth)
+):
+    """Delete a transaction"""
+    result = await db.transactions.delete_one({
+        "id": transaction_id,
+        "user_id": current_user.id
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    
+    return {"message": "Transaction deleted"}
+
+@api_router.get("/tax-report")
+async def get_tax_report(
+    current_user: User = Depends(require_auth),
+    financial_year: Optional[str] = None
+):
+    """Generate tax report with capital gains"""
+    # Get all transactions
+    transactions = await db.transactions.find({
+        "user_id": current_user.id
+    }).sort("transaction_date", 1).to_list(length=None)
+    
+    # Calculate capital gains using FIFO method
+    holdings_tracker = {}  # symbol -> [(quantity, buy_price, buy_date)]
+    capital_gains = {
+        "short_term": [],  # < 1 year
+        "long_term": []    # >= 1 year
+    }
+    
+    for txn in transactions:
+        symbol = txn["symbol"]
+        
+        if txn["transaction_type"] == "buy":
+            if symbol not in holdings_tracker:
+                holdings_tracker[symbol] = []
+            holdings_tracker[symbol].append({
+                "quantity": txn["quantity"],
+                "price": txn["price"],
+                "date": txn["transaction_date"]
+            })
+        
+        elif txn["transaction_type"] == "sell":
+            if symbol not in holdings_tracker or not holdings_tracker[symbol]:
+                continue
+            
+            remaining_to_sell = txn["quantity"]
+            sell_price = txn["price"]
+            sell_date = datetime.fromisoformat(txn["transaction_date"])
+            
+            while remaining_to_sell > 0 and holdings_tracker[symbol]:
+                buy_lot = holdings_tracker[symbol][0]
+                buy_date = datetime.fromisoformat(buy_lot["date"])
+                holding_period = (sell_date - buy_date).days
+                
+                quantity_to_process = min(remaining_to_sell, buy_lot["quantity"])
+                
+                cost_basis = quantity_to_process * buy_lot["price"]
+                sale_proceeds = quantity_to_process * sell_price
+                gain = sale_proceeds - cost_basis
+                
+                gain_record = {
+                    "symbol": symbol,
+                    "name": txn["name"],
+                    "quantity": quantity_to_process,
+                    "buy_price": buy_lot["price"],
+                    "sell_price": sell_price,
+                    "buy_date": buy_lot["date"],
+                    "sell_date": txn["transaction_date"],
+                    "holding_days": holding_period,
+                    "cost_basis": cost_basis,
+                    "sale_proceeds": sale_proceeds,
+                    "gain_loss": gain
+                }
+                
+                if holding_period < 365:
+                    capital_gains["short_term"].append(gain_record)
+                else:
+                    capital_gains["long_term"].append(gain_record)
+                
+                buy_lot["quantity"] -= quantity_to_process
+                remaining_to_sell -= quantity_to_process
+                
+                if buy_lot["quantity"] <= 0:
+                    holdings_tracker[symbol].pop(0)
+    
+    # Calculate tax
+    stcg_total = sum(g["gain_loss"] for g in capital_gains["short_term"])
+    ltcg_total = sum(g["gain_loss"] for g in capital_gains["long_term"])
+    
+    # Indian tax rates
+    stcg_tax = max(0, stcg_total * 0.15)  # 15% STCG
+    ltcg_exemption = 100000  # ₹1 lakh exemption
+    ltcg_taxable = max(0, ltcg_total - ltcg_exemption)
+    ltcg_tax = ltcg_taxable * 0.10  # 10% LTCG above exemption
+    
+    total_tax = stcg_tax + ltcg_tax
+    
+    # Get unrealized gains from current portfolio
+    portfolio = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
+    unrealized_gains = []
+    unrealized_total = 0
+    
+    for holding in portfolio:
+        try:
+            current_data = await get_stock_info(holding["symbol"])
+            current_price = current_data.get("current_price", 0)
+            
+            # Calculate average cost from transactions
+            buy_transactions = [t for t in transactions 
+                              if t["symbol"] == holding["symbol"] 
+                              and t["transaction_type"] == "buy"]
+            
+            if buy_transactions:
+                total_cost = sum(t["total_amount"] for t in buy_transactions)
+                total_qty = sum(t["quantity"] for t in buy_transactions)
+                avg_cost = total_cost / total_qty if total_qty > 0 else 0
+                
+                current_value = holding["quantity"] * current_price
+                cost_basis = holding["quantity"] * avg_cost
+                unrealized_gain = current_value - cost_basis
+                
+                unrealized_gains.append({
+                    "symbol": holding["symbol"],
+                    "name": holding["name"],
+                    "quantity": holding["quantity"],
+                    "avg_cost": avg_cost,
+                    "current_price": current_price,
+                    "cost_basis": cost_basis,
+                    "current_value": current_value,
+                    "unrealized_gain": unrealized_gain,
+                    "gain_percent": (unrealized_gain / cost_basis * 100) if cost_basis > 0 else 0
+                })
+                unrealized_total += unrealized_gain
+        except Exception as e:
+            logger.error(f"Error calculating unrealized gain for {holding['symbol']}: {e}")
+    
+    return {
+        "capital_gains": capital_gains,
+        "summary": {
+            "short_term_gain": stcg_total,
+            "long_term_gain": ltcg_total,
+            "stcg_tax": stcg_tax,
+            "ltcg_tax": ltcg_tax,
+            "total_realized_gain": stcg_total + ltcg_total,
+            "total_tax_liability": total_tax,
+            "ltcg_exemption_used": min(ltcg_total, ltcg_exemption)
+        },
+        "unrealized": {
+            "holdings": unrealized_gains,
+            "total_unrealized_gain": unrealized_total
+        }
+    }
+
+# ==================== PRICE ALERT ROUTES ====================
+
+@api_router.post("/alerts", response_model=PriceAlert)
+async def create_alert(
+    alert: PriceAlertCreate,
+    current_user: User = Depends(require_auth)
+):
+    """Create a new price alert"""
+    alert_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "symbol": alert.symbol,
+        "name": alert.name,
+        "alert_type": alert.alert_type,
+        "target_value": alert.target_value,
+        "is_active": True,
+        "triggered": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.price_alerts.insert_one(alert_doc)
+    return PriceAlert(**alert_doc)
+
+@api_router.get("/alerts", response_model=List[PriceAlert])
+async def get_alerts(
+    current_user: User = Depends(require_auth)
+):
+    """Get all price alerts for the current user"""
+    alerts = await db.price_alerts.find({
+        "user_id": current_user.id
+    }).sort("created_at", -1).to_list(length=None)
+    return [PriceAlert(**a) for a in alerts]
+
+@api_router.delete("/alerts/{alert_id}")
+async def delete_alert(
+    alert_id: str,
+    current_user: User = Depends(require_auth)
+):
+    """Delete a price alert"""
+    result = await db.price_alerts.delete_one({
+        "id": alert_id,
+        "user_id": current_user.id
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    
+    return {"message": "Alert deleted"}
+
+@api_router.get("/alerts/check")
+async def check_alerts(
+    current_user: User = Depends(require_auth)
+):
+    """Check if any alerts have been triggered"""
+    alerts = await db.price_alerts.find({
+        "user_id": current_user.id,
+        "is_active": True,
+        "triggered": False
+    }).to_list(length=None)
+    
+    triggered_alerts = []
+    
+    for alert in alerts:
+        try:
+            stock_data = await get_stock_info(alert["symbol"])
+            current_price = stock_data.get("current_price", 0)
+            
+            should_trigger = False
+            
+            if alert["alert_type"] == "price_above" and current_price >= alert["target_value"]:
+                should_trigger = True
+            elif alert["alert_type"] == "price_below" and current_price <= alert["target_value"]:
+                should_trigger = True
+            
+            if should_trigger:
+                await db.price_alerts.update_one(
+                    {"id": alert["id"]},
+                    {"$set": {"triggered": True}}
+                )
+                triggered_alerts.append({
+                    "id": alert["id"],
+                    "symbol": alert["symbol"],
+                    "name": alert["name"],
+                    "alert_type": alert["alert_type"],
+                    "target_value": alert["target_value"],
+                    "current_price": current_price
+                })
+        except Exception as e:
+            logger.error(f"Error checking alert for {alert['symbol']}: {e}")
+    
+    return {"triggered_alerts": triggered_alerts}
+
+# ==================== DIVIDEND ROUTES ====================
+
+@api_router.post("/dividends", response_model=DividendRecord)
+async def create_dividend_record(
+    dividend: DividendRecordCreate,
+    current_user: User = Depends(require_auth)
+):
+    """Record a dividend payment"""
+    dividend_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "symbol": dividend.symbol,
+        "name": dividend.name,
+        "dividend_per_share": dividend.dividend_per_share,
+        "quantity": dividend.quantity,
+        "total_dividend": dividend.dividend_per_share * dividend.quantity,
+        "ex_date": dividend.ex_date,
+        "payment_date": dividend.payment_date,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.dividends.insert_one(dividend_doc)
+    return DividendRecord(**dividend_doc)
+
+@api_router.get("/dividends", response_model=List[DividendRecord])
+async def get_dividends(
+    current_user: User = Depends(require_auth),
+    symbol: Optional[str] = None
+):
+    """Get all dividend records"""
+    query = {"user_id": current_user.id}
+    if symbol:
+        query["symbol"] = symbol
+    
+    dividends = await db.dividends.find(query).sort("payment_date", -1).to_list(length=None)
+    return [DividendRecord(**d) for d in dividends]
+
+@api_router.get("/dividends/summary")
+async def get_dividend_summary(
+    current_user: User = Depends(require_auth)
+):
+    """Get dividend summary and analytics"""
+    dividends = await db.dividends.find({
+        "user_id": current_user.id
+    }).to_list(length=None)
+    
+    total_income = sum(d["total_dividend"] for d in dividends)
+    
+    # Group by year
+    by_year = {}
+    for d in dividends:
+        year = d["payment_date"][:4]
+        if year not in by_year:
+            by_year[year] = 0
+        by_year[year] += d["total_dividend"]
+    
+    # Group by stock
+    by_stock = {}
+    for d in dividends:
+        symbol = d["symbol"]
+        if symbol not in by_stock:
+            by_stock[symbol] = {
+                "symbol": symbol,
+                "name": d["name"],
+                "total": 0,
+                "count": 0
+            }
+        by_stock[symbol]["total"] += d["total_dividend"]
+        by_stock[symbol]["count"] += 1
+    
+    return {
+        "total_dividend_income": total_income,
+        "total_payments": len(dividends),
+        "by_year": by_year,
+        "by_stock": list(by_stock.values())
+    }
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
