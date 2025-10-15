@@ -71,6 +71,8 @@ const Layout = ({ children }) => {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { path: '/watchlist', icon: Eye, label: 'Watchlist' },
+    { path: '/transactions', icon: Receipt, label: 'Transactions' },
+    { path: '/tax-report', icon: FileText, label: 'Tax Report' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
     { path: '/analytics', icon: PieChart, label: 'Analytics' },
