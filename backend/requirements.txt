@@ -22,7 +22,6 @@ idna==3.10
 iniconfig==2.1.0
 isort==6.1.0
 jmespath==1.0.1
-jq==1.10.0
 markdown-it-py==4.0.0
 mccabe==0.7.0
 mdurl==0.1.2
@@ -73,7 +72,6 @@ typing_extensions==4.15.0
 tzdata==2025.2
 urllib3==2.5.0
 uvicorn==0.25.0
-watchfiles==1.1.0
 websockets==15.0.1
 yfinance==0.2.66
-emergentintegrations==0.1.0
+

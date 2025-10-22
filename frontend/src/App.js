@@ -22,7 +22,7 @@ import Auth from "@/pages/Auth";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
 export const API = `${BACKEND_URL}/api`;
 
 // Configure axios to send credentials with every request

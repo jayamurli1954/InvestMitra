@@ -31,15 +31,53 @@ from ai_insights import generate_portfolio_optimization, generate_predictive_ins
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# MongoDB connection - will be initialized on app startup
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+client = None
+db = None
+
+async def init_db():
+    """Initialize MongoDB connection on startup"""
+    global client, db
+    try:
+        from motor.motor_asyncio import AsyncIOMotorClient
+        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+        db = client[os.environ['DB_NAME']]
+        # Test connection
+        await db.command('ping')
+        logging.info("✓ MongoDB connected successfully")
+    except Exception as e:
+        logging.error(f"✗ MongoDB connection failed: {e}")
+        db = None
+        client = None
+
+async def close_db():
+    """Close MongoDB connection on shutdown"""
+    global client
+    if client:
+        client.close()
+        logging.info("MongoDB connection closed")
 
 # CORS configuration
 CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 app = FastAPI()
+
+# Register startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db()
+
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
@@ -254,6 +292,10 @@ async def root():
 
 # ==================== AUTH ENDPOINTS ====================
 
+@api_router.options("/auth/register")
+async def register_options():
+    """Handle CORS preflight for register"""
+    return Response(status_code=200)
 @api_router.post("/auth/register", response_model=Token)
 async def register(user_data: UserRegister, response: Response):
     """Register new user with email/password"""
@@ -299,6 +341,16 @@ async def register(user_data: UserRegister, response: Response):
         user=UserPublic(**user.model_dump())
     )
 
+@api_router.options("/auth/register")
+async def register_options():
+    """Handle CORS preflight for register"""
+    return Response(status_code=200)
+
+
+
+@api_router.options("/auth/login")
+async def login_options():
+    return Response(status_code=200)    
 @api_router.post("/auth/login", response_model=Token)
 async def login(user_data: UserLogin, response: Response):
     """Login with email/password"""
@@ -517,6 +569,13 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
     await db.portfolio.insert_one(doc)
     return holding_obj
 
+@api_router.options("/portfolio")
+async def portfolio_options():
+    return {}
+@api_router.options("/portfolio/{holding_id}")
+async def portfolio_delete_options(holding_id: str = None):
+    return {}
+
 @api_router.delete("/portfolio/{holding_id}")
 async def delete_portfolio_holding(holding_id: str, current_user: User = Depends(require_auth)):
     result = await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
@@ -564,6 +623,9 @@ async def get_watchlist(current_user: User = Depends(require_auth)):
     items = await db.watchlist.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     return items
 
+@api_router.options("/watchlist")
+async def watchlist_options():
+    return {}
 @api_router.post("/watchlist", response_model=WatchlistItem)
 async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Depends(require_auth)):
     item_obj = WatchlistItem(**item.model_dump(), user_id=current_user.id)
@@ -571,6 +633,9 @@ async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Dep
     await db.watchlist.insert_one(doc)
     return item_obj
 
+@api_router.options("/watchlist/{item_id}")
+async def watchlist_delete_options(item_id: str = None):
+    return {}
 @api_router.delete("/watchlist/{item_id}")
 async def delete_watchlist_item(item_id: str, current_user: User = Depends(require_auth)):
     result = await db.watchlist.delete_one({"id": item_id, "user_id": current_user.id})
@@ -1365,3 +1430,28 @@ app.include_router(api_router)
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+# --- Temporary Google OAuth Fix ---
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.get("/api/auth/google")
+async def google_auth_placeholder(request: Request):
+    """
+    Temporary placeholder for Google OAuth callback.
+    This prevents frontend login errors during local testing.
+    """
+    return JSONResponse(
+        content={"message": "Google OAuth placeholder endpoint reached. Actual auth not yet implemented."},
+        status_code=200
+    )
+@app.post("/api/auth/local-login")
+async def local_login(request: Request):
+    """
+    Temporary local login endpoint for offline testing.
+    """
+    data = await request.json()
+    username = data.get("username", "Guest")
+    return JSONResponse(
+        content={"message": f"Welcome, {username}! (local mode)", "token": "fake-token"},
+        status_code=200
+    )

@@ -8,7 +8,7 @@ import re
 import json
 from typing import List, Dict, Any
 import asyncio
-from emergentintegrations.llm.chat import LlmChat, UserMessage
+from fastapi import HTTPException
 from dotenv import load_dotenv
 
 load_dotenv()

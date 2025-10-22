@@ -12,6 +12,37 @@ export const useAuth = () => {
   return context;
 };
 
+// Helper function to extract error message from various error formats
+const getErrorMessage = (error) => {
+  // If it's an axios error with response
+  if (error.response?.data) {
+    const data = error.response.data;
+    
+    // Handle FastAPI validation errors (array of error objects)
+    if (Array.isArray(data)) {
+      return data.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
+    }
+    
+    // Handle single error object with 'detail' field
+    if (data.detail) {
+      return data.detail;
+    }
+    
+    // Handle error object with 'message' field
+    if (data.message) {
+      return data.message;
+    }
+    
+    // Handle error object with 'msg' field
+    if (data.msg) {
+      return data.msg;
+    }
+  }
+  
+  // Fallback to generic error message
+  return error.message || 'An error occurred';
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -44,25 +75,39 @@ export const AuthProvider = ({ children }) => {
   };
 
   const login = async (email, password) => {
-    const response = await axios.post(
-      `${API}/auth/login`,
-      { email, password },
-      { withCredentials: true }
-    );
-    setUser(response.data.user);
-    setIsAuthenticated(true);
-    return response.data;
+    try {
+      const response = await axios.post(
+        `${API}/auth/login`,
+        { email, password },
+        { withCredentials: true }
+      );
+      setUser(response.data.user);
+      setIsAuthenticated(true);
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      const authError = new Error(message);
+      authError.response = error.response;
+      throw authError;
+    }
   };
 
   const register = async (email, password, name) => {
-    const response = await axios.post(
-      `${API}/auth/register`,
-      { email, password, name },
-      { withCredentials: true }
-    );
-    setUser(response.data.user);
-    setIsAuthenticated(true);
-    return response.data;
+    try {
+      const response = await axios.post(
+        `${API}/auth/register`,
+        { email, password, name },
+        { withCredentials: true }
+      );
+      setUser(response.data.user);
+      setIsAuthenticated(true);
+      return response.data;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      const authError = new Error(message);
+      authError.response = error.response;
+      throw authError;
+    }
   };
 
   const loginWithGoogle = () => {
@@ -87,7 +132,10 @@ export const AuthProvider = ({ children }) => {
       return response.data;
     } catch (error) {
       console.error('Google callback error:', error);
-      throw error;
+      const message = getErrorMessage(error);
+      const authError = new Error(message);
+      authError.response = error.response;
+      throw authError;
     }
   };
 

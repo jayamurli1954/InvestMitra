@@ -1,300 +1,218 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
-import { API } from '@/App';
-import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from 'sonner';
+import React, { useState } from 'react';
+import { ArrowUpRight, ArrowDownLeft, Trash2, Plus } from 'lucide-react';
 
-const Transactions = () => {
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
+export default function Transactions() {
+  const [transactions, setTransactions] = useState([
+    { id: 1, symbol: 'AAPL', type: 'buy', quantity: 10, price: 150.25, date: '2024-10-15', total: 1502.50 },
+    { id: 2, symbol: 'GOOGL', type: 'sell', quantity: 5, price: 140.80, date: '2024-10-14', total: 704.00 },
+    { id: 3, symbol: 'MSFT', type: 'buy', quantity: 15, price: 380.50, date: '2024-10-13', total: 5707.50 },
+  ]);
+
+  const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     symbol: '',
-    name: '',
-    transaction_type: 'buy',
+    type: 'buy',
     quantity: '',
     price: '',
-    transaction_date: new Date().toISOString().split('T')[0],
-    notes: ''
   });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
 
-  useEffect(() => {
-    fetchTransactions();
-  }, []);
-
-  const fetchTransactions = async () => {
-    try {
-      const response = await axios.get(`${API}/transactions`);
-      setTransactions(response.data);
-    } catch (error) {
-      console.error('Error fetching transactions:', error);
-      toast.error('Failed to load transactions');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCreateTransaction = async () => {
-    if (!formData.symbol || !formData.quantity || !formData.price) {
-      toast.error('Please fill all required fields');
-      return;
-    }
-
-    try {
-      await axios.post(`${API}/transactions`, {
+  const handleAddTransaction = () => {
+    if (formData.symbol && formData.quantity && formData.price) {
+      const newTransaction = {
+        id: Math.max(...transactions.map(t => t.id), 0) + 1,
         ...formData,
         quantity: parseInt(formData.quantity),
-        price: parseFloat(formData.price)
-      });
-      toast.success('Transaction recorded successfully');
-      setDialogOpen(false);
-      resetForm();
-      fetchTransactions();
-    } catch (error) {
-      console.error('Error creating transaction:', error);
-      toast.error('Failed to record transaction');
+        price: parseFloat(formData.price),
+        date: new Date().toISOString().split('T')[0],
+        total: parseInt(formData.quantity) * parseFloat(formData.price),
+      };
+      setTransactions([...transactions, newTransaction]);
+      setFormData({ symbol: '', type: 'buy', quantity: '', price: '' });
+      setShowForm(false);
     }
   };
 
-  const handleDeleteTransaction = async (id) => {
-    if (!confirm('Are you sure you want to delete this transaction?')) return;
-
-    try {
-      await axios.delete(`${API}/transactions/${id}`);
-      toast.success('Transaction deleted');
-      fetchTransactions();
-    } catch (error) {
-      console.error('Error deleting transaction:', error);
-      toast.error('Failed to delete transaction');
-    }
+  const handleDeleteClick = (id) => {
+    setShowDeleteConfirm(id);
   };
 
-  const resetForm = () => {
-    setFormData({
-      symbol: '',
-      name: '',
-      transaction_type: 'buy',
-      quantity: '',
-      price: '',
-      transaction_date: new Date().toISOString().split('T')[0],
-      notes: ''
-    });
+  const handleConfirmDelete = (id) => {
+    setTransactions(transactions.filter(t => t.id !== id));
+    setShowDeleteConfirm(null);
   };
 
-  const calculateTotal = () => {
-    if (formData.quantity && formData.price) {
-      return (parseInt(formData.quantity) * parseFloat(formData.price)).toFixed(2);
-    }
-    return '0.00';
-  };
+  const totalBought = transactions
+    .filter(t => t.type === 'buy')
+    .reduce((sum, t) => sum + t.total, 0);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
-  }
+  const totalSold = transactions
+    .filter(t => t.type === 'sell')
+    .reduce((sum, t) => sum + t.total, 0);
 
   return (
-    <div className="space-y-8 fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Transaction History</h1>
-          <p className="text-slate-400">Track all your buy and sell transactions</p>
-        </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-500 hover:bg-emerald-600 text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Record Transaction
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-slate-900 border-slate-800 max-w-md">
-            <DialogHeader>
-              <DialogTitle className="text-white text-xl">Record Transaction</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-slate-300 text-sm mb-2">Symbol</Label>
-                  <Input
-                    placeholder="e.g., RELIANCE.NS"
-                    value={formData.symbol}
-                    onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
-                    className="bg-slate-800 border-slate-700 text-white"
-                  />
-                </div>
-                <div>
-                  <Label className="text-slate-300 text-sm mb-2">Name</Label>
-                  <Input
-                    placeholder="e.g., Reliance"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="bg-slate-800 border-slate-700 text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-slate-300 text-sm mb-2">Transaction Type</Label>
-                <Select value={formData.transaction_type} onValueChange={(value) => setFormData({ ...formData, transaction_type: value })}>
-                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    <SelectItem value="buy" className="text-white">Buy</SelectItem>
-                    <SelectItem value="sell" className="text-white">Sell</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-slate-300 text-sm mb-2">Quantity</Label>
-                  <Input
-                    type="number"
-                    placeholder="e.g., 10"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    className="bg-slate-800 border-slate-700 text-white"
-                  />
-                </div>
-                <div>
-                  <Label className="text-slate-300 text-sm mb-2">Price per Share</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="e.g., 2500"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    className="bg-slate-800 border-slate-700 text-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label className="text-slate-300 text-sm mb-2">Transaction Date</Label>
-                <Input
-                  type="date"
-                  value={formData.transaction_date}
-                  onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
-                  className="bg-slate-800 border-slate-700 text-white"
-                />
-              </div>
-
-              <div>
-                <Label className="text-slate-300 text-sm mb-2">Notes (Optional)</Label>
-                <Textarea
-                  placeholder="Add any notes..."
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  className="bg-slate-800 border-slate-700 text-white"
-                  rows={2}
-                />
-              </div>
-
-              <div className="bg-slate-800 p-3 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400 text-sm">Total Amount:</span>
-                  <span className="text-white font-bold text-lg">₹{calculateTotal()}</span>
-                </div>
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <Button
-                  onClick={handleCreateTransaction}
-                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white"
-                >
-                  Record Transaction
-                </Button>
-                <Button
-                  onClick={() => setDialogOpen(false)}
-                  variant="outline"
-                  className="flex-1 border-slate-700 text-slate-300 hover:bg-slate-800"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold text-gray-900">Transactions</h1>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+        >
+          <Plus className="w-4 h-4" />
+          New Transaction
+        </button>
       </div>
 
-      {/* Transactions Table */}
-      <div className="glass-card p-6">
-        {transactions.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Symbol</th>
-                  <th>Name</th>
-                  <th>Quantity</th>
-                  <th>Price</th>
-                  <th>Total Amount</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((txn) => (
-                  <tr key={txn.id}>
-                    <td className="text-white">{new Date(txn.transaction_date).toLocaleDateString()}</td>
-                    <td>
-                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        txn.transaction_type === 'buy' 
-                          ? 'bg-emerald-500/20 text-emerald-400' 
-                          : 'bg-rose-500/20 text-rose-400'
-                      }`}>
-                        {txn.transaction_type.toUpperCase()}
-                      </span>
-                    </td>
-                    <td className="text-white font-medium">{txn.symbol}</td>
-                    <td className="text-slate-300">{txn.name}</td>
-                    <td className="text-white">{txn.quantity}</td>
-                    <td className="text-white">₹{txn.price.toFixed(2)}</td>
-                    <td className="text-white font-medium">₹{txn.total_amount.toFixed(2)}</td>
-                    <td>
-                      <Button
-                        onClick={() => handleDeleteTransaction(txn.id)}
-                        variant="outline"
-                        size="sm"
-                        className="border-rose-500 text-rose-400 hover:bg-rose-500/10"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+          <p className="text-sm text-gray-600">Total Bought</p>
+          <p className="text-2xl font-bold text-green-600">₹{totalBought.toFixed(2)}</p>
+        </div>
+        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+          <p className="text-sm text-gray-600">Total Sold</p>
+          <p className="text-2xl font-bold text-red-600">₹{totalSold.toFixed(2)}</p>
+        </div>
+        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+          <p className="text-sm text-gray-600">Net Position</p>
+          <p className="text-2xl font-bold text-blue-600">₹{(totalBought - totalSold).toFixed(2)}</p>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="bg-white p-6 rounded-lg border border-gray-200">
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Stock Symbol
+              </label>
+              <input
+                type="text"
+                value={formData.symbol}
+                onChange={(e) => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+                placeholder="e.g., AAPL"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Type
+                </label>
+                <select
+                  value={formData.type}
+                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="buy">Buy</option>
+                  <option value="sell">Sell</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  placeholder="0"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Price per Share
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                placeholder="0.00"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddTransaction}
+                className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+              >
+                Add Transaction
+              </button>
+              <button
+                onClick={() => setShowForm(false)}
+                className="bg-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-        ) : (
-          <div className="text-center py-12">
-            <DollarSign className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-            <h3 className="text-xl font-bold text-white mb-2">No Transactions Yet</h3>
-            <p className="text-slate-400 mb-6">Start tracking your buy and sell transactions</p>
-            <Button
-              onClick={() => setDialogOpen(true)}
-              className="bg-emerald-500 hover:bg-emerald-600 text-white"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Record First Transaction
-            </Button>
-          </div>
-        )}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 border-b">
+            <tr>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Symbol</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Quantity</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Price</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Total</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Date</th>
+              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map((tx) => (
+              <tr key={tx.id} className="border-b hover:bg-gray-50">
+                <td className="px-6 py-4 text-sm font-medium text-gray-900">{tx.symbol}</td>
+                <td className="px-6 py-4 text-sm">
+                  <span className={`flex items-center gap-1 ${tx.type === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
+                    {tx.type === 'buy' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                    {tx.type === 'buy' ? 'BUY' : 'SELL'}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-sm text-gray-600">{tx.quantity}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">₹{tx.price.toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm font-medium text-gray-900">₹{tx.total.toFixed(2)}</td>
+                <td className="px-6 py-4 text-sm text-gray-600">{tx.date}</td>
+                <td className="px-6 py-4 text-sm">
+                  <button
+                    onClick={() => handleDeleteClick(tx.id)}
+                    className="p-1 text-red-600 hover:bg-red-50 rounded"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
+
+                {showDeleteConfirm === tx.id && (
+                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-lg shadow-lg">
+                      <p className="text-gray-900 font-medium mb-4">Delete this transaction?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleConfirmDelete(tx.id)}
+                          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => setShowDeleteConfirm(null)}
+                          className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
-};
-
-export default Transactions;
+}
