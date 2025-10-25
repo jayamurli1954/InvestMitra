@@ -19,6 +19,7 @@ import PerformanceReport from "@/pages/PerformanceReport";
 import Backtesting from "@/pages/Backtesting";
 import AIInsights from "@/pages/AIInsights";
 import Auth from "@/pages/Auth";
+import ForgotPassword from "@/pages/ForgotPassword";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -52,6 +53,7 @@ function AppRoutes() {
     <BrowserRouter>
       <Routes>
         <Route path="/auth" element={<Auth />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route
           path="/*"
           element={

@@ -149,6 +149,99 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
   };
 
+  // ============================================================================
+  // PASSWORD RESET FUNCTIONS
+  // ============================================================================
+
+  const forgotPassword = async (email) => {
+    try {
+      const response = await axios.post(
+        `${API}/auth/forgot-password`,
+        { email },
+        { withCredentials: true }
+      );
+      return {
+        success: true,
+        message: response.data.message || 'Password reset email has been sent'
+      };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        success: false,
+        message: message
+      };
+    }
+  };
+
+  const resetPassword = async (token, newPassword, confirmPassword) => {
+    try {
+      const response = await axios.post(
+        `${API}/auth/reset-password`,
+        { 
+          token, 
+          new_password: newPassword, 
+          confirm_password: confirmPassword 
+        },
+        { withCredentials: true }
+      );
+      return {
+        success: true,
+        message: response.data.message || 'Password has been reset successfully'
+      };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        success: false,
+        message: message
+      };
+    }
+  };
+
+  const recoverEmail = async (fullName) => {
+    try {
+      const response = await axios.post(
+        `${API}/auth/recover-email`,
+        { full_name: fullName },
+        { withCredentials: true }
+      );
+      return {
+        success: true,
+        masked_email: response.data.masked_email,
+        message: response.data.message || 'Email recovered'
+      };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        success: false,
+        message: message
+      };
+    }
+  };
+
+  const verifyEmail = async (token) => {
+    try {
+      const response = await axios.post(
+        `${API}/auth/verify-email`,
+        { token },
+        { withCredentials: true }
+      );
+      return {
+        success: true,
+        message: response.data.message || 'Email verified successfully'
+      };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      return {
+        success: false,
+        message: message
+      };
+    }
+  };
+
+  // ============================================================================
+  // END PASSWORD RESET FUNCTIONS
+  // ============================================================================
+
   const value = {
     user,
     loading,
@@ -158,7 +251,12 @@ export const AuthProvider = ({ children }) => {
     loginWithGoogle,
     handleGoogleCallback,
     logout,
-    checkAuth
+    checkAuth,
+    // Password reset functions
+    forgotPassword,
+    resetPassword,
+    recoverEmail,
+    verifyEmail
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
