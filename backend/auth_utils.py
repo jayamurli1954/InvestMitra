@@ -77,3 +77,91 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+# ============================================================================
+# PASSWORD RESET FUNCTIONALITY
+# ============================================================================
+
+def generate_reset_token():
+    """Generate a secure random token for password reset"""
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def create_password_reset_record(db, user_id: str, email: str):
+    """Create a password reset token record in database"""
+    from datetime import datetime, timedelta
+    
+    reset_token = generate_reset_token()
+    created_at = datetime.utcnow()
+    expires_at = created_at + timedelta(hours=24)
+    
+    reset_record = {
+        "user_id": str(user_id),
+        "email": email,
+        "reset_token": reset_token,
+        "created_at": created_at,
+        "expires_at": expires_at,
+        "used": False,
+        "used_at": None
+    }
+    
+    db["password_resets"].insert_one(reset_record)
+    return reset_token
+
+
+def validate_reset_token(db, reset_token: str):
+    """Validate a password reset token"""
+    from datetime import datetime
+    
+    reset_record = db["password_resets"].find_one({
+        "reset_token": reset_token,
+        "used": False
+    })
+    
+    if not reset_record:
+        return None
+    
+    if datetime.utcnow() > reset_record["expires_at"]:
+        return None
+    
+    return reset_record
+
+
+def mark_reset_token_as_used(db, reset_token: str):
+    """Mark a password reset token as used"""
+    from datetime import datetime
+    
+    result = db["password_resets"].update_one(
+        {"reset_token": reset_token},
+        {
+            "$set": {
+                "used": True,
+                "used_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    return result.modified_count > 0
+
+
+def mask_email(email: str):
+    """Mask email address for security"""
+    parts = email.split("@")
+    local_part = parts[0]
+    domain = parts[1]
+    
+    if len(local_part) > 3:
+        masked_local = local_part[:3] + "***"
+    else:
+        masked_local = "***"
+    
+    return f"{masked_local}@{domain}"
+
+
+def find_user_by_name(db, full_name: str):
+    """Find user by full name"""
+    user = db["users"].find_one({
+        "full_name": {"$regex": full_name, "$options": "i"}
+    })
+    return user

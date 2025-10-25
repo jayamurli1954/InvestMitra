@@ -1,17 +1,19 @@
 """
 AI-Powered Portfolio Insights Module
-Uses LLM to generate personalized investment recommendations and portfolio optimization
+Uses OpenAI LLM to generate personalized investment recommendations and portfolio optimization
 """
 
 import os
 import re
 import json
+import logging
 from typing import List, Dict, Any
 import asyncio
-from fastapi import HTTPException
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 def extract_json_from_markdown(text: str) -> str:
     """
@@ -22,11 +24,10 @@ def extract_json_from_markdown(text: str) -> str:
     - ``` {...}```
     - {...} (plain JSON)
     """
-    # Try to find JSON in markdown code blocks
     patterns = [
-        r'```json\s*(\{.*?\})\s*```',  # ```json {...}```
-        r'```\s*(\{.*?\})\s*```',      # ``` {...}```
-        r'(\{.*?\})',                   # {...} (plain)
+        r'```json\s*(\{.*?\})\s*```',
+        r'```\s*(\{.*?\})\s*```',
+        r'(\{.*?\})',
     ]
     
     for pattern in patterns:
@@ -41,19 +42,23 @@ async def generate_portfolio_optimization(
     analytics_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
-    Generate AI-powered portfolio optimization suggestions
-    
-    Args:
-        portfolio_data: Current portfolio holdings with prices
-        analytics_data: Portfolio analytics including sector allocation, performance
-    
-    Returns:
-        Dictionary with optimization suggestions
+    Generate AI-powered portfolio optimization suggestions using OpenAI
     """
     
-    api_key = os.getenv("EMERGENT_LLM_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     
-    # Prepare context for AI
+    if not api_key:
+        logger.error("OPENAI_API_KEY not found in environment variables")
+        return {
+            "optimization_suggestions": {
+                "rebalancing": ["AI insights unavailable - API key not configured"],
+                "diversification": [],
+                "risk_management": [],
+                "tactical_moves": []
+            },
+            "error": "API key not configured"
+        }
+    
     context = f"""
     You are an expert investment advisor analyzing an Indian stock portfolio.
     
@@ -82,33 +87,46 @@ async def generate_portfolio_optimization(
     
     Format your response as JSON with keys: rebalancing, diversification, risk_management, tactical_moves
     Keep recommendations specific, actionable, and focused on Indian market conditions.
+    Make each array have at least 2-3 items.
     """
     
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id="portfolio_optimization",
-            system_message="You are an expert Indian stock market portfolio advisor providing actionable investment advice."
-        ).with_model("openai", "gpt-4o-mini")
+        client = AsyncOpenAI(api_key=api_key)
         
-        user_message = UserMessage(text=context)
-        response = await chat.send_message(user_message)
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert Indian stock market portfolio advisor providing actionable investment advice. Always respond with valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": context
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1000
+        )
+        
+        # Extract response text
+        response_text = response.choices[0].message.content
         
         # Extract JSON from markdown formatting if present
-        json_str = extract_json_from_markdown(response)
+        json_str = extract_json_from_markdown(response_text)
         
         # Parse response
         try:
             insights = json.loads(json_str)
-        except Exception as parse_error:
-            print(f"JSON parsing error: {parse_error}")
-            print(f"Raw response: {response[:500]}")
+        except json.JSONDecodeError as parse_error:
+            logger.warning(f"JSON parsing error: {parse_error}")
+            logger.info(f"Raw response: {response_text[:500]}")
             # Fallback if not JSON
             insights = {
-                "rebalancing": [response[:200]],
-                "diversification": ["Review sector allocation"],
-                "risk_management": ["Monitor concentration risk"],
-                "tactical_moves": ["Consider market conditions"]
+                "rebalancing": ["Review portfolio allocation", "Rebalance quarterly"],
+                "diversification": ["Review sector allocation", "Add underweighted sectors"],
+                "risk_management": ["Monitor concentration risk", "Set stop losses"],
+                "tactical_moves": ["Consider market conditions", "Review trending sectors"]
             }
         
         return {
@@ -117,7 +135,7 @@ async def generate_portfolio_optimization(
         }
         
     except Exception as e:
-        print(f"Error generating AI insights: {e}")
+        logger.error(f"Error generating AI insights: {e}")
         return {
             "optimization_suggestions": {
                 "rebalancing": ["Unable to generate AI insights at this time"],
@@ -135,16 +153,20 @@ async def generate_predictive_insights(
 ) -> Dict[str, Any]:
     """
     Generate predictive analytics and future outlook for portfolio
-    
-    Args:
-        portfolio_data: Current portfolio holdings
-        market_trends: Market trend data
-    
-    Returns:
-        Dictionary with predictive insights
     """
     
-    api_key = os.getenv("EMERGENT_LLM_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    if not api_key:
+        return {
+            "predictive_insights": {
+                "outlook_3m": "AI insights unavailable - API key not configured",
+                "risks": [],
+                "opportunities": [],
+                "action_items": []
+            },
+            "error": "API key not configured"
+        }
     
     context = f"""
     As an expert market analyst, analyze this Indian stock portfolio and provide predictive insights.
@@ -163,33 +185,41 @@ async def generate_predictive_insights(
     4. **Action Items** (2-3 immediate actions for next month)
     
     Format as JSON with keys: outlook_3m, risks, opportunities, action_items
+    Make risks and opportunities arrays with 2-3 items each.
     Be specific to Indian market conditions and the sectors in this portfolio.
     """
     
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id="predictive_insights",
-            system_message="You are an expert market analyst specializing in Indian equities and portfolio forecasting."
-        ).with_model("openai", "gpt-4o-mini")
+        client = AsyncOpenAI(api_key=api_key)
         
-        user_message = UserMessage(text=context)
-        response = await chat.send_message(user_message)
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert market analyst specializing in Indian equities and portfolio forecasting. Always respond with valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": context
+                }
+            ],
+            temperature=0.7,
+            max_tokens=1000
+        )
         
-        # Extract JSON from markdown formatting if present
-        json_str = extract_json_from_markdown(response)
+        response_text = response.choices[0].message.content
+        json_str = extract_json_from_markdown(response_text)
         
-        # Parse response
         try:
             insights = json.loads(json_str)
-        except Exception as parse_error:
-            print(f"JSON parsing error: {parse_error}")
-            print(f"Raw response: {response[:500]}")
+        except json.JSONDecodeError as parse_error:
+            logger.warning(f"JSON parsing error: {parse_error}")
             insights = {
-                "outlook_3m": response[:200],
-                "risks": ["Market volatility", "Sector-specific risks"],
-                "opportunities": ["Review emerging sectors"],
-                "action_items": ["Monitor portfolio regularly"]
+                "outlook_3m": "Market conditions suggest cautious optimism",
+                "risks": ["Market volatility", "Sector-specific risks", "Regulatory changes"],
+                "opportunities": ["Growth in emerging sectors", "Value picks in corrections"],
+                "action_items": ["Monitor portfolio regularly", "Rebalance if needed", "Review sector allocation"]
             }
         
         return {
@@ -198,7 +228,7 @@ async def generate_predictive_insights(
         }
         
     except Exception as e:
-        print(f"Error generating predictive insights: {e}")
+        logger.error(f"Error generating predictive insights: {e}")
         return {
             "predictive_insights": {
                 "outlook_3m": "Unable to generate forecast at this time",
@@ -216,16 +246,12 @@ async def generate_stock_analysis(
 ) -> str:
     """
     Generate AI-powered analysis for a specific stock
-    
-    Args:
-        symbol: Stock symbol
-        stock_data: Stock fundamentals and technical data
-    
-    Returns:
-        Analysis text
     """
     
-    api_key = os.getenv("EMERGENT_LLM_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
+    
+    if not api_key:
+        return "Stock analysis unavailable - API key not configured"
     
     context = f"""
     Analyze this Indian stock and provide investment perspective:
@@ -253,19 +279,28 @@ async def generate_stock_analysis(
     """
     
     try:
-        chat = LlmChat(
-            api_key=api_key,
-            session_id=f"stock_analysis_{symbol}",
-            system_message="You are a concise stock analyst providing brief, actionable insights on Indian stocks."
-        ).with_model("openai", "gpt-4o-mini")
+        client = AsyncOpenAI(api_key=api_key)
         
-        user_message = UserMessage(text=context)
-        response = await chat.send_message(user_message)
+        response = await client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a concise stock analyst providing brief, actionable insights on Indian stocks."
+                },
+                {
+                    "role": "user",
+                    "content": context
+                }
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
         
-        return response
+        return response.choices[0].message.content
         
     except Exception as e:
-        print(f"Error generating stock analysis: {e}")
+        logger.error(f"Error generating stock analysis: {e}")
         return "Analysis unavailable at this time."
 
 
@@ -302,7 +337,6 @@ def format_risk_concentration(holdings: List[Dict]) -> str:
     if total_value == 0:
         return "Unable to calculate"
     
-    # Find top 3 holdings by value
     sorted_holdings = sorted(holdings, key=lambda x: x.get('current_value', 0), reverse=True)
     top3_percent = sum(h.get('current_value', 0) for h in sorted_holdings[:3]) / total_value * 100
     
@@ -320,7 +354,7 @@ def format_holdings_for_prediction(holdings: List[Dict]) -> str:
         return "No holdings"
     
     lines = []
-    for h in holdings[:10]:  # Top 10
+    for h in holdings[:10]:
         lines.append(f"  - {h.get('symbol', 'N/A')} ({h.get('sector', 'N/A')}): {h.get('quantity', 0)} shares")
     
     return "\n".join(lines)

@@ -20,6 +20,7 @@ from market_data import (
     get_stock_info, get_historical_data, get_market_indices, 
     get_all_stocks_basic, get_current_price
 )
+from mutual_fund_data import search_mutual_funds, get_current_nav
 from analytics import (
     calculate_portfolio_analytics, calculate_rebalancing_suggestions,
     generate_stock_recommendations
@@ -171,19 +172,36 @@ class PortfolioHolding(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
-    symbol: str
-    name: str
+    
+    # Stock fields
+    symbol: Optional[str] = None
+    name: Optional[str] = None
+    
+    # Mutual fund fields
+    scheme_code: Optional[str] = None
+    scheme_name: Optional[str] = None
+    
+    # Common fields
     quantity: int
     purchase_price: float
     purchase_date: str
-    current_price: float = 0.0
+    asset_type: str = "STOCK"
+    current_price: Optional[float] = 0.0
 
 class PortfolioHoldingCreate(BaseModel):
-    symbol: str
-    name: str
+    # Stock fields
+    symbol: Optional[str] = None
+    name: Optional[str] = None
+    
+    # Mutual fund fields
+    scheme_code: Optional[str] = None
+    scheme_name: Optional[str] = None
+    
+    # Common fields
     quantity: int
     purchase_price: float
     purchase_date: str
+    asset_type: str = "STOCK"
 
 class WatchlistItem(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -553,6 +571,17 @@ async def search_stocks(q: str = Query(..., min_length=1)):
     # 4️⃣ If nothing found
     return []
 # ---------- END DYNAMIC SEARCH ----------
+
+@api_router.get("/mutual-funds/search")
+async def search_mutual_funds_api(q: str = Query(..., min_length=1)):
+    """Search mutual funds by name or scheme code"""
+    try:
+        from mutual_fund_data import search_mutual_funds
+        results = search_mutual_funds(q, limit=10)
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Error searching mutual funds: {e}")
+        return {"results": []}
 
 @api_router.get("/stocks/all")
 async def get_all_stocks():
