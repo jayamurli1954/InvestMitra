@@ -470,17 +470,89 @@ async def logout(response: Response, current_user: User = Depends(require_auth),
     response.delete_cookie(key="session_token", path="/")
     return {"message": "Logged out successfully"}
 
+# ---------- DYNAMIC / AUTO-POPULATING STOCK SEARCH ----------
+import asyncio
+import yfinance as yf
+from datetime import datetime
+
 @api_router.get("/stocks/search")
 async def search_stocks(q: str = Query(..., min_length=1)):
-    """Search stocks by symbol or name"""
-    query = q.lower()
-    all_stocks = get_all_stocks_basic()
-    results = [
-        StockBasic(**stock)
-        for stock in all_stocks
-        if query in stock["symbol"].lower() or query in stock["name"].lower()
-    ]
-    return results[:10]
+    """
+    Dynamic stock search:
+    - Checks DB first
+    - Falls back to local basic list
+    - If not found, fetches from Yahoo Finance and auto-inserts into MongoDB
+    """
+    q_raw = q.strip()
+    q_upper = q_raw.upper()
+
+    # 1️⃣ Try database first
+    try:
+        doc = await db.stocks.find_one({"symbol": {"$in": [q_upper, q_upper + ".NS", q_upper + ".BO"]}})
+        if doc:
+            stock_basic = {
+                "symbol": doc.get("symbol"),
+                "name": doc.get("name", ""),
+                "exchange": doc.get("exchange", "NSE"),
+                "sector": doc.get("sector", "")
+            }
+            return [StockBasic(**stock_basic)]
+    except Exception as e:
+        logger.warning(f"DB lookup error: {e}")
+
+    # 2️⃣ Try local static list for fuzzy matches
+    try:
+        all_stocks = get_all_stocks_basic() or []
+        q_lower = q_raw.lower()
+        fuzzy = [
+            StockBasic(**stock)
+            for stock in all_stocks
+            if q_lower in stock.get("symbol", "").lower() or q_lower in stock.get("name", "").lower()
+        ]
+        if fuzzy:
+            return fuzzy[:10]
+    except Exception as e:
+        logger.warning(f"get_all_stocks_basic() error: {e}")
+
+    # 3️⃣ Live lookup from Yahoo Finance if not found
+    possible_symbols = [q_upper]
+    if not q_upper.endswith(".NS"):
+        possible_symbols.append(q_upper + ".NS")
+    if not q_upper.endswith(".BO"):
+        possible_symbols.append(q_upper + ".BO")
+
+    for sym in possible_symbols:
+        try:
+            info = await asyncio.to_thread(lambda s=sym: getattr(yf.Ticker(s), "info", {}) or {})
+            if info and ("longName" in info or "shortName" in info):
+                name = info.get("longName") or info.get("shortName") or q_raw
+                last_price = info.get("currentPrice") or info.get("regularMarketPrice")
+                exchange = info.get("exchange") or info.get("market") or ("NSE" if sym.endswith(".NS") else "BSE")
+                sector = info.get("sector") or ""
+
+                stock_doc = {
+                    "symbol": info.get("symbol", sym),
+                    "name": name,
+                    "exchange": exchange,
+                    "sector": sector,
+                    "last_price": last_price,
+                    "meta": {"added_by": "auto", "created_at": datetime.utcnow()}
+                }
+
+                await db.stocks.update_one(
+                    {"symbol": stock_doc["symbol"]},
+                    {"$setOnInsert": stock_doc},
+                    upsert=True
+                )
+
+                logger.info(f"✅ Added stock dynamically: {stock_doc['symbol']}")
+                return [StockBasic(**stock_doc)]
+        except Exception as e:
+            logger.warning(f"yfinance lookup failed for {sym}: {e}")
+
+    # 4️⃣ If nothing found
+    return []
+# ---------- END DYNAMIC SEARCH ----------
 
 @api_router.get("/stocks/all")
 async def get_all_stocks():
@@ -1455,3 +1527,331 @@ async def local_login(request: Request):
         content={"message": f"Welcome, {username}! (local mode)", "token": "fake-token"},
         status_code=200
     )
+
+
+# ============================================================================
+# PASSWORD RESET HELPER FUNCTIONS
+# ============================================================================
+
+import bcrypt
+from bson import ObjectId
+
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt"""
+    salt = bcrypt.gensalt(rounds=10)
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+def create_password_reset_record(db, user_id, email: str) -> str:
+    """Create a password reset token record in database"""
+    import uuid
+    from datetime import datetime, timezone, timedelta
+    
+    reset_token = str(uuid.uuid4())
+    
+    # Store reset token in database (expires in 24 hours)
+    db["password_resets"].insert_one({
+        "user_id": user_id,
+        "email": email,
+        "token": reset_token,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+        "used": False
+    })
+    
+    return reset_token
+
+def validate_reset_token(db, token: str):
+    """Validate reset token - check if it exists and is not expired"""
+    from datetime import datetime, timezone
+    
+    reset_record = db["password_resets"].find_one({"token": token})
+    
+    if not reset_record:
+        return None
+    
+    # Check if expired
+    expires_at = datetime.fromisoformat(reset_record["expires_at"])
+    if datetime.now(timezone.utc) > expires_at:
+        return None
+    
+    # Check if already used
+    if reset_record.get("used"):
+        return None
+    
+    return reset_record
+
+def mark_reset_token_as_used(db, token: str):
+    """Mark reset token as used"""
+    db["password_resets"].update_one(
+        {"token": token},
+        {"$set": {"used": True}}
+    )
+
+def mask_email(email: str) -> str:
+    """Mask email for security - jayamurli1954@gmail.com -> jaya***@gmail.com"""
+    parts = email.split("@")
+    if len(parts) != 2:
+        return email
+    
+    local = parts[0]
+    domain = parts[1]
+    
+    # Show first 4 chars + *** + rest
+    if len(local) > 4:
+        masked_local = local[:4] + "***"
+    else:
+        masked_local = "***"
+    
+    return f"{masked_local}@{domain}"
+
+def find_user_by_name(db, full_name: str):
+    """Find user by full name (case-insensitive)"""
+    user = db.users.find_one({
+        "name": {"$regex": f"^{full_name}$", "$options": "i"}
+    })
+    return user
+
+# ============================================================================
+# PASSWORD RESET ENDPOINTS
+# ============================================================================
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(request_data: dict):
+    """
+    Request password reset - sends email with reset link
+    Body: {"email": "user@example.com"}
+    """
+    from email_utils import send_password_reset_email
+    
+    try:
+        email = request_data.get("email")
+        
+        if not email:
+            return JSONResponse(
+                content={"error": "Email is required"},
+                status_code=400
+            )
+        
+        # Find user by email
+        user = await db.users.find_one({"email": {"$regex": f"^{email.strip().lower()}$", "$options": "i"}})
+        
+        if not user:
+            # Don't reveal if email exists (security)
+            return JSONResponse(
+                content={"message": "If email exists, reset link has been sent"},
+                status_code=200
+            )
+        
+        # Create reset token
+        reset_token = create_password_reset_record(db, user["_id"], email)
+        
+        # Send email
+        email_sent = send_password_reset_email(
+            user_email=email,
+            reset_token=reset_token,
+            user_name=user.get("full_name", "User")
+        )
+        
+        if email_sent:
+            return JSONResponse(
+                content={"message": "Password reset email has been sent"},
+                status_code=200
+            )
+        else:
+            return JSONResponse(
+                content={"error": "Failed to send email"},
+                status_code=500
+            )
+    
+    except Exception as e:
+        print(f"Error in forgot_password: {str(e)}")
+        return JSONResponse(
+            content={"error": "An error occurred"},
+            status_code=500
+        )
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password(request_data: dict):
+    """
+    Reset password with token
+    """
+    print(f"DEBUG: Received request_data: {request_data}")
+    
+    try:
+        token = request_data.get("token", "").strip()
+        new_password = request_data.get("new_password")
+        confirm_password = request_data.get("confirm_password")
+        
+        # If token contains full URL, extract just the token part
+        if token and "token=" in token:
+            token = token.split("token=")[-1].strip()
+            print(f"DEBUG: Extracted token from URL: {token}")
+        
+        print(f"DEBUG: token={token}, new_password={new_password}, confirm_password={confirm_password}")
+        
+        # Validate input
+        if not token or not new_password or not confirm_password:
+            error_msg = f"Missing fields: token={bool(token)}, new_password={bool(new_password)}, confirm_password={bool(confirm_password)}"
+            print(f"DEBUG: {error_msg}")
+            return JSONResponse(
+                content={"error": error_msg},
+                status_code=400
+            )
+        
+        # Check passwords match
+        if new_password != confirm_password:
+            print(f"DEBUG: Passwords don't match")
+            return JSONResponse(
+                content={"error": "Passwords do not match"},
+                status_code=400
+            )
+        
+        # Validate password length
+        if len(new_password) < 8:
+            print(f"DEBUG: Password too short: {len(new_password)}")
+            return JSONResponse(
+                content={"error": "Password must be at least 8 characters long"},
+                status_code=400
+            )
+        
+        print(f"DEBUG: Validation passed, looking for token in DB")
+        
+        # Validate token from database (ASYNC)
+        from datetime import datetime, timezone
+        reset_record = await db["password_resets"].find_one({"token": token})
+        
+        print(f"DEBUG: reset_record found: {reset_record is not None}")
+        
+        if not reset_record:
+            print(f"DEBUG: Token not found in database")
+            return JSONResponse(
+                content={"error": "Invalid or expired reset token"},
+                status_code=400
+            )
+        
+        # Check if expired
+        expires_at = datetime.fromisoformat(reset_record["expires_at"])
+        if datetime.now(timezone.utc) > expires_at:
+            print(f"DEBUG: Token expired")
+            return JSONResponse(
+                content={"error": "Reset token has expired"},
+                status_code=400
+            )
+        
+        # Check if already used
+        if reset_record.get("used"):
+            print(f"DEBUG: Token already used")
+            return JSONResponse(
+                content={"error": "This reset token has already been used"},
+                status_code=400
+            )
+        
+        print(f"DEBUG: All checks passed, updating password")
+        
+        # Update user password
+        user_id = reset_record["user_id"]
+        hashed_password = get_password_hash(new_password)
+        
+        await db.users.update_one(
+            {"_id": user_id},
+            {"$set": {"password_hash": hashed_password}}
+        )
+        
+        print(f"DEBUG: Password updated")
+        
+        # Mark token as used
+        await db["password_resets"].update_one(
+            {"token": token},
+            {"$set": {"used": True}}
+        )
+        
+        print(f"DEBUG: Token marked as used - SUCCESS!")
+        
+        return JSONResponse(
+            content={"message": "Password has been reset successfully", "success": True},
+            status_code=200
+        )
+    
+    except Exception as e:
+        print(f"ERROR in reset_password: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            content={"error": "An error occurred: " + str(e)},
+            status_code=500
+        )
+
+
+@app.post("/api/auth/recover-email")
+async def recover_email(request_data: dict):
+    """
+    Recover email address by full name
+    Body: {"full_name": "John Doe"}
+    """
+    try:
+        full_name = request_data.get("full_name")
+        
+        if not full_name:
+            return JSONResponse(
+                content={"error": "Full name is required"},
+                status_code=400
+            )
+        
+        # Find user by name
+        user = find_user_by_name(db, full_name)
+        
+        if not user:
+            return JSONResponse(
+                content={"error": "No account found with that name"},
+                status_code=404
+            )
+        
+        # Mask the email
+        masked_email = mask_email(user["email"])
+        
+        return JSONResponse(
+            content={
+                "message": f"Account found",
+                "masked_email": masked_email
+            },
+            status_code=200
+        )
+    
+    except Exception as e:
+        print(f"Error in recover_email: {str(e)}")
+        return JSONResponse(
+            content={"error": "An error occurred"},
+            status_code=500
+        )
+
+
+@app.post("/api/auth/verify-email")
+async def verify_email(request_data: dict):
+    """
+    Verify email with token (for future use)
+    Body: {"token": "verification_token"}
+    """
+    try:
+        token = request_data.get("token")
+        
+        if not token:
+            return JSONResponse(
+                content={"error": "Token is required"},
+                status_code=400
+            )
+        
+        # For now, just return success
+        # In future, validate token and mark email as verified
+        
+        return JSONResponse(
+            content={"message": "Email verified successfully"},
+            status_code=200
+        )
+    
+    except Exception as e:
+        print(f"Error in verify_email: {str(e)}")
+        return JSONResponse(
+            content={"error": "An error occurred"},
+            status_code=500
+        )
