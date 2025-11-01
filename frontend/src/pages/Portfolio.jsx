@@ -150,7 +150,7 @@ const Portfolio = () => {
               Add Holding
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-slate-900 border-slate-700">
+          <DialogContent className="bg-slate-900 border-slate-700 max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-white">Add New Holding</DialogTitle>
             </DialogHeader>
@@ -414,13 +414,17 @@ const Portfolio = () => {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
                           <div>
                             <p className="text-slate-400">Quantity</p>
                             <p className="text-white font-medium">{holding.quantity}</p>
                           </div>
                           <div>
-                            <p className="text-slate-400">Price</p>
+                            <p className="text-slate-400">Avg Price</p>
+                            <p className="text-white font-medium">₹{holding.purchase_price.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400">Current Price</p>
                             <p className="text-white font-medium">₹{(holding.current_value || holding.current_price || holding.purchase_price).toFixed(2)}</p>
                           </div>
                           <div>
@@ -477,13 +481,17 @@ const Portfolio = () => {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 text-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
                           <div>
                             <p className="text-slate-400">Units</p>
                             <p className="text-white font-medium">{holding.quantity}</p>
                           </div>
                           <div>
-                            <p className="text-slate-400">NAV</p>
+                            <p className="text-slate-400">Avg NAV</p>
+                            <p className="text-white font-medium">₹{holding.purchase_price.toFixed(2)}</p>
+                          </div>
+                          <div>
+                            <p className="text-slate-400">Current NAV</p>
                             <p className="text-white font-medium">₹{(holding.current_value || holding.current_nav || holding.purchase_price).toFixed(2)}</p>
                           </div>
                           <div>
