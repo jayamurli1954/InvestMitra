@@ -950,6 +950,8 @@ async def get_stock_recommendations(
     
     return {"recommendations": recommendations, "criteria": criteria}
 
+
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
