@@ -3,6 +3,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
 import os
 import logging
 from pathlib import Path
@@ -18,7 +19,7 @@ from auth_utils import (
 )
 from market_data import (
     get_stock_info, get_historical_data, get_market_indices, 
-    get_all_stocks_basic, get_current_price
+    get_all_stocks_basic, get_current_price, get_mutual_fund_nav
 )
 from mutual_fund_data import search_mutual_funds, get_current_nav
 from analytics import (
@@ -203,17 +204,35 @@ class PortfolioHoldingCreate(BaseModel):
     purchase_date: str
     asset_type: str = "STOCK"
 
+# === PATCH START: REPLACE LINES 207-218 WITH THIS CODE ===
 class WatchlistItem(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
+    id: str = Field(alias="_id")
     user_id: str
     symbol: str
     name: str
-    added_date: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    
+    # ⭐ CRITICAL FIX: Make asset_type Optional ⭐
+    # Old MongoDB documents might not have this, causing the ResponseValidationError
+    asset_type: Optional[str] = None
+    
+    # DYNAMIC FIELDS (To ensure prices are sent)
+    current_price: Optional[float] = None
+    current_nav: Optional[float] = None
+    change_percent: Optional[float] = None
+    high: Optional[float] = None
+    low: Optional[float] = None
+from typing import Optional
 
 class WatchlistItemCreate(BaseModel):
     symbol: str
     name: str
+    asset_type: str
+    
+    # Optional fields for Mutual Funds if your client sends them during creation
+    scheme_code: Optional[str] = None
+    scheme_name: Optional[str] = None
+# === PATCH END ===
 
 class Strategy(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -582,6 +601,16 @@ async def search_mutual_funds_api(q: str = Query(..., min_length=1)):
     except Exception as e:
         logger.error(f"Error searching mutual funds: {e}")
         return {"results": []}
+@api_router.get("/mutualfunds/search")
+async def search_mutualfunds_api(q: str = Query(..., min_length=1)):
+    """Search mutual funds by name or scheme code"""
+    try:
+        from mutual_fund_data import search_mutual_funds
+        results = search_mutual_funds(q, limit=10)
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Error searching mutual funds: {e}")
+        return {"results": []}   
 
 @api_router.get("/stocks/all")
 async def get_all_stocks():
@@ -604,6 +633,34 @@ async def get_stock_historical(symbol: str, days: int = Query(90, ge=1, le=365))
     if not hist_data:
         raise HTTPException(status_code=404, detail="No historical data available")
     return hist_data
+
+@api_router.get("/mutualfunds/{scheme_code}")
+async def get_mutual_fund_detail(scheme_code: str):
+    """Get mutual fund details by scheme code"""
+    try:
+        # Get mutual fund NAV data
+        mf_data = get_mutual_fund_nav(scheme_code)
+        
+        if mf_data and mf_data.get('current_nav'):
+            return {
+                "symbol": scheme_code,
+                "scheme_code": scheme_code,
+                "name": mf_data.get('scheme_name', 'Unknown Fund'),
+                "current_nav": mf_data['current_nav'],
+                "current_price": mf_data['current_nav'],
+                "change_percent": 0.0,
+                "high": 0.0,
+                "low": 0.0,
+                "type": "mutual_fund"
+            }
+        
+        raise HTTPException(status_code=404, detail=f"Mutual fund {scheme_code} not found")
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching mutual fund {scheme_code}: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/market/overview")
 async def get_market_overview():
@@ -651,9 +708,25 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
     
     # Update current prices with real-time data
     for holding in holdings:
-        current_price = get_current_price(holding["symbol"])
-        if current_price > 0:
-            holding["current_price"] = current_price
+        # Check if it's a mutual fund or stock
+        if holding.get("asset_type") == "MUTUAL_FUND":
+            # For mutual funds, use scheme_code to get NAV
+            scheme_code = holding.get("scheme_code")
+            if scheme_code:
+                nav_data = get_mutual_fund_nav(scheme_code)
+                if nav_data and nav_data.get('current_nav'):
+                    holding["current_nav"] = nav_data['current_nav']
+                    holding["current_price"] = nav_data['current_nav']
+        else:
+            # For stocks, use symbol to get price
+            symbol = holding.get("symbol")
+            if symbol:
+                current_price = get_current_price(symbol)
+                if current_price > 0:
+                    holding["current_price"] = current_price
+    
+    # Sort alphabetically by symbol or scheme_code
+    holdings = sorted(holdings, key=lambda x: x.get("symbol") or x.get("scheme_code") or "")
     
     return holdings
 
@@ -721,12 +794,45 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
 # Watchlist endpoints
 @api_router.get("/watchlist", response_model=List[WatchlistItem])
 async def get_watchlist(current_user: User = Depends(require_auth)):
-    items = await db.watchlist.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    items = await db.watchlist.find({"user_id": current_user.id}).to_list(1000)
+    
+    # Convert ObjectId to string and enrich with current prices
+    for item in items:
+        if "_id" in item:
+            item["_id"] = str(item["_id"])
+        
+        # Auto-detect if mutual fund (all numbers) or stock
+        symbol = item.get("symbol", "")
+        logger.info(f"🔍 Processing symbol: {symbol}")
+        is_mutual_fund = symbol.isdigit()
+        logger.info(f"📊 is_mutual_fund={is_mutual_fund} for {symbol}")
+        
+        if is_mutual_fund:
+            logger.info(f"💰 Fetching MF NAV for {symbol}")
+            # Get mutual fund NAV
+            nav_data = get_mutual_fund_nav(symbol)
+            if nav_data and nav_data.get('current_nav'):
+                item["current_nav"] = nav_data['current_nav']
+                item["current_price"] = nav_data['current_nav']
+                item["change_percent"] = 0
+                item["name"] = nav_data.get("scheme_name", item.get("name", "Unknown Fund"))
+                logger.info(f"✅ MF price set: {nav_data['current_nav']}")
+        else:
+            logger.info(f"📈 Fetching STOCK price for {symbol}")
+            # Get stock price
+            current_price = get_current_price(symbol)
+            logger.info(f"📊 Got stock price: {current_price} for {symbol}")
+            if current_price > 0:
+                item["current_price"] = current_price
+                logger.info(f"✅ Stock price set: {current_price}")
+            else:
+                logger.warning(f"❌ Stock price is 0 for {symbol}")
+    
     return items
-
 @api_router.options("/watchlist")
 async def watchlist_options():
     return {}
+
 @api_router.post("/watchlist", response_model=WatchlistItem)
 async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Depends(require_auth)):
     item_obj = WatchlistItem(**item.model_dump(), user_id=current_user.id)
@@ -737,6 +843,7 @@ async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Dep
 @api_router.options("/watchlist/{item_id}")
 async def watchlist_delete_options(item_id: str = None):
     return {}
+
 @api_router.delete("/watchlist/{item_id}")
 async def delete_watchlist_item(item_id: str, current_user: User = Depends(require_auth)):
     result = await db.watchlist.delete_one({"id": item_id, "user_id": current_user.id})
@@ -846,10 +953,16 @@ async def get_stock_recommendations(
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",  # Vite default
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 logging.basicConfig(

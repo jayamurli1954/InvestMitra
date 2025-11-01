@@ -1,48 +1,65 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Eye, Plus, Trash2, TrendingUp, TrendingDown, Search } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
+import { Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
 const Watchlist = () => {
-  const [watchlist, setWatchlist] = useState([]);
   const [watchlistDetails, setWatchlistDetails] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [assetType, setAssetType] = useState("STOCK");
+
+  // Helper function to check if market is open
+  const isMarketHours = () => {
+    const now = new Date();
+    const hours = now.getHours();
+    const minutes = now.getMinutes();
+    const day = now.getDay();
+    
+    // NSE: Monday(1) to Friday(5), 9:15 AM to 3:30 PM IST
+    const isWeekday = day >= 1 && day <= 5;
+    const afterOpen = hours > 9 || (hours === 9 && minutes >= 15);
+    const beforeClose = hours < 15 || (hours === 15 && minutes <= 30);
+    
+    return isWeekday && afterOpen && beforeClose;
+  };
 
   useEffect(() => {
-    fetchWatchlist();
+    fetchWatchlist(); // Fetch immediately on load
+    
+    // Set up auto-refresh every 5 minutes during market hours
+    const intervalId = setInterval(() => {
+      if (isMarketHours()) {
+        console.log('🔄 Auto-refreshing watchlist (market hours)');
+        fetchWatchlist();
+      }
+    }, 300000); // 5 minutes = 300,000 milliseconds
+    
+    // Cleanup: Clear interval when component unmounts
+    return () => clearInterval(intervalId);
   }, []);
 
   useEffect(() => {
     if (searchQuery.length >= 2) {
-      searchStocks();
+      searchAssets();
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery]);
+  }, [searchQuery, assetType]);
 
   const fetchWatchlist = async () => {
     try {
+      setLoading(true);
       const response = await axios.get(`${API}/watchlist`);
-      setWatchlist(response.data);
-      
-      // Fetch detailed info for each watchlist item
-      const details = await Promise.all(
-        response.data.map(item => 
-          axios.get(`${API}/stocks/${item.symbol}`)
-            .then(res => res.data)
-            .catch(() => null)
-        )
-      );
-      setWatchlistDetails(details.filter(d => d !== null));
+      // Backend already returns complete data with prices - just use it!
+      setWatchlistDetails(response.data);
     } catch (error) {
       console.error('Error fetching watchlist:', error);
       toast.error('Failed to load watchlist');
@@ -51,22 +68,42 @@ const Watchlist = () => {
     }
   };
 
-  const searchStocks = async () => {
+  const searchAssets = async () => {
+    if (!searchQuery || searchQuery.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
     try {
-      const response = await axios.get(`${API}/stocks/search?q=${searchQuery}`);
-      setSearchResults(response.data);
+      let response;
+      if (assetType === "STOCK") {
+        response = await axios.get(`${API}/stocks/search?q=${searchQuery}`);
+        setSearchResults(Array.isArray(response.data) ? response.data : response.data.results || []);
+      } else {
+        response = await axios.get(`${API}/mutual-funds/search?q=${searchQuery}`);
+        setSearchResults(Array.isArray(response.data) ? response.data : response.data.results || []);
+      }
     } catch (error) {
-      console.error('Error searching stocks:', error);
+      console.error('Error searching:', error);
+      setSearchResults([]);
     }
   };
 
-  const addToWatchlist = async (stock) => {
+  const handleAddToWatchlist = async (item) => {
     try {
-      await axios.post(`${API}/watchlist`, {
-        symbol: stock.symbol,
-        name: stock.name
-      });
-      toast.success(`${stock.symbol} added to watchlist`);
+      const payload = {
+        symbol: assetType === "STOCK" ? item.symbol : item.scheme_code,
+        name: assetType === "STOCK" ? item.name : item.scheme_name,
+        asset_type: assetType
+      };
+
+      if (assetType === "MUTUAL_FUND") {
+        payload.scheme_code = item.scheme_code;
+        payload.scheme_name = item.scheme_name;
+      }
+
+      await axios.post(`${API}/watchlist`, payload);
+      toast.success(`Added ${payload.name} to watchlist`);
       setDialogOpen(false);
       setSearchQuery('');
       setSearchResults([]);
@@ -77,7 +114,7 @@ const Watchlist = () => {
     }
   };
 
-  const removeFromWatchlist = async (id) => {
+  const handleRemoveFromWatchlist = async (id) => {
     try {
       await axios.delete(`${API}/watchlist/${id}`);
       toast.success('Removed from watchlist');
@@ -90,130 +127,192 @@ const Watchlist = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen" data-testid="loading-spinner">
+      <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8 fade-in" data-testid="watchlist-page">
+    <div className="space-y-8 fade-in">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2" data-testid="watchlist-title">Watchlist</h1>
-          <p className="text-slate-400">Track your favorite stocks in real-time</p>
+          <h1 className="text-4xl font-bold text-white mb-2">Watchlist</h1>
+          <p className="text-slate-400">Track your favorite stocks and mutual funds in real-time</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-500 hover:bg-emerald-600 text-white" data-testid="add-to-watchlist-btn">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Stock
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-slate-900 border-slate-700" data-testid="add-watchlist-dialog">
-            <DialogHeader>
-              <DialogTitle className="text-white">Add to Watchlist</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-slate-300">Search Stock</Label>
-                <Input
-                  placeholder="Search by symbol or name..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-slate-800 border-slate-700 text-white"
-                  data-testid="watchlist-search-input"
-                />
-                {searchResults.length > 0 && (
-                  <div className="mt-2 max-h-64 overflow-y-auto bg-slate-800 rounded-lg border border-slate-700" data-testid="watchlist-search-results">
-                    {searchResults.map((stock, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => addToWatchlist(stock)}
-                        className="p-3 hover:bg-slate-700 cursor-pointer border-b border-slate-700 last:border-b-0"
-                        data-testid={`watchlist-result-${idx}`}
-                      >
-                        <p className="font-medium text-white">{stock.symbol}</p>
-                        <p className="text-sm text-slate-400">{stock.name} • {stock.sector}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              setLoading(true);
+              fetchWatchlist();
+            }}
+            className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-3 rounded-lg flex items-center gap-2 transition-colors"
+            title="Refresh prices"
+          >
+            <svg 
+              className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            Refresh
+          </button>
+          <button
+            onClick={() => setDialogOpen(true)}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add Stock
+          </button>
+        </div>
       </div>
 
-      {/* Watchlist Grid */}
-      {watchlistDetails.length === 0 ? (
-        <div className="glass-card p-12 text-center">
-          <Eye className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">Your Watchlist is Empty</h3>
-          <p className="text-slate-400 mb-6">Start tracking stocks you're interested in</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {watchlistDetails.map((stock, idx) => {
-            const watchlistItem = watchlist.find(w => w.symbol === stock.symbol);
-            return (
-              <div key={idx} className="glass-card p-6 hover:scale-105 transition-transform" data-testid={`watchlist-card-${idx}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <Link to={`/stock/${stock.symbol}`}>
-                      <h3 className="text-xl font-bold text-white hover:text-emerald-400 cursor-pointer transition-colors" data-testid={`watchlist-symbol-${idx}`}>
-                        {stock.symbol}
-                      </h3>
-                    </Link>
-                    <p className="text-sm text-slate-400">{stock.name}</p>
-                    <span className="inline-block mt-2 px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs">
-                      {stock.sector}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => removeFromWatchlist(watchlistItem?.id)}
-                    className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                    data-testid={`remove-watchlist-${idx}`}
+      {/* Add Stock Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700 max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-white">Add to Watchlist</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label className="text-slate-300">Asset Type</Label>
+              <select
+                value={assetType}
+                onChange={(e) => {
+                  setAssetType(e.target.value);
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
+                className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+              >
+                <option value="STOCK">Stocks</option>
+                <option value="MUTUAL_FUND">Mutual Funds</option>
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-slate-300">
+                {assetType === "STOCK" ? "Search Stock" : "Search Mutual Fund"}
+              </Label>
+              <Input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={assetType === "STOCK" ? "Search by name or symbol..." : "Search by fund name..."}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+            </div>
+
+            {searchResults.length > 0 && (
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {searchResults.map((item, index) => (
+                  <div
+                    key={index}
+                    onClick={() => handleAddToWatchlist(item)}
+                    className="p-3 bg-slate-800 hover:bg-slate-700 rounded-lg cursor-pointer transition-colors"
                   >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-
-                <div className="border-t border-white/10 pt-4 mt-4">
-                  <div className="flex items-end justify-between">
-                    <div>
-                      <p className="text-sm text-slate-400 mb-1">Current Price</p>
-                      <p className="text-2xl font-bold text-white" data-testid={`watchlist-price-${idx}`}>₹{stock.current_price.toFixed(2)}</p>
-                    </div>
-                    <div className={`flex items-center space-x-1 ${stock.change_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                      {stock.change_percent >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
-                      <span className="text-lg font-medium" data-testid={`watchlist-change-${idx}`}>
-                        {stock.change_percent >= 0 ? '+' : ''}{stock.change_percent.toFixed(2)}%
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 mt-4 text-sm">
-                    <div>
-                      <p className="text-slate-500">P/E</p>
-                      <p className="text-white font-medium">{stock.pe_ratio?.toFixed(2) || 'N/A'}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">ROE</p>
-                      <p className="text-white font-medium">{stock.roe?.toFixed(2) || 'N/A'}%</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500">Vol</p>
-                      <p className="text-white font-medium">{(stock.volume / 1000000).toFixed(2)}M</p>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-white font-medium">
+                          {assetType === "STOCK" ? item.name : item.scheme_name}
+                        </p>
+                        <p className="text-slate-400 text-sm">
+                          {assetType === "STOCK" ? item.symbol : `Code: ${item.scheme_code}`}
+                        </p>
+                      </div>
+                      {assetType === "MUTUAL_FUND" && item.nav && (
+                        <div className="text-right">
+                          <p className="text-emerald-400 text-sm">NAV: ₹{item.nav}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Watchlist Items */}
+      <div className="glass-card p-6">
+        {watchlistDetails.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-slate-400 mb-4">Your watchlist is empty</p>
+            <Button onClick={() => setDialogOpen(true)} className="bg-emerald-500 hover:bg-emerald-600">
+              <Plus className="w-4 h-4 mr-2" />
+              Add Your First Item
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {watchlistDetails.map((item) => {
+              const isMutualFund = item.symbol && item.symbol.match(/^\d+$/);
+              return (
+                <div key={item.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-emerald-500 transition-colors">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-white mb-1">{item.symbol}</h3>
+                      <p className="text-sm text-slate-400 line-clamp-2">{item.name}</p>
+                      {isMutualFund && (
+                        <span className="inline-block mt-2 px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded">
+                          Mutual Fund
+                        </span>
+                      )}
+                      {item.sector && (
+                        <span className="inline-block mt-2 px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded">
+                          {item.sector}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleRemoveFromWatchlist(item.id)}
+                      className="text-rose-400 hover:text-rose-300 transition-colors"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-sm text-slate-400">{isMutualFund ? 'Current NAV' : 'Current Price'}</p>
+                      <p className="text-2xl font-bold text-white">
+                        ₹{(item.current_price || item.current_nav || 0).toLocaleString('en-IN', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2
+                        })}
+                      </p>
+                      {typeof item.change_percent === 'number' && (
+                        <div className={`flex items-center gap-1 text-sm ${item.change_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {item.change_percent >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                          <span>{item.change_percent >= 0 ? '+' : ''}{item.change_percent.toFixed(2)}%</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {!isMutualFund && (
+                      <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-700">
+                        <div>
+                          <p className="text-xs text-slate-400">High</p>
+                          <p className="text-sm font-medium text-white">₹{(item.high || 0).toFixed(2)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-400">Low</p>
+                          <p className="text-sm font-medium text-white">₹{(item.low || 0).toFixed(2)}</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
