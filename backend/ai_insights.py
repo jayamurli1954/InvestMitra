@@ -2,6 +2,9 @@
 AI-Powered Portfolio Insights Module
 Uses Google Gemini LLM to generate personalized investment recommendations 
 and portfolio optimization.
+
+FINAL VERSION - November 2, 2025
+Model: gemini-2.5-flash (latest & fastest)
 """
 
 import os
@@ -11,25 +14,75 @@ import logging
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 
-# --- NEW GEMINI IMPORTS ---
+# --- GEMINI IMPORTS ---
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError 
-# --------------------------
+# ----------------------
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 # --- GEMINI CLIENT INITIALIZATION ---
-# The client automatically looks for the GEMINI_API_KEY environment variable.
-# Ensure your actual, private key is set in the .env file.
 client = None
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+print("\n" + "="*70)
+print("🤖 INITIALIZING GEMINI AI")
+print("="*70)
+
 try:
-    client = genai.Client()
-    logger.info("Gemini client initialized successfully.")
+    if not GEMINI_API_KEY:
+        error_msg = "❌ GEMINI_API_KEY not found in environment variables"
+        print(error_msg)
+        logger.error(error_msg)
+    elif not GEMINI_API_KEY.startswith("AIzaSy"):
+        error_msg = f"❌ GEMINI_API_KEY has wrong format: starts with '{GEMINI_API_KEY[:10]}'"
+        print(error_msg)
+        print("   API key should start with 'AIzaSy'")
+        logger.error(error_msg)
+        logger.error("   API key should start with 'AIzaSy'")
+    else:
+        # Initialize with explicit API key
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        success_msg1 = "✅ Gemini client initialized successfully"
+        success_msg2 = f"   Using API key: {GEMINI_API_KEY[:10]}...{GEMINI_API_KEY[-4:]}"
+        success_msg3 = "   Model: gemini-2.5-flash (latest & fastest)"
+        
+        print(success_msg1)
+        print(success_msg2)
+        print(success_msg3)
+        
+        logger.info(success_msg1)
+        logger.info(success_msg2)
+        logger.info(success_msg3)
 except Exception as e:
-    logger.error(f"Error initializing Gemini client: {e}")
+    error_msg1 = f"❌ Error initializing Gemini client: {e}"
+    error_msg2 = f"   Error type: {type(e).__name__}"
+    
+    print(error_msg1)
+    print(error_msg2)
+    
+    logger.error(error_msg1)
+    logger.error(error_msg2)
+
+if client is not None:
+    final_msg = "🎉 ai_insights module loaded - Gemini AI ready!"
+    print(final_msg)
+    logger.info(final_msg)
+else:
+    warning_msg1 = "⚠️  ai_insights module loaded - Gemini AI NOT available"
+    warning_msg2 = "   Check GEMINI_API_KEY in .env file"
+    
+    print(warning_msg1)
+    print(warning_msg2)
+    
+    logger.warning(warning_msg1)
+    logger.warning(warning_msg2)
+
+print("="*70 + "\n")
 # ------------------------------------
+
 
 def extract_json_from_markdown(text: str) -> str:
     """
@@ -41,18 +94,16 @@ def extract_json_from_markdown(text: str) -> str:
     - {...} (plain JSON)
     """
     patterns = [
-        r'```json\s*(\s*\{.*?\}\s*)\s*```',
-        r'```\s*(\s*\{.*?\}\s*)\s*```',
-        r'(\s*\{.*?\}\s*)',
+        r'```json\s*(\{.*?\})\s*```',
+        r'```\s*(\{.*?\})\s*```',
+        r'(\{.*?\})',
     ]
     
     for pattern in patterns:
         match = re.search(pattern, text, re.DOTALL)
         if match:
-            # Return the captured group (the JSON content itself)
             return match.group(1).strip()
     
-    # If no pattern matches, return the original text (will likely fail json.loads)
     return text
 
 
@@ -63,14 +114,14 @@ def format_holdings(holdings: List[Dict]) -> str:
     
     lines = ["| Asset | Symbol | Current Price | Weight (%) |"]
     lines.append("|:---|:---|:---:|:---:|")
+    
     for h in holdings:
-        # Use .get() with a default value to prevent KeyError if data is incomplete
         symbol = h.get('symbol', 'N/A')
-        name = h.get('name', 'N/A')
+        name = h.get('name', symbol)
         price = h.get('current_price', 0.0)
-        # Assuming weight is between 0 and 1, format as percentage
         weight = h.get('weight', 0.0) * 100
         lines.append(f"| {name} | {symbol} | ₹{price:.2f} | {weight:.1f}% |")
+    
     return "\n".join(lines)
 
 
@@ -81,19 +132,33 @@ def format_sector_allocation(allocation: Dict[str, float]) -> str:
     
     lines = ["| Sector | Allocation (%) |"]
     lines.append("|:---|:---:|")
-    # Sort by largest allocation first
-    sorted_alloc = sorted(allocation.items(), key=lambda item: item[1], reverse=True)
     
+    sorted_alloc = sorted(allocation.items(), key=lambda item: item[1], reverse=True)
     for sector, percent in sorted_alloc:
         lines.append(f"| {sector} | {percent:.1f}% |")
+    
     return "\n".join(lines)
 
 
-# NOTE: Since the Gemini API does not have a native async client in the standard SDK 
-# like OpenAI's AsyncOpenAI, we keep this function as synchronous for simplicity 
-# unless you decide to switch to an external library like `httpx` for async wrappers.
-# We'll use the synchronous client here, which is fine for development.
-def generate_portfolio_optimization(
+def format_performers(performers: List[Dict]) -> str:
+    """Format top/bottom performers for AI context"""
+    if not performers:
+        return "No performance data available."
+    
+    lines = []
+    for p in performers[:3]:
+        symbol = p.get('symbol', 'N/A')
+        gain = p.get('gain_percent', 0)
+        lines.append(f"  - {symbol}: {gain:.2f}%")
+    
+    return "\n".join(lines)
+
+
+# ============================================================================
+# MAIN FUNCTION: Portfolio Optimization
+# ============================================================================
+
+async def generate_portfolio_optimization(
     portfolio_data: Dict[str, Any],
     analytics_data: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -102,130 +167,381 @@ def generate_portfolio_optimization(
     """
     
     if client is None:
-        logger.error("Gemini client is not available.")
+        error_msg = "AI insights unavailable - Gemini client not initialized."
+        logger.error(f"❌ {error_msg}")
+        logger.error(f"   API Key present: {bool(GEMINI_API_KEY)}")
+        if GEMINI_API_KEY:
+            logger.error(f"   API Key format: starts with '{GEMINI_API_KEY[:10]}'")
         return {
             "optimization_suggestions": {
-                "rebalancing": ["AI insights unavailable - Gemini client failed to initialize."],
+                "rebalancing": [error_msg],
                 "diversification": [],
-                "risk_management": []
+                "risk_management": [],
+                "tactical_moves": []
             },
-            "raw_analysis": "Client Error."
+            "raw_analysis": "Client initialization error.",
+            "error": "client_not_initialized"
         }
-        
-    user_name = portfolio_data.get("user_name", "Investor")
-    holdings_table = format_holdings(portfolio_data.get("portfolio", []))
-    sector_table = format_sector_allocation(analytics_data.get("sector_allocation", {}))
-    risk_summary = analytics_data.get("summary", "No official summary available.")
     
-    # --- PROMPT DEFINITION ---
+    # Extract data
+    holdings = portfolio_data.get("holdings", [])
+    sector_allocation = analytics_data.get("sector_allocation", {})
+    top_performers = analytics_data.get("top_performers", [])
+    bottom_performers = analytics_data.get("bottom_performers", [])
     
+    # Format data for AI
+    holdings_table = format_holdings(holdings)
+    sector_table = format_sector_allocation(sector_allocation)
+    top_perf_text = format_performers(top_performers)
+    bottom_perf_text = format_performers(bottom_performers)
+    
+    # Build prompts - SIMPLIFIED to avoid safety filters
     system_prompt = (
-        "You are an expert Certified Financial Analyst (CFA). Your task is to provide portfolio "
-        "optimization and risk management advice. Analyze the provided portfolio data and "
-        "analytics. Your response MUST be a single, valid JSON object enclosed in a markdown code block, "
-        "and nothing else. Strictly use the JSON schema provided in the user request."
+        "You are a portfolio analysis assistant providing educational information. "
+        "Analyze the given Indian stock portfolio and provide general observations "
+        "in JSON format. This is for educational purposes only, not financial advice. "
+        "Respond ONLY with a valid JSON object, no other text."
     )
     
     user_prompt = f"""
-    ### Investor Profile
-    Investor Name: {user_name}
-    
-    ### Portfolio Summary
-    Overall Risk Profile: {risk_summary}
-    
-    ### Current Holdings
-    {holdings_table}
-    
-    ### Sector Allocation
-    {sector_table}
-    
-    ### Request
-    Based on the data above, provide the following:
-    
-    1. A concise, professional summary of the portfolio's current strengths and weaknesses.
-    2. Specific, actionable rebalancing suggestions to improve diversification and risk-adjusted returns.
-    3. Suggested risk management actions.
-    
-    ### Output JSON Schema
-    ```json
-    {{
-        "summary": "Concise summary of strengths and weaknesses (max 3 sentences).",
-        "optimization_suggestions": {{
-            "rebalancing": [
-                "Actionable suggestion 1 (e.g., 'Sell 5% of Reliance to reduce concentration risk').",
-                "Actionable suggestion 2.",
-                "Actionable suggestion 3."
-            ],
-            "diversification": [
-                "Diversification suggestion 1 (e.g., 'Consider adding an international equity ETF').",
-                "Diversification suggestion 2."
-            ],
-            "risk_management": [
-                "Risk management action 1 (e.g., 'Set a 10% trailing stop-loss on HDFC').",
-                "Risk management action 2."
-            ]
-        }},
-        "raw_analysis": "Optional detailed internal analysis used to generate the suggestions."
+Analyze this Indian stock portfolio and provide educational observations.
+
+**Holdings Summary:**
+{len(holdings)} stocks across {len(sector_allocation)} sectors
+
+**Sector Distribution:**
+{sector_table}
+
+**Task:**
+Provide general observations about this portfolio structure in JSON format.
+
+**IMPORTANT:** 
+- This is for educational purposes only
+- Provide general portfolio structure observations
+- Do NOT provide specific buy/sell recommendations
+- Focus on portfolio balance and diversification observations
+
+**Output Format (JSON ONLY):**
+```json
+{{
+    "optimization_suggestions": {{
+        "rebalancing": [
+            "General observation about portfolio balance",
+            "Observation about sector weights",
+            "Observation about concentration"
+        ],
+        "diversification": [
+            "Observation about sector coverage",
+            "Observation about diversification level"
+        ],
+        "risk_management": [
+            "General risk observation",
+            "Portfolio structure observation"
+        ],
+        "tactical_moves": [
+            "General market condition observation",
+            "Portfolio positioning observation"
+        ]
     }}
-    ```
-    Generate the complete, single JSON object now.
-    """
+}}
+```
+
+Respond with ONLY the JSON object, nothing else.
+"""
     
-    # --- GEMINI API CALL ---
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+    
+    # Gemini API call
     try:
-        # 1. Call the Gemini API
+        logger.info("🤖 Calling Gemini API for portfolio optimization...")
+        
         response = client.models.generate_content(
-            model='gemini-2.5-flash',  # Fast, efficient, and capable for this task
-            contents=full_prompt,  # Using the combined prompt
+            model='models/gemini-2.5-flash',
+            contents=full_prompt,
             config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
+                temperature=0.7,
+                top_p=0.9,
+                top_k=40,
+                max_output_tokens=2048,
             )
         )
         
-        # 2. Extract and Validate JSON
-        raw_text = response.text
+        # Handle different response formats - WITH DEBUGGING
+        raw_text = None
+        
+        # Log full response structure for debugging
+        logger.info(f"🔍 Response type: {type(response)}")
+        logger.info(f"🔍 Has text attr: {hasattr(response, 'text')}")
+        logger.info(f"🔍 Has candidates: {hasattr(response, 'candidates')}")
+        
+        try:
+            raw_text = response.text
+            if raw_text:
+                logger.info(f"✅ Got response via .text: {len(raw_text)} chars")
+        except Exception as e:
+            logger.warning(f"⚠️ .text failed: {e}")
+            
+            # Try alternative access method
+            if hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
+                logger.info(f"🔍 Found {len(response.candidates)} candidates")
+                candidate = response.candidates[0]
+                
+                logger.info(f"🔍 Candidate finish_reason: {getattr(candidate, 'finish_reason', 'N/A')}")
+                logger.info(f"🔍 Candidate has content: {hasattr(candidate, 'content')}")
+                
+                if hasattr(candidate, 'content') and candidate.content:
+                    if hasattr(candidate.content, 'parts') and candidate.content.parts:
+                        logger.info(f"🔍 Found {len(candidate.content.parts)} parts")
+                        raw_text = candidate.content.parts[0].text
+                        logger.info(f"✅ Got response via candidates: {len(raw_text)} chars")
+                    else:
+                        logger.error(f"❌ Content has no parts. Content type: {type(candidate.content)}")
+                else:
+                    logger.error(f"❌ Candidate has no content")
+            else:
+                logger.error(f"❌ No candidates found in response")
+        
+        if not raw_text:
+            logger.error("❌ Gemini returned empty response after trying all methods")
+            logger.error(f"   Response object: {response}")
+            return {
+                "optimization_suggestions": {
+                    "rebalancing": ["AI returned empty response. This may be due to content filters or API issues."],
+                    "diversification": [],
+                    "risk_management": [],
+                    "tactical_moves": []
+                },
+                "error": "empty_response"
+            }
+        
+        logger.info(f"📝 Gemini response received: {len(raw_text)} characters")
+        
         json_str = extract_json_from_markdown(raw_text)
         
         try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            logger.error(f"Failed to parse JSON from AI response. Raw Text: {raw_text[:500]}")
+            result = json.loads(json_str)
+            logger.info("✅ Successfully parsed Gemini response")
+            return result
+            
+        except json.JSONDecodeError as parse_error:
+            logger.error(f"❌ JSON parsing failed: {parse_error}")
+            logger.error(f"Raw response: {raw_text[:500]}")
+            
             return {
-                "summary": "Error: AI output not in valid JSON format.",
-                "optimization_suggestions": {"rebalancing": [f"Raw text start: {raw_text[:50]}"], "diversification": [], "risk_management": []},
-                "raw_analysis": raw_text
+                "optimization_suggestions": {
+                    "rebalancing": [f"AI response parsing failed. Raw: {raw_text[:100]}"],
+                    "diversification": ["Unable to parse AI recommendations"],
+                    "risk_management": [],
+                    "tactical_moves": []
+                },
+                "raw_analysis": raw_text,
+                "error": "json_parsing_failed"
             }
 
-    except APIError as e:
-        logger.error(f"Gemini API Error: {e}")
+    except APIError as api_error:
+        logger.error(f"❌ Gemini API Error: {api_error}")
         return {
-            "summary": "Error: Failed to connect to Gemini API.",
-            "optimization_suggestions": {"rebalancing": [f"API Error: {e.status_code} - {e.message}"]},
-            "raw_analysis": str(e)
+            "optimization_suggestions": {
+                "rebalancing": [f"API Error: {api_error.message}"],
+                "diversification": [],
+                "risk_management": [],
+                "tactical_moves": []
+            },
+            "error": f"api_error_{api_error.status_code}"
         }
+        
     except Exception as e:
-        logger.error(f"Unexpected error during Gemini call: {e}")
+        logger.error(f"❌ Unexpected error: {e}", exc_info=True)
         return {
-            "summary": "Error: Unexpected internal error.",
-            "optimization_suggestions": {"rebalancing": [f"Internal error: {str(e)}"]},
-            "raw_analysis": str(e)
+            "optimization_suggestions": {
+                "rebalancing": [f"System error: {str(e)}"],
+                "diversification": [],
+                "risk_management": [],
+                "tactical_moves": []
+            },
+            "error": "unexpected_error"
         }
 
 
-# ==============================================================================
-# PLACEHOLDER FUNCTIONS (Can be implemented similarly)
-# ==============================================================================
+# ============================================================================
+# FUNCTION 2: Predictive Insights
+# ============================================================================
 
-def generate_predictive_insights(portfolio_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Generates AI-powered predictions about portfolio trends for the next 3 months."""
-    return {
-        "prediction": "Feature not fully implemented yet, awaiting full data feed.",
-        "raw_analysis": "Placeholder"
-    }
+async def generate_predictive_insights(
+    portfolio_data: Dict[str, Any],
+    market_trends: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Generate AI-powered predictive insights for portfolio.
+    """
+    
+    if client is None:
+        logger.error("❌ Gemini client not available for predictions.")
+        return {
+            "predictive_insights": {
+                "outlook_3m": "AI predictions unavailable.",
+                "risks": [],
+                "opportunities": [],
+                "action_items": []
+            },
+            "error": "client_not_initialized"
+        }
+    
+    holdings = portfolio_data.get("holdings", [])
+    nifty_trend = market_trends.get("nifty_trend", "Neutral")
+    sentiment = market_trends.get("sentiment", "Mixed")
+    
+    holdings_summary = []
+    for h in holdings[:10]:
+        symbol = h.get('symbol', 'N/A')
+        sector = h.get('sector', 'N/A')
+        holdings_summary.append(f"- {symbol} ({sector})")
+    holdings_text = "\n".join(holdings_summary)
+    
+    prompt = f"""
+As an expert market analyst, provide 3-month predictive insights for this Indian stock portfolio.
 
-def generate_stock_analysis(symbol: str) -> Dict[str, Any]:
-    """Generates a detailed AI analysis for a single stock."""
-    return {
-        "analysis": f"Detailed analysis for {symbol} not implemented yet.",
-        "raw_analysis": "Placeholder"
-    }
+**Portfolio Holdings:**
+{holdings_text}
+
+**Market Conditions:**
+- Nifty 50 Trend: {nifty_trend}
+- Market Sentiment: {sentiment}
+
+**Output JSON Format:**
+```json
+{{
+    "predictive_insights": {{
+        "outlook_3m": "Concise 2-3 sentence forecast for next 3 months",
+        "risks": [
+            "Major risk 1",
+            "Major risk 2",
+            "Major risk 3"
+        ],
+        "opportunities": [
+            "Opportunity 1 in held sectors",
+            "Opportunity 2"
+        ],
+        "action_items": [
+            "Action to take this month",
+            "Action to take next month"
+        ]
+    }}
+}}
+```
+
+Generate ONLY the JSON object.
+"""
+    
+    try:
+        response = client.models.generate_content(
+            model='models/gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.8)
+        )
+        
+        # Handle different response formats
+        raw_text = None
+        try:
+            raw_text = response.text
+        except Exception:
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    raw_text = candidate.content.parts[0].text
+        
+        if not raw_text:
+            logger.error("❌ Predictive insights: Gemini returned empty response")
+            return {
+                "predictive_insights": {
+                    "outlook_3m": "Unable to generate forecast at this time.",
+                    "risks": ["Please try again"],
+                    "opportunities": [],
+                    "action_items": []
+                },
+                "error": "empty_response"
+            }
+        
+        json_str = extract_json_from_markdown(raw_text)
+        return json.loads(json_str)
+        
+    except Exception as e:
+        logger.error(f"❌ Predictive insights error: {e}")
+        return {
+            "predictive_insights": {
+                "outlook_3m": "Prediction unavailable due to system error.",
+                "risks": ["Unable to assess risks"],
+                "opportunities": [],
+                "action_items": []
+            },
+            "error": str(e)
+        }
+
+
+# ============================================================================
+# FUNCTION 3: Stock Analysis
+# ============================================================================
+
+async def generate_stock_analysis(
+    symbol: str,
+    stock_data: Dict[str, Any]
+) -> str:
+    """
+    Generate AI-powered analysis for a specific stock.
+    """
+    
+    if client is None:
+        return f"Analysis for {symbol} unavailable - AI system offline."
+    
+    name = stock_data.get('name', symbol)
+    sector = stock_data.get('sector', 'N/A')
+    price = stock_data.get('current_price', 0)
+    pe_ratio = stock_data.get('pe_ratio', 'N/A')
+    market_cap = stock_data.get('market_cap', 0)
+    change = stock_data.get('change_percent', 0)
+    
+    prompt = f"""
+Provide a brief 3-sentence investment analysis for this Indian stock:
+
+**Stock:** {symbol} - {name}
+**Sector:** {sector}
+**Price:** ₹{price:.2f} ({change:+.2f}%)
+**P/E Ratio:** {pe_ratio}
+**Market Cap:** ₹{market_cap/10000000:.2f} Cr
+
+Cover:
+1. Valuation perspective (cheap/fair/expensive)
+2. Key strength OR weakness
+3. Investment stance (Bullish/Neutral/Bearish)
+
+Keep it concise and actionable.
+"""
+    
+    try:
+        response = client.models.generate_content(
+            model='models/gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=200
+            )
+        )
+        
+        # Handle different response formats
+        raw_text = None
+        try:
+            raw_text = response.text
+        except Exception:
+            if response.candidates and len(response.candidates) > 0:
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    raw_text = candidate.content.parts[0].text
+        
+        if not raw_text:
+            return f"Analysis for {symbol} unavailable - empty response from AI."
+        
+        return raw_text.strip()
+        
+    except Exception as e:
+        logger.error(f"❌ Stock analysis error for {symbol}: {e}")
+        return f"Analysis for {symbol} temporarily unavailable."
