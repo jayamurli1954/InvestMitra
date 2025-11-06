@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
 const Watchlist = () => {
-  const [watchlistDetails, setWatchlistDetails] = useState([]);
+  const [stocks, setStocks] = useState([]);
+  const [mutualFunds, setMutualFunds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -58,8 +59,14 @@ const Watchlist = () => {
     try {
       setLoading(true);
       const response = await axios.get(`${API}/watchlist`);
-      // Backend already returns complete data with prices - just use it!
-      setWatchlistDetails(response.data);
+      const watchlistDetails = response.data;
+
+      const stocks = watchlistDetails.filter(item => !item.symbol.match(/^\d+$/));
+      const mutualFunds = watchlistDetails.filter(item => item.symbol.match(/^\d+$/));
+
+      setStocks(stocks);
+      setMutualFunds(mutualFunds);
+
     } catch (error) {
       console.error('Error fetching watchlist:', error);
       toast.error('Failed to load watchlist');
@@ -165,7 +172,7 @@ const Watchlist = () => {
             className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus className="w-5 h-5" />
-            Add Stock
+            Add to Watchlist
           </button>
         </div>
       </div>
@@ -239,62 +246,57 @@ const Watchlist = () => {
       </Dialog>
 
       {/* Watchlist Items */}
-      <div className="glass-card p-6">
-        {watchlistDetails.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-slate-400 mb-4">Your watchlist is empty</p>
-            <Button onClick={() => setDialogOpen(true)} className="bg-emerald-500 hover:bg-emerald-600">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Your First Item
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {watchlistDetails.map((item) => {
-              const isMutualFund = item.symbol && item.symbol.match(/^\d+$/);
-              return (
-                <div key={item.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-emerald-500 transition-colors">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-white mb-1">{item.symbol}</h3>
-                      <p className="text-sm text-slate-400 line-clamp-2">{item.name}</p>
-                      {isMutualFund && (
-                        <span className="inline-block mt-2 px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded">
-                          Mutual Fund
-                        </span>
-                      )}
-                      {item.sector && (
-                        <span className="inline-block mt-2 px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded">
-                          {item.sector}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => handleRemoveFromWatchlist(item.id)}
-                      className="text-rose-400 hover:text-rose-300 transition-colors"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
-
-                  <div className="space-y-2">
-                    <div>
-                      <p className="text-sm text-slate-400">{isMutualFund ? 'Current NAV' : 'Current Price'}</p>
-                      <p className="text-2xl font-bold text-white">
-                        ₹{(item.current_price || item.current_nav || 0).toLocaleString('en-IN', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2
-                        })}
-                      </p>
-                      {typeof item.change_percent === 'number' && (
-                        <div className={`flex items-center gap-1 text-sm ${item.change_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {item.change_percent >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                          <span>{item.change_percent >= 0 ? '+' : ''}{item.change_percent.toFixed(2)}%</span>
-                        </div>
-                      )}
+      {stocks.length === 0 && mutualFunds.length === 0 ? (
+        <div className="glass-card p-6 text-center py-12">
+          <p className="text-slate-400 mb-4">Your watchlist is empty</p>
+          <Button onClick={() => setDialogOpen(true)} className="bg-emerald-500 hover:bg-emerald-600">
+            <Plus className="w-4 h-4 mr-2" />
+            Add Your First Item
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {stocks.length > 0 && (
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-4">Stocks</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {stocks.map((item) => (
+                  <div key={item.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-emerald-500 transition-colors">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">{item.symbol}</h3>
+                        <p className="text-sm text-slate-400 line-clamp-2">{item.name}</p>
+                        {item.sector && (
+                          <span className="inline-block mt-2 px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded">
+                            {item.sector}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleRemoveFromWatchlist(item.id)}
+                        className="text-rose-400 hover:text-rose-300 transition-colors"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
                     </div>
 
-                    {!isMutualFund && (
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-sm text-slate-400">Current Price</p>
+                        <p className="text-2xl font-bold text-white">
+                          ₹{(item.current_price || 0).toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          })}
+                        </p>
+                        {typeof item.change_percent === 'number' && (
+                          <div className={`flex items-center gap-1 text-sm ${item.change_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {item.change_percent >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                            <span>{item.change_percent >= 0 ? '+' : ''}{item.change_percent.toFixed(2)}%</span>
+                          </div>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-700">
                         <div>
                           <p className="text-xs text-slate-400">High</p>
@@ -305,14 +307,59 @@ const Watchlist = () => {
                           <p className="text-sm font-medium text-white">₹{(item.low || 0).toFixed(2)}</p>
                         </div>
                       </div>
-                    )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {mutualFunds.length > 0 && (
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-4">Mutual Funds</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {mutualFunds.map((item) => (
+                  <div key={item.id} className="bg-slate-800 rounded-lg p-4 border border-slate-700 hover:border-emerald-500 transition-colors">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">{item.name}</h3>
+                        <p className="text-sm text-slate-400 line-clamp-2">{item.symbol}</p>
+                        <span className="inline-block mt-2 px-2 py-1 text-xs bg-purple-500/20 text-purple-400 rounded">
+                          Mutual Fund
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveFromWatchlist(item.id)}
+                        className="text-rose-400 hover:text-rose-300 transition-colors"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-sm text-slate-400">Current NAV</p>
+                        <p className="text-2xl font-bold text-white">
+                          ₹{(item.current_nav || 0).toLocaleString('en-IN', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                          })}
+                        </p>
+                        {typeof item.change_percent === 'number' && (
+                          <div className={`flex items-center gap-1 text-sm ${item.change_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {item.change_percent >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                            <span>{item.change_percent >= 0 ? '+' : ''}{item.change_percent.toFixed(2)}%</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 };

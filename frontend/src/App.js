@@ -20,6 +20,7 @@ import Backtesting from "@/pages/Backtesting";
 import AIInsights from "@/pages/AIInsights";
 import Auth from "@/pages/Auth";
 import ForgotPassword from "@/pages/ForgotPassword";
+import ProfileSettings from "@/pages/ProfileSettings";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -76,6 +77,7 @@ function AppRoutes() {
                   <Route path="/strategies" element={<Strategies />} />
                   <Route path="/analytics" element={<Analytics />} />
                   <Route path="/market" element={<MarketOverview />} />
+                  <Route path="/profile-settings" element={<ProfileSettings />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

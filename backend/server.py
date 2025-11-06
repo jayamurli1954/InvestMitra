@@ -26,6 +26,12 @@ from analytics import (
     calculate_portfolio_analytics, calculate_rebalancing_suggestions,
     generate_stock_recommendations
 )
+from watchlist_analytics import (
+    update_watchlist_analytics,
+    get_watchlist_analytics,
+    bulk_update_analytics
+)
+import asyncio
 from performance import generate_performance_summary
 from backtesting import backtest_strategy, calculate_strategy_score, generate_backtest_recommendations
 from ai_insights import generate_portfolio_optimization, generate_predictive_insights, generate_stock_analysis
@@ -82,6 +88,46 @@ async def shutdown_event():
 
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
+
+import time
+from functools import wraps
+
+class Cache:
+    def __init__(self, ttl: int = 60):
+        self.cache = {}
+        self.ttl = ttl
+
+    def get(self, key: str):
+        if key in self.cache:
+            data, timestamp = self.cache[key]
+            if (time.time() - timestamp) < self.ttl:
+                return data
+        return None
+
+    def set(self, key: str, value: any):
+        self.cache[key] = (value, time.time())
+
+cache_instance = Cache(ttl=60) # Cache for 60 seconds
+
+def cached(key_prefix: str):
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            current_user = kwargs.get('current_user')
+            user_id = current_user.id if current_user else 'public'
+            cache_key = f"{key_prefix}:{user_id}"
+            
+            cached_data = cache_instance.get(cache_key)
+            if cached_data is not None:
+                logger.info(f"Cache hit for {cache_key}")
+                return cached_data
+            
+            logger.info(f"Cache miss for {cache_key}, fetching data...")
+            result = await func(*args, **kwargs)
+            cache_instance.set(cache_key, result)
+            return result
+        return wrapper
+    return decorator
 
 # ==================== AUTH DEPENDENCY ====================
 
@@ -391,16 +437,21 @@ async def login_options():
 @api_router.post("/auth/login", response_model=Token)
 async def login(user_data: UserLogin, response: Response):
     """Login with email/password"""
+    logger.info(f"Login attempt for email: {user_data.email}")
     # Find user
     user_doc = await db.users.find_one({"email": user_data.email})
     if not user_doc:
+        logger.warning(f"Login failed: User not found for email: {user_data.email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     user_doc["id"] = user_doc.pop("_id")
     user = User(**user_doc)
     
     # Verify password
-    if not user.password_hash or not verify_password(user_data.password, user.password_hash):
+    password_verified = verify_password(user_data.password, user.password_hash)
+    logger.info(f"Password verification result for {user_data.email}: {password_verified}")
+    if not user.password_hash or not password_verified:
+        logger.warning(f"Login failed: Invalid password for email: {user_data.email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     # Create session
@@ -506,6 +557,37 @@ async def logout(response: Response, current_user: User = Depends(require_auth),
     
     response.delete_cookie(key="session_token", path="/")
     return {"message": "Logged out successfully"}
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    mobile: Optional[str] = None
+
+@api_router.put("/users/me", response_model=UserPublic)
+async def update_me(user_update: UserUpdate, current_user: User = Depends(require_auth)):
+    """Update current user's name and mobile"""
+    logger.info(f"Updating user: {current_user.id}")
+    update_data = user_update.model_dump(exclude_unset=True)
+    
+    if update_data:
+        await db.users.update_one({"_id": current_user.id}, {"$set": update_data})
+    
+    updated_user_doc = await db.users.find_one({"_id": current_user.id})
+    updated_user_doc["id"] = updated_user_doc.pop("_id")
+    
+    return UserPublic(**updated_user_doc)
+
+class PasswordChange(BaseModel):
+    password: str
+
+@api_router.post("/users/me/change-password")
+async def change_password(password_change: PasswordChange, current_user: User = Depends(require_auth)):
+    """Change current user's password"""
+    new_password_hash = get_password_hash(password_change.password)
+    await db.users.update_one(
+        {"_id": current_user.id},
+        {"$set": {"password_hash": new_password_hash}}
+    )
+    return {"message": "Password changed successfully"}
 
 # ---------- DYNAMIC / AUTO-POPULATING STOCK SEARCH ----------
 import asyncio
@@ -663,6 +745,7 @@ async def get_mutual_fund_detail(scheme_code: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/market/overview")
+@cached(key_prefix="market_overview")
 async def get_market_overview():
     """Get real-time market indices overview"""
     indices_data = get_market_indices()
@@ -703,6 +786,7 @@ async def screen_stocks(
 
 # Portfolio endpoints
 @api_router.get("/portfolio", response_model=List[PortfolioHolding])
+@cached(key_prefix="portfolio")
 async def get_portfolio(current_user: User = Depends(require_auth)):
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
@@ -758,6 +842,7 @@ async def delete_portfolio_holding(holding_id: str, current_user: User = Depends
     return {"message": "Holding deleted successfully"}
 
 @api_router.get("/portfolio/performance")
+@cached(key_prefix="portfolio_performance")
 async def get_portfolio_performance(current_user: User = Depends(require_auth)):
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
@@ -793,6 +878,7 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
 
 # Watchlist endpoints
 @api_router.get("/watchlist", response_model=List[WatchlistItem])
+@cached(key_prefix="watchlist")
 async def get_watchlist(current_user: User = Depends(require_auth)):
     items = await db.watchlist.find({"user_id": current_user.id}).to_list(1000)
     
@@ -815,20 +901,48 @@ async def get_watchlist(current_user: User = Depends(require_auth)):
                 item["current_nav"] = nav_data['current_nav']
                 item["current_price"] = nav_data['current_nav']
                 item["change_percent"] = 0
+                item["high"] = 0
+                item["low"] = 0
                 item["name"] = nav_data.get("scheme_name", item.get("name", "Unknown Fund"))
                 logger.info(f"✅ MF price set: {nav_data['current_nav']}")
         else:
             logger.info(f"📈 Fetching STOCK price for {symbol}")
-            # Get stock price
-            current_price = get_current_price(symbol)
-            logger.info(f"📊 Got stock price: {current_price} for {symbol}")
-            if current_price > 0:
-                item["current_price"] = current_price
-                logger.info(f"✅ Stock price set: {current_price}")
+            # Get stock info
+            stock_data = get_stock_info(symbol)
+            if stock_data:
+                item["current_price"] = stock_data.get("current_price", 0)
+                item["change_percent"] = stock_data.get("change_percent", 0)
+                item["high"] = stock_data.get("week_52_high", 0)
+                item["low"] = stock_data.get("week_52_low", 0)
+                logger.info(f"✅ Stock price set: {item['current_price']}")
             else:
                 logger.warning(f"❌ Stock price is 0 for {symbol}")
+
+    # === NEW: JOIN with analytics ===
+    analytics_collection = db['watchlist_analytics']
+    
+    for item in items:
+        symbol = item.get('symbol', '')
+        is_mutual_fund = symbol.isdigit()
+        
+        if not is_mutual_fund:
+            try:
+                analytics = await analytics_collection.find_one({
+                    'user_id': current_user.id,
+                    'symbol': symbol
+                })
+                
+                if analytics and analytics.get('fetch_status') == 'success':
+                    item['week_52_high'] = analytics.get('week_52_high')
+                    item['week_52_low'] = analytics.get('week_52_low')
+                    item['day_high'] = analytics.get('day_high')
+                    item['day_low'] = analytics.get('day_low')
+                    
+            except Exception as e:
+                logger.warning(f"Could not load analytics for {symbol}: {e}")
     
     return items
+
 @api_router.options("/watchlist")
 async def watchlist_options():
     return {}

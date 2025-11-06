@@ -19,6 +19,7 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), alias="_id")
     email: str
     name: str
+    mobile: Optional[str] = None
     password_hash: Optional[str] = None
     picture: Optional[str] = None
     auth_provider: str = "email"  # "email" or "google"
@@ -28,6 +29,7 @@ class UserPublic(BaseModel):
     id: str
     email: str
     name: str
+    mobile: Optional[str] = None
     picture: Optional[str] = None
     auth_provider: str
 
