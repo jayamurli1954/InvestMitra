@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket
+from websocket_manager import manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -1756,6 +1757,20 @@ async def get_ai_stock_analysis(
         raise HTTPException(status_code=500, detail=str(e))
 
 app.include_router(api_router)
+
+@app.websocket("/ws/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    await manager.connect(user_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # For now, we don't need to handle incoming messages
+            # We are just using the websocket to push data to the client
+            pass
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        manager.disconnect(user_id)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

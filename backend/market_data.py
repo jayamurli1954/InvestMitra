@@ -1,8 +1,9 @@
 import yfinance as yf
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional
-import logging
 import pandas as pd
+from datetime import datetime, timedelta
+import logging
+import asyncio
+from websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,9 @@ def get_stock_info(symbol: str) -> Optional[Dict]:
         prev_close = info.get('previousClose', current_price)
         change = current_price - prev_close
         change_percent = (change / prev_close) * 100 if prev_close else 0
+        
+        # Broadcast the updated price
+        asyncio.run(manager.broadcast({"symbol": symbol, "price": current_price}))
         
         # Get sector info
         sector_map = {
