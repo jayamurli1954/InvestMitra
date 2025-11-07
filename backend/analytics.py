@@ -4,6 +4,83 @@ Portfolio Analytics and Recommendations Engine
 import math
 from typing import Dict, List, Tuple
 from datetime import datetime, timezone, timedelta
+import numpy as np
+import pandas as pd
+from market_data import get_historical_data
+
+def _get_portfolio_historical_returns(holdings: List[Dict], days: int = 252) -> np.ndarray:
+    """Fetch historical data for all holdings and calculate weighted portfolio returns."""
+    portfolio_returns = []
+    
+    # Get total portfolio value
+    total_value = sum(h['quantity'] * h.get('current_price', h['purchase_price']) for h in holdings)
+    if total_value == 0:
+        return np.array([])
+
+    all_historical_data = {}
+    for holding in holdings:
+        symbol = holding.get('symbol') or holding.get('scheme_code')
+        if symbol:
+            all_historical_data[symbol] = get_historical_data(symbol, days)
+
+    # Find common dates
+    common_dates = None
+    for symbol, data in all_historical_data.items():
+        if data:
+            dates = {d['date'] for d in data}
+            if common_dates is None:
+                common_dates = dates
+            else:
+                common_dates.intersection_update(dates)
+    
+    if not common_dates:
+        return np.array([])
+
+    sorted_dates = sorted(list(common_dates))
+    
+    # Create a DataFrame for portfolio value
+    portfolio_values = pd.DataFrame(index=sorted_dates)
+    portfolio_values['total_value'] = 0
+
+    for holding in holdings:
+        symbol = holding.get('symbol') or holding.get('scheme_code')
+        if symbol and symbol in all_historical_data:
+            weight = (holding['quantity'] * holding.get('current_price', holding['purchase_price'])) / total_value
+            
+            hist_data = {d['date']: d['close'] for d in all_historical_data[symbol]}
+            
+            # Align data to common dates
+            aligned_prices = [hist_data.get(date, np.nan) for date in sorted_dates]
+            daily_returns = pd.Series(aligned_prices).ffill().pct_change().fillna(0)
+            
+            portfolio_values['total_value'] += (daily_returns * weight).values
+
+    return portfolio_values['total_value'].values
+
+def calculate_sharpe_ratio(returns: np.ndarray, risk_free_rate: float = 0.05) -> float:
+    """Calculate the annualized Sharpe Ratio."""
+    if len(returns) < 2:
+        return 0.0
+    
+    mean_return = np.mean(returns) * 252
+    volatility = np.std(returns) * np.sqrt(252)
+    
+    if volatility == 0:
+        return 0.0
+        
+    sharpe_ratio = (mean_return - risk_free_rate) / volatility
+    return sharpe_ratio
+
+def calculate_max_drawdown(returns: np.ndarray) -> float:
+    """Calculate the Maximum Drawdown."""
+    if len(returns) == 0:
+        return 0.0
+
+    cumulative_returns = (1 + returns).cumprod()
+    peak = np.maximum.accumulate(cumulative_returns)
+    drawdown = (cumulative_returns - peak) / peak
+    max_drawdown = np.min(drawdown)
+    return max_drawdown * 100
 
 def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Dict]) -> Dict:
     """Calculate comprehensive portfolio analytics"""
@@ -16,7 +93,10 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
             "risk_level": "Unknown",
             "top_performers": [],
             "bottom_performers": [],
-            "concentration_risk": "Low"
+            "concentration_risk": "Low",
+            "volatility": 0,
+            "sharpe_ratio": 0,
+            "max_drawdown": 0,
         }
     
     total_value = 0
@@ -25,7 +105,7 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
     
     # Calculate sector allocation and identify performers
     for holding in holdings:
-        symbol = holding["symbol"]
+        symbol = holding.get("symbol") or holding.get("scheme_code")
         quantity = holding["quantity"]
         purchase_price = holding["purchase_price"]
         current_price = holding.get("current_price", purchase_price)
@@ -65,7 +145,6 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
     bottom_performers = performers[-5:]
     
     # Calculate diversification score (0-100)
-    # Based on: number of holdings, sector distribution, concentration
     num_holdings = len(holdings)
     num_sectors = len(sector_allocation)
     
@@ -82,14 +161,20 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
         concentration_risk = "Medium"
     else:
         concentration_risk = "Low"
-    
-    # Risk level based on diversification and volatility
-    if diversification_score >= 80:
-        risk_level = "Low"
-    elif diversification_score >= 50:
+
+    # --- New Advanced Metrics ---
+    portfolio_returns = _get_portfolio_historical_returns(holdings)
+    volatility = np.std(portfolio_returns) * np.sqrt(252) * 100 # Annualized percentage
+    sharpe_ratio = calculate_sharpe_ratio(portfolio_returns)
+    max_drawdown = calculate_max_drawdown(portfolio_returns)
+
+    # Risk level based on volatility
+    if volatility > 25:
+        risk_level = "High"
+    elif volatility > 15:
         risk_level = "Medium"
     else:
-        risk_level = "High"
+        risk_level = "Low"
     
     return {
         "total_value": round(total_value, 2),
@@ -100,7 +185,10 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
         "bottom_performers": bottom_performers,
         "concentration_risk": concentration_risk,
         "num_holdings": num_holdings,
-        "num_sectors": num_sectors
+        "num_sectors": num_sectors,
+        "volatility": round(volatility, 2),
+        "sharpe_ratio": round(sharpe_ratio, 2),
+        "max_drawdown": round(max_drawdown, 2),
     }
 
 def calculate_rebalancing_suggestions(

@@ -8,6 +8,10 @@ from typing import List, Dict, Any
 import math
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 def calculate_cagr(beginning_value: float, ending_value: float, years: float) -> float:
     """Calculate Compound Annual Growth Rate"""
     if beginning_value <= 0 or years <= 0:
@@ -24,14 +28,14 @@ def calculate_annualized_return(transactions: List[Dict], current_value: float) 
     earliest_date = min(datetime.fromisoformat(t["transaction_date"]) for t in transactions)
     today = datetime.now()
     years = (today - earliest_date).days / 365.25
-    
-    if years < 0.01:  # Less than 4 days
-        return {"cagr": 0, "years": 0, "total_return": 0}
+    years = max(0.01, years)
     
     # Calculate total invested
     total_invested = sum(
         t["total_amount"] for t in transactions if t["transaction_type"] == "buy"
     )
+    logger.info(f"Transactions in calculate_annualized_return: {transactions}")
+    logger.info(f"Calculated total_invested in calculate_annualized_return: {total_invested}")
     
     total_return = ((current_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
     cagr = calculate_cagr(total_invested, current_value, years) if total_invested > 0 else 0

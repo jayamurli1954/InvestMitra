@@ -226,6 +226,29 @@ const AIInsights = () => {
               </div>
             )}
 
+            {/* Risk-Adjusted Performance */}
+            {optimization.optimization_suggestions.risk_adjusted_performance && (
+              <div>
+                <h3 className="text-lg font-semibold text-teal-400 mb-3 flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Risk-Adjusted Performance
+                </h3>
+                <div className="space-y-2">
+                  {Array.isArray(optimization.optimization_suggestions.risk_adjusted_performance) ? (
+                    optimization.optimization_suggestions.risk_adjusted_performance.map((item, idx) => (
+                      <div key={idx} className="p-3 bg-slate-800 rounded-lg">
+                        {renderContent(item)}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-3 bg-slate-800 rounded-lg">
+                      {renderContent(optimization.optimization_suggestions.risk_adjusted_performance)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Tactical Moves */}
             {optimization.optimization_suggestions.tactical_moves && (
               <div>

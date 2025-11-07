@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket
+import pandas as pd
 from websocket_manager import manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -14,13 +15,16 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import random
 import requests
+import io
+from fastapi.responses import StreamingResponse
+from decimal import Decimal, ROUND_HALF_UP
 from auth_utils import (
     User, UserPublic, UserSession, UserRegister, UserLogin, Token,
     verify_password, get_password_hash, create_access_token, decode_access_token
 )
 from market_data import (
     get_stock_info, get_historical_data, get_market_indices, 
-    get_all_stocks_basic, get_current_price, get_mutual_fund_nav
+    get_all_stocks_basic, get_batch_stock_info, get_mutual_fund_nav
 )
 from mutual_fund_data import search_mutual_funds, get_current_nav
 from analytics import (
@@ -251,6 +255,113 @@ class PortfolioHoldingCreate(BaseModel):
     purchase_date: str
     asset_type: str = "STOCK"
 
+class HoldingTransaction(BaseModel):
+    quantity: int
+    price: float
+    transaction_date: str
+    transaction_type: str # 'buy' or 'sell'
+
+from fastapi import UploadFile, File
+
+@api_router.post("/portfolio/upload")
+async def upload_portfolio(file: UploadFile = File(...), current_user: User = Depends(require_auth)):
+    """Upload a portfolio from a CSV file"""
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV.")
+
+    content = await file.read()
+    stream = io.StringIO(content.decode("utf-8"))
+    df = pd.read_csv(stream)
+
+    added_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    for _, row in df.iterrows():
+        try:
+            symbol = row.get('symbol')
+            scheme_code = row.get('scheme_code')
+            asset_symbol = symbol if pd.notna(symbol) else scheme_code
+
+            if pd.isna(asset_symbol):
+                failed_count += 1
+                continue
+
+            # Check if holding already exists
+            existing_holding = await db.portfolio.find_one({
+                "user_id": current_user.id,
+                "$or": [
+                    {"symbol": asset_symbol},
+                    {"scheme_code": asset_symbol}
+                ]
+            })
+
+            if existing_holding:
+                skipped_count += 1
+                continue
+
+            # Create new holding
+            holding_data = {
+                "id": str(uuid.uuid4()),
+                "user_id": current_user.id,
+                "symbol": symbol if pd.notna(symbol) else None,
+                "name": row.get('name') if pd.notna(row.get('name')) else asset_symbol,
+                "quantity": int(row.get('quantity')),
+                "purchase_price": float(row.get('purchase_price')),
+                "purchase_date": row.get('purchase_date'),
+                "asset_type": row.get('asset_type', 'STOCK'),
+                "scheme_code": scheme_code if pd.notna(scheme_code) else None,
+                "scheme_name": row.get('scheme_name') if pd.notna(row.get('scheme_name')) else None,
+            }
+            await db.portfolio.insert_one(holding_data)
+
+            # Create corresponding buy transaction
+            transaction_doc = {
+                "id": str(uuid.uuid4()),
+                "user_id": current_user.id,
+                "symbol": asset_symbol,
+                "name": holding_data['name'],
+                "transaction_type": "buy",
+                "quantity": holding_data['quantity'],
+                "price": holding_data['purchase_price'],
+                "total_amount": holding_data['quantity'] * holding_data['purchase_price'],
+                "transaction_date": holding_data['purchase_date'],
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.transactions.insert_one(transaction_doc)
+            added_count += 1
+
+        except Exception as e:
+            failed_count += 1
+            print(f"Failed to process row: {row}. Error: {e}")
+
+    return {
+        "message": "Portfolio upload processed.",
+        "added": added_count,
+        "skipped": skipped_count,
+        "failed": failed_count
+    }
+
+@api_router.get("/portfolio/download")
+async def download_portfolio(current_user: User = Depends(require_auth)):
+    """Download user's portfolio as a CSV file"""
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    if not holdings:
+        raise HTTPException(status_code=404, detail="No holdings to download")
+
+    df = pd.DataFrame(holdings)
+    # Select and reorder columns for the CSV
+    columns = ['symbol', 'name', 'quantity', 'purchase_price', 'purchase_date', 'asset_type', 'scheme_code', 'scheme_name']
+    df = df[[col for col in columns if col in df.columns]]
+
+    stream = io.StringIO()
+    df.to_csv(stream, index=False)
+    
+    response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=portfolio.csv"
+    return response
+
+
 # === PATCH START: REPLACE LINES 207-218 WITH THIS CODE ===
 class WatchlistItem(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -343,6 +454,10 @@ class PriceAlertCreate(BaseModel):
     name: str
     alert_type: str
     target_value: float
+
+class PriceAlertUpdate(BaseModel):
+    is_active: Optional[bool] = None
+
 
 class DividendRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -562,6 +677,11 @@ async def logout(response: Response, current_user: User = Depends(require_auth),
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     mobile: Optional[str] = None
+    country_code: Optional[str] = None
+    country: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    default_currency: Optional[str] = None
+
 
 @api_router.put("/users/me", response_model=UserPublic)
 async def update_me(user_update: UserUpdate, current_user: User = Depends(require_auth)):
@@ -786,29 +906,41 @@ async def screen_stocks(
     return results
 
 # Portfolio endpoints
+async def broadcast_stock_prices(stock_data: Dict[str, Dict]):
+    for symbol, data in stock_data.items():
+        await manager.broadcast({"type": "stock_price_update", "symbol": symbol, "price": data.get("current_price")})
+
 @api_router.get("/portfolio", response_model=List[PortfolioHolding])
 @cached(key_prefix="portfolio")
 async def get_portfolio(current_user: User = Depends(require_auth)):
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
+    stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
+    mf_scheme_codes = [h["scheme_code"] for h in holdings if h.get("asset_type") == "MUTUAL_FUND" and h.get("scheme_code")]
+
+    stock_data = {}
+    if stock_symbols:
+        stock_data = get_batch_stock_info(stock_symbols)
+        await broadcast_stock_prices(stock_data)
+
+    mf_data = {}
+    if mf_scheme_codes:
+        for code in mf_scheme_codes:
+            nav_data = get_mutual_fund_nav(code)
+            if nav_data:
+                mf_data[code] = nav_data
+
     # Update current prices with real-time data
     for holding in holdings:
-        # Check if it's a mutual fund or stock
         if holding.get("asset_type") == "MUTUAL_FUND":
-            # For mutual funds, use scheme_code to get NAV
             scheme_code = holding.get("scheme_code")
-            if scheme_code:
-                nav_data = get_mutual_fund_nav(scheme_code)
-                if nav_data and nav_data.get('current_nav'):
-                    holding["current_nav"] = nav_data['current_nav']
-                    holding["current_price"] = nav_data['current_nav']
+            if scheme_code in mf_data:
+                holding["current_nav"] = float(Decimal(str(mf_data[scheme_code]['current_nav'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+                holding["current_price"] = float(Decimal(str(mf_data[scheme_code]['current_nav'])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
         else:
-            # For stocks, use symbol to get price
             symbol = holding.get("symbol")
-            if symbol:
-                current_price = get_current_price(symbol)
-                if current_price > 0:
-                    holding["current_price"] = current_price
+            if symbol in stock_data:
+                holding["current_price"] = float(Decimal(str(stock_data[symbol]["current_price"])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
     
     # Sort alphabetically by symbol or scheme_code
     holdings = sorted(holdings, key=lambda x: x.get("symbol") or x.get("scheme_code") or "")
@@ -820,13 +952,87 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
     holding_obj = PortfolioHolding(**holding.model_dump(), user_id=current_user.id)
     
     # Get real-time current price
-    current_price = get_current_price(holding.symbol)
+    current_price = 0
+    if holding.asset_type == "STOCK":
+        stock_info = get_stock_info(holding.symbol)
+        if stock_info:
+            current_price = stock_info.get('current_price', 0)
+    elif holding.asset_type == "MUTUAL_FUND":
+        mf_info = get_mutual_fund_nav(holding.scheme_code)
+        if mf_info:
+            current_price = mf_info.get('current_nav', 0)
+
     if current_price > 0:
         holding_obj.current_price = current_price
     
     doc = holding_obj.model_dump()
     await db.portfolio.insert_one(doc)
+
+    # Also create a buy transaction
+    transaction_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "symbol": holding.symbol or holding.scheme_code,
+        "name": holding.name or holding.scheme_name,
+        "transaction_type": "buy",
+        "quantity": holding.quantity,
+        "price": holding.purchase_price,
+        "total_amount": holding.quantity * holding.purchase_price,
+        "transaction_date": holding.purchase_date,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    logger.info(f"Adding transaction with quantity: {holding.quantity}, price: {holding.purchase_price}, total_amount: {holding.quantity * holding.purchase_price}")
+    await db.transactions.insert_one(transaction_doc)
+
     return holding_obj
+
+@api_router.post("/portfolio/{holding_id}/transact")
+async def transact_holding(holding_id: str, transaction: HoldingTransaction, current_user: User = Depends(require_auth)):
+    holding = await db.portfolio.find_one({"id": holding_id, "user_id": current_user.id})
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+
+    # Create a transaction record
+    transaction_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "symbol": holding['symbol'] or holding['scheme_code'],
+        "name": holding['name'] or holding['scheme_name'],
+        "transaction_type": transaction.transaction_type,
+        "quantity": transaction.quantity,
+        "price": transaction.price,
+        "total_amount": transaction.quantity * transaction.price,
+        "transaction_date": transaction.transaction_date,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    logger.info(f"Adding transaction with quantity: {transaction.quantity}, price: {transaction.price}, total_amount: {transaction.quantity * transaction.price}")
+    await db.transactions.insert_one(transaction_doc)
+
+    if transaction.transaction_type == 'buy':
+        new_quantity = holding['quantity'] + transaction.quantity
+        new_total_cost = (holding['quantity'] * holding['purchase_price']) + (transaction.quantity * transaction.price)
+        new_avg_price = new_total_cost / new_quantity
+        
+        await db.portfolio.update_one(
+            {"id": holding_id, "user_id": current_user.id},
+            {"$set": {"quantity": new_quantity, "purchase_price": new_avg_price}}
+        )
+    elif transaction.transaction_type == 'sell':
+        new_quantity = holding['quantity'] - transaction.quantity
+        if new_quantity < 0:
+            raise HTTPException(status_code=400, detail="Cannot sell more than you own")
+        
+        if new_quantity == 0:
+            await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
+            return {"message": "Holding sold completely and removed from portfolio"}
+        else:
+            # Average price does not change on selling
+            await db.portfolio.update_one(
+                {"id": holding_id, "user_id": current_user.id},
+                {"$set": {"quantity": new_quantity}}
+            )
+    
+    return {"message": "Transaction recorded and portfolio updated"}
 
 @api_router.options("/portfolio")
 async def portfolio_options():
@@ -845,36 +1051,46 @@ async def delete_portfolio_holding(holding_id: str, current_user: User = Depends
 @api_router.get("/portfolio/performance")
 @cached(key_prefix="portfolio_performance")
 async def get_portfolio_performance(current_user: User = Depends(require_auth)):
-    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    holdings = await get_portfolio(current_user=current_user)
     
-    total_invested = 0.0
-    total_current = 0.0
+    total_invested = Decimal('0.00')
+    total_current = Decimal('0.00')
     
     for holding in holdings:
-        # Calculate invested amount (always included)
-        invested = float(holding["quantity"]) * float(holding["purchase_price"])
+        quantity = Decimal(str(holding["quantity"]))
+        purchase_price = Decimal(str(holding["purchase_price"]))
+        current_price_decimal = Decimal(str(holding.get("current_price", '0.00')))
+
+        invested = quantity * purchase_price
         total_invested += invested
+        logger.info(f"Holding {holding.get('symbol') or holding.get('scheme_code')}: invested_for_holding={invested}, running_total_invested={total_invested}")
         
-        # Get real-time current price
-        current_price = get_current_price(holding["symbol"])
-        if current_price > 0:
-            current = float(holding["quantity"]) * float(current_price)
+        if current_price_decimal > 0:
+            current = quantity * current_price_decimal
             total_current += current
+            logger.info(f"Holding {holding.get('symbol') or holding.get('scheme_code')}: current_price={current_price_decimal}, current_value_for_holding={current}, running_total_current={total_current}")
         else:
-            # If can't fetch current price, use stored current_price or purchase_price as fallback
-            fallback_price = holding.get("current_price", holding["purchase_price"])
-            current = float(holding["quantity"]) * float(fallback_price)
+            fallback_price = Decimal(str(holding.get("purchase_price")))
+            current = quantity * fallback_price
             total_current += current
-            logger.warning(f"Could not fetch current price for {holding['symbol']}, using fallback: {fallback_price}")
+            logger.warning(f"Could not find current price for {holding.get('symbol') or holding.get('scheme_code')}, using fallback: {fallback_price}, current_value_for_holding={current}, running_total_current={total_current}")
     
+    logger.info(f"Final total_current calculated: {total_current}")
     total_gain = total_current - total_invested
-    total_gain_percent = (total_gain / total_invested * 100) if total_invested > 0 else 0
+    
+    total_invested_rounded = total_invested.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    total_current_rounded = total_current.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    total_gain_rounded = total_gain.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    
+    total_gain_percent = Decimal('0.00')
+    if total_invested_rounded > 0:
+        total_gain_percent = (total_gain_rounded / total_invested_rounded * Decimal('100')).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     
     return {
-        "total_invested": round(total_invested, 2),
-        "total_current": round(total_current, 2),
-        "total_gain": round(total_gain, 2),
-        "total_gain_percent": round(total_gain_percent, 2)
+        "total_invested": float(total_invested_rounded),
+        "total_current": float(total_current_rounded),
+        "total_gain": float(total_gain_rounded),
+        "total_gain_percent": float(total_gain_percent)
     }
 
 # Watchlist endpoints
@@ -883,41 +1099,44 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
 async def get_watchlist(current_user: User = Depends(require_auth)):
     items = await db.watchlist.find({"user_id": current_user.id}).to_list(1000)
     
-    # Convert ObjectId to string and enrich with current prices
+    stock_symbols = [item["symbol"] for item in items if not item.get("symbol", "").isdigit()]
+    mf_scheme_codes = [item["symbol"] for item in items if item.get("symbol", "").isdigit()]
+
+    stock_data = {}
+    if stock_symbols:
+        stock_data = get_batch_stock_info(stock_symbols)
+        await broadcast_stock_prices(stock_data)
+
+    mf_data = {}
+    if mf_scheme_codes:
+        for code in mf_scheme_codes:
+            nav_data = get_mutual_fund_nav(code)
+            if nav_data:
+                mf_data[code] = nav_data
+
+    # Enrich items with current prices
     for item in items:
         if "_id" in item:
             item["_id"] = str(item["_id"])
         
-        # Auto-detect if mutual fund (all numbers) or stock
         symbol = item.get("symbol", "")
-        logger.info(f"🔍 Processing symbol: {symbol}")
         is_mutual_fund = symbol.isdigit()
-        logger.info(f"📊 is_mutual_fund={is_mutual_fund} for {symbol}")
         
         if is_mutual_fund:
-            logger.info(f"💰 Fetching MF NAV for {symbol}")
-            # Get mutual fund NAV
-            nav_data = get_mutual_fund_nav(symbol)
-            if nav_data and nav_data.get('current_nav'):
-                item["current_nav"] = nav_data['current_nav']
-                item["current_price"] = nav_data['current_nav']
+            if symbol in mf_data:
+                item["current_nav"] = mf_data[symbol]['current_nav']
+                item["current_price"] = mf_data[symbol]['current_nav']
                 item["change_percent"] = 0
                 item["high"] = 0
                 item["low"] = 0
-                item["name"] = nav_data.get("scheme_name", item.get("name", "Unknown Fund"))
-                logger.info(f"✅ MF price set: {nav_data['current_nav']}")
+                item["name"] = mf_data[symbol].get("scheme_name", item.get("name", "Unknown Fund"))
         else:
-            logger.info(f"📈 Fetching STOCK price for {symbol}")
-            # Get stock info
-            stock_data = get_stock_info(symbol)
-            if stock_data:
-                item["current_price"] = stock_data.get("current_price", 0)
-                item["change_percent"] = stock_data.get("change_percent", 0)
-                item["high"] = stock_data.get("week_52_high", 0)
-                item["low"] = stock_data.get("week_52_low", 0)
-                logger.info(f"✅ Stock price set: {item['current_price']}")
-            else:
-                logger.warning(f"❌ Stock price is 0 for {symbol}")
+            if symbol in stock_data:
+                data = stock_data[symbol]
+                item["current_price"] = data.get("current_price", 0)
+                item["change_percent"] = data.get("change_percent", 0)
+                item["high"] = data.get("week_52_high", 0)
+                item["low"] = data.get("week_52_low", 0)
 
     # === NEW: JOIN with analytics ===
     analytics_collection = db['watchlist_analytics']
@@ -993,18 +1212,23 @@ async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
     """Get comprehensive portfolio analytics"""
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
-    # Update current prices and get stock data
+    stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
+    if stock_symbols:
+        stock_data = get_batch_stock_info(stock_symbols)
+        await broadcast_stock_prices(stock_data)
+
+    # Update current prices in holdings
     for holding in holdings:
-        current_price = get_current_price(holding["symbol"])
-        if current_price > 0:
-            holding["current_price"] = current_price
-        
-        # Get full stock info
-        stock_info = get_stock_info(holding["symbol"])
-        if stock_info:
-            stock_data[holding["symbol"]] = stock_info
-    
+        if holding.get("asset_type") != "MUTUAL_FUND":
+            symbol = holding.get("symbol")
+            if symbol in stock_data:
+                holding["current_price"] = stock_data[symbol].get("current_price", 0)
+        else:
+            nav_data = get_mutual_fund_nav(holding.get("scheme_code"))
+            if nav_data:
+                holding["current_price"] = nav_data.get('current_nav', 0)
+
     analytics = calculate_portfolio_analytics(holdings, stock_data)
     return analytics
 
@@ -1016,17 +1240,23 @@ async def get_rebalancing_suggestions(
     """Get portfolio rebalancing suggestions"""
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
-    # Update current prices and get stock data
+    stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
+    if stock_symbols:
+        stock_data = get_batch_stock_info(stock_symbols)
+        await broadcast_stock_prices(stock_data)
+
+    # Update current prices in holdings
     for holding in holdings:
-        current_price = get_current_price(holding["symbol"])
-        if current_price > 0:
-            holding["current_price"] = current_price
-        
-        stock_info = get_stock_info(holding["symbol"])
-        if stock_info:
-            stock_data[holding["symbol"]] = stock_info
-    
+        if holding.get("asset_type") != "MUTUAL_FUND":
+            symbol = holding.get("symbol")
+            if symbol in stock_data:
+                holding["current_price"] = stock_data[symbol].get("current_price", 0)
+        else:
+            nav_data = get_mutual_fund_nav(holding.get("scheme_code"))
+            if nav_data:
+                holding["current_price"] = nav_data.get('current_nav', 0)
+
     suggestions = calculate_rebalancing_suggestions(holdings, target_allocation, stock_data)
     return {"suggestions": suggestions}
 
@@ -1235,8 +1465,15 @@ async def get_tax_report(
     
     for holding in portfolio:
         try:
-            current_data = await get_stock_info(holding["symbol"])
-            current_price = current_data.get("current_price", 0)
+            current_price = 0
+            if holding.get("asset_type") == "MUTUAL_FUND":
+                mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+                if mf_data:
+                    current_price = mf_data.get('current_nav', 0)
+            else:
+                stock_data = get_stock_info(holding.get("symbol"))
+                if stock_data:
+                    current_price = stock_data.get("current_price", 0)
             
             # Calculate average cost from transactions
             buy_transactions = [t for t in transactions 
@@ -1332,6 +1569,30 @@ async def delete_alert(
         raise HTTPException(status_code=404, detail="Alert not found")
     
     return {"message": "Alert deleted"}
+
+@api_router.put("/alerts/{alert_id}", response_model=PriceAlert)
+async def update_alert(
+    alert_id: str,
+    alert_update: PriceAlertUpdate,
+    current_user: User = Depends(require_auth)
+):
+    """Update a price alert, e.g., to toggle its active status"""
+    update_data = alert_update.model_dump(exclude_unset=True)
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No update data provided")
+
+    result = await db.price_alerts.update_one(
+        {"id": alert_id, "user_id": current_user.id},
+        {"$set": update_data}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    updated_alert = await db.price_alerts.find_one({"id": alert_id, "user_id": current_user.id})
+    
+    return PriceAlert(**updated_alert)
 
 @api_router.get("/alerts/check")
 async def check_alerts(
@@ -1465,6 +1726,7 @@ async def get_performance_report(
         transactions = await db.transactions.find({
             "user_id": current_user.id
         }).to_list(length=None)
+        logger.info(f"Found {len(transactions)} transactions for user {current_user.id} in get_performance_report")
         
         # Get portfolio
         holdings = await db.portfolio.find({
@@ -1643,6 +1905,9 @@ async def get_ai_portfolio_optimization(
     try:
         logger.info(f"AI optimization requested by user: {current_user.id}")
         
+        # Get user profile for risk assessment
+        user_profile = await db.users.find_one({"_id": current_user.id})
+
         # Get portfolio
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
         
@@ -1677,7 +1942,7 @@ async def get_ai_portfolio_optimization(
         }
         
         logger.info("Calling AI optimization function...")
-        insights = await generate_portfolio_optimization(portfolio_data, analytics_data)
+        insights = await generate_portfolio_optimization(portfolio_data, analytics_data, user_profile)
         
         logger.info("AI optimization successful")
         return insights
@@ -1713,18 +1978,12 @@ async def get_ai_predictive_insights(
             except Exception as e:
                 logger.error(f"Error fetching data for {holding['symbol']}: {e}")
         
-        # Get market trends (simplified)
-        market_trends = {
-            "nifty_trend": "Bullish",  # In production, fetch real data
-            "sentiment": "Positive"
-        }
-        
         # Generate AI insights
         portfolio_data = {
             "holdings": holdings_with_prices
         }
         
-        insights = await generate_predictive_insights(portfolio_data, market_trends)
+        insights = await generate_predictive_insights(portfolio_data)
         
         return insights
         

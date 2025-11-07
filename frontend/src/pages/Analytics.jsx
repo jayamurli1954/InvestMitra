@@ -110,52 +110,40 @@ const Analytics = () => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="glass-card p-6" data-testid="diversification-card">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-slate-400">Diversification Score</p>
+                <p className="text-sm text-slate-400">Diversification</p>
                 <PieChart className="w-5 h-5 text-purple-400" />
               </div>
               <p className="text-3xl font-bold text-white mb-1">{analytics.diversification_score}/100</p>
-              <p className="text-sm text-slate-400">{analytics.num_holdings} holdings, {analytics.num_sectors} sectors</p>
+              <p className="text-sm text-slate-400">{analytics.num_holdings} holdings in {analytics.num_sectors} sectors</p>
             </div>
 
             <div className="glass-card p-6" data-testid="risk-card">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-slate-400">Risk Level</p>
+                <p className="text-sm text-slate-400">Volatility (Risk)</p>
                 <Shield className="w-5 h-5 text-blue-400" />
               </div>
               <p className={`text-3xl font-bold mb-1 ${getRiskColor(analytics.risk_level)}`}>
                 {analytics.risk_level}
               </p>
-              <p className="text-sm text-slate-400">Concentration: {analytics.concentration_risk}</p>
+              <p className="text-sm text-slate-400">{analytics.volatility.toFixed(2)}% Ann. Volatility</p>
             </div>
 
-            <div className="glass-card p-6" data-testid="top-performer-card">
+            <div className="glass-card p-6" data-testid="sharpe-ratio-card">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-slate-400">Top Performer</p>
+                <p className="text-sm text-slate-400">Sharpe Ratio</p>
                 <TrendingUp className="w-5 h-5 text-emerald-400" />
               </div>
-              {analytics.top_performers[0] && (
-                <>
-                  <p className="text-2xl font-bold text-white mb-1">{analytics.top_performers[0].symbol}</p>
-                  <p className="text-emerald-400 font-medium">
-                    +{analytics.top_performers[0].gain_percent.toFixed(2)}%
-                  </p>
-                </>
-              )}
+              <p className="text-3xl font-bold text-white mb-1">{analytics.sharpe_ratio.toFixed(2)}</p>
+              <p className="text-sm text-slate-400">Risk-Adjusted Return</p>
             </div>
 
-            <div className="glass-card p-6" data-testid="bottom-performer-card">
+            <div className="glass-card p-6" data-testid="max-drawdown-card">
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-slate-400">Needs Attention</p>
+                <p className="text-sm text-slate-400">Max Drawdown</p>
                 <TrendingDown className="w-5 h-5 text-rose-400" />
               </div>
-              {analytics.bottom_performers[0] && (
-                <>
-                  <p className="text-2xl font-bold text-white mb-1">{analytics.bottom_performers[0].symbol}</p>
-                  <p className="text-rose-400 font-medium">
-                    {analytics.bottom_performers[0].gain_percent.toFixed(2)}%
-                  </p>
-                </>
-              )}
+              <p className="text-3xl font-bold text-white mb-1">{analytics.max_drawdown.toFixed(2)}%</p>
+              <p className="text-sm text-slate-400">Historical Max Loss</p>
             </div>
           </div>
 

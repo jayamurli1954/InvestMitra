@@ -8,7 +8,7 @@ Good idea. Here are the manual commands:
 Open Command Prompt or PowerShell and run:
 
 ```bash
-cd C:\Users\Dell\investment_framework\backend
+cd D:\investment_framework_build\backend
 conda activate investenv
 uvicorn server:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -23,7 +23,7 @@ Application startup complete.
 Open a new Command Prompt or PowerShell and run:
 
 ```bash
-cd C:\Users\Dell\investment_framework\frontend
+cd D:\investment_framework_build\frontend
 conda activate investenv
 npm start
 ```

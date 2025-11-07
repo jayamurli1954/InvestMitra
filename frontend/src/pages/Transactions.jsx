@@ -1,35 +1,87 @@
-import React, { useState } from 'react';
-import { ArrowUpRight, ArrowDownLeft, Trash2, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowUpRight, ArrowDownLeft, Trash2, Plus, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { toast } from '../hooks/use-toast';
+
+import { API } from '../App';
 
 export default function Transactions() {
-  const [transactions, setTransactions] = useState([
-    { id: 1, symbol: 'AAPL', type: 'buy', quantity: 10, price: 150.25, date: '2024-10-15', total: 1502.50 },
-    { id: 2, symbol: 'GOOGL', type: 'sell', quantity: 5, price: 140.80, date: '2024-10-14', total: 704.00 },
-    { id: 3, symbol: 'MSFT', type: 'buy', quantity: 15, price: 380.50, date: '2024-10-13', total: 5707.50 },
-  ]);
+  const [transactions, setTransactions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const { isAuthenticated } = useAuth();
 
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({
     symbol: '',
-    type: 'buy',
+    name: '',
+    transaction_type: 'buy',
     quantity: '',
     price: '',
+    transaction_date: new Date().toISOString().split('T')[0],
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
 
-  const handleAddTransaction = () => {
-    if (formData.symbol && formData.quantity && formData.price) {
-      const newTransaction = {
-        id: Math.max(...transactions.map(t => t.id), 0) + 1,
-        ...formData,
-        quantity: parseInt(formData.quantity),
-        price: parseFloat(formData.price),
-        date: new Date().toISOString().split('T')[0],
-        total: parseInt(formData.quantity) * parseFloat(formData.price),
-      };
-      setTransactions([...transactions, newTransaction]);
-      setFormData({ symbol: '', type: 'buy', quantity: '', price: '' });
+  const fetchTransactions = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API}/transactions`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch transactions');
+      const data = await response.json();
+      setTransactions(data);
+    } catch (err) {
+      setError(err.message);
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchTransactions();
+    }
+  }, [isAuthenticated]);
+
+  const handleAddTransaction = async () => {
+    if (!formData.symbol || !formData.quantity || !formData.price) {
+      toast({ title: 'Missing Fields', description: 'Please fill in all fields.', variant: 'destructive' });
+      return;
+    }
+
+    const newTransactionData = {
+      ...formData,
+      name: formData.symbol, // Assuming name is the same as symbol
+      quantity: parseInt(formData.quantity),
+      price: parseFloat(formData.price),
+    };
+
+    try {
+      const response = await fetch(`${API}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(newTransactionData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to create transaction');
+      }
+
+      const createdTransaction = await response.json();
+      setTransactions([createdTransaction, ...transactions]);
+      setFormData({ symbol: '', name: '', transaction_type: 'buy', quantity: '', price: '', transaction_date: new Date().toISOString().split('T')[0] });
       setShowForm(false);
+      toast({ title: 'Success', description: 'Transaction added successfully.' });
+    } catch (err) {
+      setError(err.message);
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
   };
 
@@ -37,18 +89,48 @@ export default function Transactions() {
     setShowDeleteConfirm(id);
   };
 
-  const handleConfirmDelete = (id) => {
-    setTransactions(transactions.filter(t => t.id !== id));
-    setShowDeleteConfirm(null);
+  const handleConfirmDelete = async (id) => {
+    try {
+      const response = await fetch(`${API}/transactions/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete transaction');
+      }
+
+      setTransactions(transactions.filter(t => t.id !== id));
+      setShowDeleteConfirm(null);
+      toast({ title: 'Success', description: 'Transaction deleted successfully.' });
+    } catch (err) {
+      setError(err.message);
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
   };
 
   const totalBought = transactions
-    .filter(t => t.type === 'buy')
-    .reduce((sum, t) => sum + t.total, 0);
+    .filter(t => t.transaction_type === 'buy')
+    .reduce((sum, t) => sum + t.total_amount, 0);
 
   const totalSold = transactions
-    .filter(t => t.type === 'sell')
-    .reduce((sum, t) => sum + t.total, 0);
+    .filter(t => t.transaction_type === 'sell')
+    .reduce((sum, t) => sum + t.total_amount, 0);
+
+  if (isLoading) {
+    return <div className="text-center">Loading transactions...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="text-center text-red-500">
+        <AlertCircle className="mx-auto h-12 w-12" />
+        <h3 className="mt-2 text-sm font-medium text-gray-900">Error</h3>
+        <p className="mt-1 text-sm text-gray-500">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -99,8 +181,8 @@ export default function Transactions() {
                   Type
                 </label>
                 <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  value={formData.transaction_type}
+                  onChange={(e) => setFormData({ ...formData, transaction_type: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                 >
                   <option value="buy">Buy</option>
@@ -165,51 +247,57 @@ export default function Transactions() {
             </tr>
           </thead>
           <tbody>
-            {transactions.map((tx) => (
-              <tr key={tx.id} className="border-b hover:bg-gray-50">
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">{tx.symbol}</td>
-                <td className="px-6 py-4 text-sm">
-                  <span className={`flex items-center gap-1 ${tx.type === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
-                    {tx.type === 'buy' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
-                    {tx.type === 'buy' ? 'BUY' : 'SELL'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600">{tx.quantity}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">₹{tx.price.toFixed(2)}</td>
-                <td className="px-6 py-4 text-sm font-medium text-gray-900">₹{tx.total.toFixed(2)}</td>
-                <td className="px-6 py-4 text-sm text-gray-600">{tx.date}</td>
-                <td className="px-6 py-4 text-sm">
-                  <button
-                    onClick={() => handleDeleteClick(tx.id)}
-                    className="p-1 text-red-600 hover:bg-red-50 rounded"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </td>
+            {transactions.length === 0 ? (
+              <tr>
+                <td colSpan="7" className="text-center py-12 text-gray-500">No transactions found.</td>
+              </tr>
+            ) : (
+              transactions.map((tx) => (
+                <tr key={tx.id} className="border-b hover:bg-gray-50">
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{tx.symbol}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <span className={`flex items-center gap-1 ${tx.transaction_type === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
+                      {tx.transaction_type === 'buy' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                      {tx.transaction_type === 'buy' ? 'BUY' : 'SELL'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{tx.quantity}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">₹{tx.price.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">₹{tx.total_amount.toFixed(2)}</td>
+                  <td className="px-6 py-4 text-sm text-gray-600">{tx.transaction_date}</td>
+                  <td className="px-6 py-4 text-sm">
+                    <button
+                      onClick={() => handleDeleteClick(tx.id)}
+                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
 
-                {showDeleteConfirm === tx.id && (
-                  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white p-6 rounded-lg shadow-lg">
-                      <p className="text-gray-900 font-medium mb-4">Delete this transaction?</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleConfirmDelete(tx.id)}
-                          className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
-                        >
-                          Delete
-                        </button>
-                        <button
-                          onClick={() => setShowDeleteConfirm(null)}
-                          className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
-                        >
-                          Cancel
-                        </button>
+                  {showDeleteConfirm === tx.id && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                      <div className="bg-white p-6 rounded-lg shadow-lg">
+                        <p className="text-gray-900 font-medium mb-4">Delete this transaction?</p>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleConfirmDelete(tx.id)}
+                            className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => setShowDeleteConfirm(null)}
+                            className="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
-              </tr>
-            ))}
+                  )}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

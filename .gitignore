@@ -3,6 +3,8 @@
 # IDE and editors
 .idea/
 .vscode/
+*.swp
+*.swo
 
 # Dependencies
 node_modules/
@@ -30,27 +32,49 @@ next-env.d.ts
 dist/
 dist
 
-# Environment files (comprehensive coverage)
-
+# Environment files
+*.env
+*.env.*
+*.env.local
 *token.json*
 *credentials.json*
 
 # Logs and debug files
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 dump.rdb
+*error*.log
+*error*.txt
+error_log_*.txt
+backend-error*.log
+backend_error*.txt
 
 # System files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 *.pem
 
 # Python
 __pycache__/
-*pyc*
+*.py[cod]
+*$py.class
+*.pyc
+*.so
+.Python
+env/
 venv/
 .venv/
+investenv/
+*.egg-info/
+*.spec
 
 # Development tools
 chainlit.md
@@ -63,6 +87,10 @@ chainlit.md
 
 # Data and databases
 agenthub/agents/youtube/db
+investment_framework/
+mongodb_backup/
+*.db
+*.sqlite
 
 # Archive files and large assets
 **/*.zip
@@ -75,42 +103,15 @@ agenthub/agents/youtube/db
 
 # Build caches
 .cache/
+frontend/node_modules/.cache/
+
+# Packaging notes
+packaging_*.txt
+packaging_exe_*.txt
 
 # Mobile development
-android-sdk/ frontend/node_modules/.cache/default-development/0.pack
-frontend/node_modules/.cache/default-development/0.pack
-frontend/node_modules/.cache/default-development/1.pack
-frontend/node_modules/.cache/default-development/2.pack
-frontend/node_modules/.cache/default-development/4.pack
-frontend/node_modules/.cache/default-development/6.pack
--e 
-# Environment files
-*.env
-*.env.*
-frontend/node_modules/.cache/default-development/3.pack
--e 
-# Environment files
-*.env
-*.env.*
-frontend/node_modules/.cache/default-development/5.pack
-frontend/node_modules/.cache/default-development/7.pack
-frontend/node_modules/.cache/default-development/9.pack
-frontend/node_modules/.cache/default-development/10.pack
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
-frontend/node_modules/.cache/default-development/8.pack
-frontend/node_modules/.cache/default-development/11.pack
--e 
-# Environment files
-*.env
-*.env.*
--e 
-# Environment files
-*.env
-*.env.*
+android-sdk/
+
+# Temporary files
+*.tmp
+*.temp

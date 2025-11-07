@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, Trash2, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, Trash2, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import TransactionDialog from '../components/TransactionDialog'; // Import the new component
+import { useAuth } from '../context/AuthContext';
 
 const Portfolio = () => {
+  const { isAuthenticated } = useAuth();
   const [holdings, setHoldings] = useState([]);
   const [performance, setPerformance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
@@ -23,17 +27,24 @@ const Portfolio = () => {
     purchase_date: new Date().toISOString().split('T')[0]
   });
 
-  useEffect(() => {
-    fetchPortfolio();
-  }, []);
+  // State for the transaction dialog
+  const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
+  const [selectedHoldingForTx, setSelectedHoldingForTx] = useState(null);
+  const [transactionType, setTransactionType] = useState('buy');
 
   useEffect(() => {
-    if (searchQuery.length >= 2) {
+    if (isAuthenticated) {
+      fetchPortfolio();
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (isAuthenticated && searchQuery.length >= 2) {
       handleAssetSearch(searchQuery);
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery, assetType]);
+  }, [searchQuery, assetType, isAuthenticated]);
 
   const fetchPortfolio = async () => {
     try {
@@ -106,14 +117,49 @@ const Portfolio = () => {
     }
   };
 
-  const handleDeleteHolding = async (id) => {
+  const openTransactionDialog = (holding, type) => {
+    setSelectedHoldingForTx(holding);
+    setTransactionType(type);
+    setTransactionDialogOpen(true);
+  };
+
+  const handleDownload = async () => {
     try {
-      await axios.delete(`${API}/portfolio/${id}`);
-      toast.success('Holding removed');
+      const response = await axios.get(`${API}/portfolio/download`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'portfolio.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      console.error('Error downloading portfolio:', error);
+      toast.error('Failed to download portfolio');
+    }
+  };
+
+  const handleUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post(`${API}/portfolio/upload`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      toast.success(response.data.message);
+      setUploadDialogOpen(false);
       fetchPortfolio();
     } catch (error) {
-      console.error('Error deleting holding:', error);
-      toast.error('Failed to remove holding');
+      console.error('Error uploading portfolio:', error);
+      toast.error(error.response?.data?.detail || 'Failed to upload portfolio');
     }
   };
 
@@ -143,119 +189,148 @@ const Portfolio = () => {
           <h1 className="text-4xl font-bold text-white mb-2">Portfolio</h1>
           <p className="text-slate-400">Manage your investment holdings</p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-500 hover:bg-emerald-600 text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Holding
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-slate-900 border-slate-700 max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-white">Add New Holding</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-slate-300">Asset Type</Label>
-                <select
-                  value={assetType}
-                  onChange={(e) => {
-                    setAssetType(e.target.value);
-                    setSearchQuery('');
-                    setSearchResults([]);
-                    setSelectedStock(null);
-                  }}
-                  className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
-                >
-                  <option value="STOCK">Stock</option>
-                  <option value="MUTUAL_FUND">Mutual Fund</option>
-                </select>
+        <div className="flex gap-2">
+          <Button onClick={handleDownload} className="bg-blue-600 hover:bg-blue-700 text-white">
+            <Download className="w-4 h-4 mr-2" />
+            Download
+          </Button>
+          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-gray-600 hover:bg-gray-700 text-white">
+                <Upload className="w-4 h-4 mr-2" />
+                Upload
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-slate-900 border-slate-700">
+              <DialogHeader>
+                <DialogTitle className="text-white">Upload Portfolio</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p className="text-slate-400">Upload a CSV file with your portfolio holdings. The file can have any name, but must have a .csv extension.</p>
+                <p className="text-slate-400">The file should have the following columns: symbol, name, quantity, purchase_price, purchase_date, asset_type, scheme_code, scheme_name.</p>
+                <ul className="text-slate-400 list-disc list-inside">
+                  <li>For stocks, `symbol` is required.</li>
+                  <li>For mutual funds, `scheme_code` is required.</li>
+                  <li>The `asset_type` column must contain either "STOCK" or "MUTUAL_FUND".</li>
+                </ul>
+                <Input type="file" accept=".csv" onChange={handleUpload} className="bg-slate-800 border-slate-700 text-white" />
               </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Holding
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="bg-slate-900 border-slate-700 max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-white">Add New Holding</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-slate-300">Asset Type</Label>
+                  <select
+                    value={assetType}
+                    onChange={(e) => {
+                      setAssetType(e.target.value);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                      setSelectedStock(null);
+                    }}
+                    className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+                  >
+                    <option value="STOCK">Stock</option>
+                    <option value="MUTUAL_FUND">Mutual Fund</option>
+                  </select>
+                </div>
 
-              <div>
-                <Label className="text-slate-300">
-                  {assetType === "STOCK" ? "Search Stock" : "Search Mutual Fund"}
-                </Label>
-                <Input
-                  placeholder={assetType === "STOCK" ? "Search by symbol..." : "Search by fund name..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-slate-800 border-slate-700 text-white"
-                />
-                {searchResults.length > 0 && (
-                  <div className="mt-2 max-h-48 overflow-y-auto bg-slate-800 rounded-lg border border-slate-700">
-                    {searchResults.map((result, idx) => (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          setSelectedStock(result);
-                          setSearchQuery(assetType === "STOCK" ? result.symbol : result.scheme_name);
-                          setSearchResults([]);
-                        }}
-                        className="p-3 hover:bg-slate-700 cursor-pointer border-b border-slate-700"
-                      >
-                        {assetType === "STOCK" ? (
-                          <>
-                            <p className="font-medium text-white">{result.symbol}</p>
-                            <p className="text-sm text-slate-400">{result.name}</p>
-                          </>
-                        ) : (
-                          <>
-                            <p className="font-medium text-white">{result.scheme_name}</p>
-                            <p className="text-sm text-slate-400">NAV: ₹{result.current_nav.toFixed(2)}</p>
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                <div>
+                  <Label className="text-slate-300">
+                    {assetType === "STOCK" ? "Search Stock" : "Search Mutual Fund"}
+                  </Label>
+                  <Input
+                    placeholder={assetType === "STOCK" ? "Search by symbol..." : "Search by fund name..."}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-slate-800 border-slate-700 text-white"
+                  />
+                  {searchResults.length > 0 && (
+                    <div className="mt-2 max-h-48 overflow-y-auto bg-slate-800 rounded-lg border border-slate-700">
+                      {searchResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setSelectedStock(result);
+                            setSearchQuery(assetType === "STOCK" ? result.symbol : result.scheme_name);
+                            setSearchResults([]);
+                          }}
+                          className="p-3 hover:bg-slate-700 cursor-pointer border-b border-slate-700"
+                        >
+                          {assetType === "STOCK" ? (
+                            <>
+                              <p className="font-medium text-white">{result.symbol}</p>
+                              <p className="text-sm text-slate-400">{result.name}</p>
+                            </>
+                          ) : (
+                            <>
+                              <p className="font-medium text-white">{result.scheme_name}</p>
+                              <p className="text-sm text-slate-400">NAV: ₹{result.current_nav.toFixed(2)}</p>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {selectedStock && (
+                  <>
+                    <div>
+                      <Label className="text-slate-300">Quantity</Label>
+                      <Input
+                        type="number"
+                        placeholder={assetType === "STOCK" ? "Number of shares" : "Number of units"}
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                        className="bg-slate-800 border-slate-700 text-white"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">
+                        {assetType === "STOCK" ? "Purchase Price" : "Purchase NAV"}
+                      </Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder={assetType === "STOCK" ? "Price per share" : "NAV at purchase"}
+                        value={formData.purchase_price}
+                        onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
+                        className="bg-slate-800 border-slate-700 text-white"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Purchase Date</Label>
+                      <Input
+                        type="date"
+                        value={formData.purchase_date}
+                        onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
+                        className="bg-slate-800 border-slate-700 text-white"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleAddHolding}
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
+                    >
+                      Add to Portfolio
+                    </Button>
+                  </>
                 )}
               </div>
-
-              {selectedStock && (
-                <>
-                  <div>
-                    <Label className="text-slate-300">Quantity</Label>
-                    <Input
-                      type="number"
-                      placeholder={assetType === "STOCK" ? "Number of shares" : "Number of units"}
-                      value={formData.quantity}
-                      onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-slate-300">
-                      {assetType === "STOCK" ? "Purchase Price" : "Purchase NAV"}
-                    </Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder={assetType === "STOCK" ? "Price per share" : "NAV at purchase"}
-                      value={formData.purchase_price}
-                      onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-slate-300">Purchase Date</Label>
-                    <Input
-                      type="date"
-                      value={formData.purchase_date}
-                      onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
-                      className="bg-slate-800 border-slate-700 text-white"
-                    />
-                  </div>
-                  <Button
-                    onClick={handleAddHolding}
-                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
-                  >
-                    Add to Portfolio
-                  </Button>
-                </>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {performance && (
@@ -437,13 +512,14 @@ const Portfolio = () => {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleDeleteHolding(holding.id)}
-                          className="w-full p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors text-sm"
-                        >
-                          <Trash2 className="w-4 h-4 inline mr-2" />
-                          Delete
-                        </button>
+                        <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                            <ArrowUp className="w-4 h-4 mr-2" /> Buy
+                          </Button>
+                          <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                            <ArrowDown className="w-4 h-4 mr-2" /> Sell
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}
@@ -504,13 +580,14 @@ const Portfolio = () => {
                           </div>
                         </div>
 
-                        <button
-                          onClick={() => handleDeleteHolding(holding.id)}
-                          className="w-full p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors text-sm"
-                        >
-                          <Trash2 className="w-4 h-4 inline mr-2" />
-                          Delete
-                        </button>
+                        <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                            <ArrowUp className="w-4 h-4 mr-2" /> Buy
+                          </Button>
+                          <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                            <ArrowDown className="w-4 h-4 mr-2" /> Sell
+                          </Button>
+                        </div>
                       </div>
                     );
                   })}
@@ -520,6 +597,18 @@ const Portfolio = () => {
           </div>
         )}
       </div>
+
+      {selectedHoldingForTx && (
+        <TransactionDialog
+          holding={selectedHoldingForTx}
+          transactionType={transactionType}
+          open={transactionDialogOpen}
+          onOpenChange={setTransactionDialogOpen}
+          onSuccess={() => {
+            fetchPortfolio(); // Refresh portfolio data on successful transaction
+          }}
+        />
+      )}
     </div>
   );
 };

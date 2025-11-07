@@ -160,7 +160,8 @@ def format_performers(performers: List[Dict]) -> str:
 
 async def generate_portfolio_optimization(
     portfolio_data: Dict[str, Any],
-    analytics_data: Dict[str, Any]
+    analytics_data: Dict[str, Any],
+    user_profile: Dict[str, Any] # Added user_profile
 ) -> Dict[str, Any]:
     """
     Generate AI-powered portfolio optimization suggestions using Google Gemini.
@@ -169,9 +170,6 @@ async def generate_portfolio_optimization(
     if client is None:
         error_msg = "AI insights unavailable - Gemini client not initialized."
         logger.error(f"❌ {error_msg}")
-        logger.error(f"   API Key present: {bool(GEMINI_API_KEY)}")
-        if GEMINI_API_KEY:
-            logger.error(f"   API Key format: starts with '{GEMINI_API_KEY[:10]}'")
         return {
             "optimization_suggestions": {
                 "rebalancing": [error_msg],
@@ -186,25 +184,31 @@ async def generate_portfolio_optimization(
     # Extract data
     holdings = portfolio_data.get("holdings", [])
     sector_allocation = analytics_data.get("sector_allocation", {})
-    top_performers = analytics_data.get("top_performers", [])
-    bottom_performers = analytics_data.get("bottom_performers", [])
-    
+    risk_profile = user_profile.get('risk_profile', 'Moderate')
+    volatility = analytics_data.get('volatility', 0)
+    sharpe_ratio = analytics_data.get('sharpe_ratio', 0)
+    max_drawdown = analytics_data.get('max_drawdown', 0)
+
     # Format data for AI
     holdings_table = format_holdings(holdings)
     sector_table = format_sector_allocation(sector_allocation)
-    top_perf_text = format_performers(top_performers)
-    bottom_perf_text = format_performers(bottom_performers)
     
-    # Build prompts - SIMPLIFIED to avoid safety filters
     system_prompt = (
         "You are a portfolio analysis assistant providing educational information. "
-        "Analyze the given Indian stock portfolio and provide general observations "
-        "in JSON format. This is for educational purposes only, not financial advice. "
+        "Analyze the given Indian stock portfolio based on the user's risk profile and advanced metrics. "
+        "Provide general observations in JSON format. This is for educational purposes only, not financial advice. "
         "Respond ONLY with a valid JSON object, no other text."
     )
     
     user_prompt = f"""
 Analyze this Indian stock portfolio and provide educational observations.
+
+**User Risk Profile:** {risk_profile}
+
+**Advanced Metrics:**
+- Annualized Volatility: {volatility:.2f}%
+- Sharpe Ratio: {sharpe_ratio:.2f}
+- Max Drawdown: {max_drawdown:.2f}%
 
 **Holdings Summary:**
 {len(holdings)} stocks across {len(sector_allocation)} sectors
@@ -213,34 +217,33 @@ Analyze this Indian stock portfolio and provide educational observations.
 {sector_table}
 
 **Task:**
-Provide general observations about this portfolio structure in JSON format.
+Provide general observations about this portfolio structure in JSON format, keeping the user's risk profile in mind.
 
 **IMPORTANT:** 
 - This is for educational purposes only
 - Provide general portfolio structure observations
 - Do NOT provide specific buy/sell recommendations
-- Focus on portfolio balance and diversification observations
+- Tailor observations to the user's risk profile ({risk_profile})
 
 **Output Format (JSON ONLY):**
 ```json
 {{
     "optimization_suggestions": {{
         "rebalancing": [
-            "General observation about portfolio balance",
-            "Observation about sector weights",
-            "Observation about concentration"
+            "General observation about portfolio balance based on risk profile.",
+            "Observation about sector weights."
         ],
         "diversification": [
-            "Observation about sector coverage",
-            "Observation about diversification level"
+            "Observation about sector coverage.",
+            "Observation about diversification level."
         ],
         "risk_management": [
-            "General risk observation",
-            "Portfolio structure observation"
+            "Observation on volatility and max drawdown relative to risk profile.",
+            "Comment on concentration risk."
         ],
-        "tactical_moves": [
-            "General market condition observation",
-            "Portfolio positioning observation"
+        "risk_adjusted_performance": [
+            "Observation on the Sharpe Ratio.",
+            "Comment on whether the returns justify the risk taken."
         ]
     }}
 }}
@@ -367,9 +370,10 @@ Respond with ONLY the JSON object, nothing else.
 # FUNCTION 2: Predictive Insights
 # ============================================================================
 
+from market_data import get_historical_data
+
 async def generate_predictive_insights(
-    portfolio_data: Dict[str, Any],
-    market_trends: Dict[str, Any]
+    portfolio_data: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     Generate AI-powered predictive insights for portfolio.
@@ -387,9 +391,22 @@ async def generate_predictive_insights(
             "error": "client_not_initialized"
         }
     
+    # Dynamically determine market trends
+    nifty_hist = get_historical_data('^NSEI', days=90)
+    nifty_trend = "Neutral"
+    sentiment = "Mixed"
+    if len(nifty_hist) > 1:
+        start_price = nifty_hist[0]['close']
+        end_price = nifty_hist[-1]['close']
+        change_pct = ((end_price - start_price) / start_price) * 100
+        if change_pct > 5:
+            nifty_trend = "Bullish"
+            sentiment = "Positive"
+        elif change_pct < -5:
+            nifty_trend = "Bearish"
+            sentiment = "Negative"
+
     holdings = portfolio_data.get("holdings", [])
-    nifty_trend = market_trends.get("nifty_trend", "Neutral")
-    sentiment = market_trends.get("sentiment", "Mixed")
     
     holdings_summary = []
     for h in holdings[:10]:
@@ -405,7 +422,7 @@ As an expert market analyst, provide 3-month predictive insights for this Indian
 {holdings_text}
 
 **Market Conditions:**
-- Nifty 50 Trend: {nifty_trend}
+- Nifty 50 Trend (3-Month): {nifty_trend}
 - Market Sentiment: {sentiment}
 
 **Output JSON Format:**

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Dashboard from "@/pages/Dashboard";
@@ -51,7 +51,7 @@ const ProtectedRoute = ({ children }) => {
 
 function AppRoutes() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -85,7 +85,7 @@ function AppRoutes() {
         />
       </Routes>
       <Toaster position="top-right" />
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
 import { useAuth } from '@/context/AuthContext';
@@ -11,13 +11,35 @@ const ProfileSettings = () => {
   const { user, setUser } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [mobile, setMobile] = useState(user?.mobile || '');
+  const [countryCode, setCountryCode] = useState(user?.country_code || '');
+  const [country, setCountry] = useState(user?.country || '');
+  const [dateOfBirth, setDateOfBirth] = useState(user?.date_of_birth || '');
+  const [defaultCurrency, setDefaultCurrency] = useState(user?.default_currency || '');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setMobile(user.mobile || '');
+      setCountryCode(user.country_code || '');
+      setCountry(user.country || '');
+      setDateOfBirth(user.date_of_birth || '');
+      setDefaultCurrency(user.default_currency || '');
+    }
+  }, [user]);
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.put(`${API}/users/me`, { name, mobile });
+      const response = await axios.put(`${API}/users/me`, { 
+        name, 
+        mobile, 
+        country_code: countryCode, 
+        country, 
+        date_of_birth: dateOfBirth, 
+        default_currency: defaultCurrency 
+      });
       setUser(response.data);
       toast.success('Profile updated successfully');
     } catch (error) {
@@ -72,12 +94,53 @@ const ProfileSettings = () => {
                 className="bg-slate-800 border-slate-600 text-white"
               />
             </div>
+            <div className="flex gap-2">
+              <div className="w-1/4">
+                <Label className="text-slate-300">Country Code</Label>
+                <Input
+                  type="text"
+                  value={countryCode}
+                  onChange={(e) => setCountryCode(e.target.value)}
+                  placeholder="+91"
+                  className="bg-slate-800 border-slate-600 text-white"
+                />
+              </div>
+              <div className="w-3/4">
+                <Label className="text-slate-300">Mobile Number</Label>
+                <Input
+                  type="text"
+                  value={mobile}
+                  onChange={(e) => setMobile(e.target.value)}
+                  className="bg-slate-800 border-slate-600 text-white"
+                />
+              </div>
+            </div>
             <div>
-              <Label className="text-slate-300">Mobile Number</Label>
+              <Label className="text-slate-300">Country</Label>
               <Input
                 type="text"
-                value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                placeholder="India"
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-slate-300">Date of Birth</Label>
+              <Input
+                type="date"
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+                className="bg-slate-800 border-slate-600 text-white"
+              />
+            </div>
+            <div>
+              <Label className="text-slate-300">Default Currency</Label>
+              <Input
+                type="text"
+                value={defaultCurrency}
+                onChange={(e) => setDefaultCurrency(e.target.value)}
+                placeholder="INR"
                 className="bg-slate-800 border-slate-600 text-white"
               />
             </div>

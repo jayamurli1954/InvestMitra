@@ -20,6 +20,10 @@ class User(BaseModel):
     email: str
     name: str
     mobile: Optional[str] = None
+    country_code: Optional[str] = None
+    country: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    default_currency: Optional[str] = None
     password_hash: Optional[str] = None
     picture: Optional[str] = None
     auth_provider: str = "email"  # "email" or "google"
@@ -30,6 +34,10 @@ class UserPublic(BaseModel):
     email: str
     name: str
     mobile: Optional[str] = None
+    country_code: Optional[str] = None
+    country: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    default_currency: Optional[str] = None
     picture: Optional[str] = None
     auth_provider: str
 
