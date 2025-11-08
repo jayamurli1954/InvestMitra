@@ -1,8 +1,0 @@
-RUN Command to kill 3000  or 8000
-
-Run
-
-powershell -ExecutionPolicy Bypass -File .\reset-ports.ps1
-
-This will automatically detect and kill anything running on 3000 or 8000 before you start your backend or frontend again.
-

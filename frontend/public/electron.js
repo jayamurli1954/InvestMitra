@@ -14,8 +14,25 @@ function createWindow() {
     },
   });
 
-  // Load the built React app
-  win.loadURL(`file://${path.join(__dirname, 'index.html')}`);
+  win.webContents.openDevTools(); // Open DevTools for debugging
+
+  // Load the appropriate URL based on the environment
+  const startUrl = process.env.NODE_ENV === 'development'
+    ? 'http://localhost:3000'
+    : `file://${path.join(__dirname, 'index.html')}`;
+  console.log(`Electron loading URL: ${startUrl}`);
+
+  const loadApp = () => {
+    win.loadURL(startUrl).catch(err => {
+      console.error(`Failed to load URL: ${startUrl}`, err);
+      if (process.env.NODE_ENV === 'development' && err.code === 'ERR_CONNECTION_REFUSED') {
+        console.log('Retrying to connect to React dev server...');
+        setTimeout(loadApp, 1000); // Retry after 1 second
+      }
+    });
+  };
+
+  loadApp();
 }
 
 function startBackend() {
@@ -38,7 +55,6 @@ function startBackend() {
 }
 
 app.whenReady().then(() => {
-  startBackend();
   createWindow();
 
   app.on('activate', () => {
@@ -51,11 +67,5 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
-  }
-});
-
-app.on('before-quit', () => {
-  if (backendProcess) {
-    backendProcess.kill();
   }
 });

@@ -3,6 +3,9 @@ import { Bell, Trash2, Plus, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from '../hooks/use-toast';
 
+const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
+const API_URL = `${BACKEND_URL}/api`;
+
 // Helper to parse condition string
 const parseCondition = (conditionStr) => {
   if (typeof conditionStr !== 'string') return { alert_type: 'unknown', target_value: 0 };
@@ -23,8 +26,6 @@ const formatCondition = (alert) => {
   return alert.condition || 'Custom Alert'; // Fallback
 };
 
-import { API } from '../App';
-
 export default function Alerts() {
   const [alerts, setAlerts] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -44,7 +45,7 @@ export default function Alerts() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API}/alerts`, {
+      const response = await fetch(`${API_URL}/alerts`, {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to fetch alerts');
@@ -80,7 +81,7 @@ export default function Alerts() {
     };
 
     try {
-      const response = await fetch(`${API}/alerts`, {
+      const response = await fetch(`${API_URL}/alerts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -111,7 +112,7 @@ export default function Alerts() {
 
   const handleConfirmDelete = async (id) => {
     try {
-      const response = await fetch(`${API}/alerts/${id}`, {
+      const response = await fetch(`${API_URL}/alerts/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });

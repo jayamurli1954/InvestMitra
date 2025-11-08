@@ -115,3 +115,11 @@ android-sdk/
 # Temporary files
 *.tmp
 *.temp
+
+# Screenshots
+*.png
+*.jpg
+*.jpeg
+
+# PDF files
+*.pdf

@@ -161,7 +161,13 @@ const Auth = () => {
 ⏸️ Pause here - Add this link button and tell me "Done"RetryClaude can make mistakes. Please double-check responses.
 
 
-           <Button
+            <div className="mt-4 text-center text-xs text-slate-500">
+              <p>
+                <b>Disclaimer:</b> This application is for informational and educational purposes only. The content provided is not financial advice. You should always consult with a qualified financial professional before making any investment decisions.
+              </p>
+            </div>
+
+            <Button
               type="submit"
               disabled={loading}
               className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2"

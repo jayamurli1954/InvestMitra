@@ -11,7 +11,16 @@ import TransactionDialog from '../components/TransactionDialog'; // Import the n
 import { useAuth } from '../context/AuthContext';
 
 const Portfolio = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+
+  const formatCurrency = (value, currency, locale) => {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
   const [holdings, setHoldings] = useState([]);
   const [performance, setPerformance] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -353,16 +362,16 @@ const Portfolio = () => {
               <>
                 <div>
                   <p className="text-sm text-slate-400 mb-1">Invested</p>
-                  <p className="text-2xl font-bold text-white">₹{totalInvested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-400 mb-1">Current Value</p>
-                  <p className="text-2xl font-bold text-white">₹{totalCurrent.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-400 mb-1">Gain/Loss</p>
                   <p className={`text-2xl font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {gain >= 0 ? '+' : ''}₹{gain.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
                   </p>
                 </div>
                 <div>
@@ -395,16 +404,16 @@ const Portfolio = () => {
               <>
                 <div>
                   <p className="text-sm text-slate-400 mb-1">Invested</p>
-                  <p className="text-2xl font-bold text-white">₹{totalInvested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-400 mb-1">Current Value</p>
-                  <p className="text-2xl font-bold text-white">₹{totalCurrent.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                  <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
                 </div>
                 <div>
                   <p className="text-sm text-slate-400 mb-1">Gain/Loss</p>
                   <p className={`text-2xl font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {gain >= 0 ? '+' : ''}₹{gain.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
                   </p>
                 </div>
                 <div>
@@ -427,16 +436,16 @@ const Portfolio = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-4 rounded-lg border border-emerald-500">
         <div>
           <p className="text-sm text-slate-400 mb-1">Total Invested</p>
-          <p className="text-2xl font-bold text-white">₹{performance.total_invested.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_invested, user?.default_currency || 'INR', 'en-IN')}</p>
         </div>
         <div>
           <p className="text-sm text-slate-400 mb-1">Current Value</p>
-          <p className="text-2xl font-bold text-white">₹{performance.total_current.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+          <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_current, user?.default_currency || 'INR', 'en-IN')}</p>
         </div>
         <div>
           <p className="text-sm text-slate-400 mb-1">Total Gain/Loss</p>
           <p className={`text-2xl font-bold ${performance.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {performance.total_gain >= 0 ? '+' : ''}₹{performance.total_gain.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+            {performance.total_gain >= 0 ? '+' : ''}{formatCurrency(performance.total_gain, user?.default_currency || 'INR', 'en-IN')}
           </p>
         </div>
         <div>
@@ -481,7 +490,7 @@ const Portfolio = () => {
                           </div>
                           <div className="text-right">
                             <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {gain >= 0 ? '+' : ''}₹{gain.toFixed(2)}
+                              {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
                             </p>
                             <p className={`text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {gain >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
@@ -496,19 +505,19 @@ const Portfolio = () => {
                           </div>
                           <div>
                             <p className="text-slate-400">Avg Price</p>
-                            <p className="text-white font-medium">₹{holding.purchase_price.toFixed(2)}</p>
+                            <p className="text-white font-medium">{formatCurrency(holding.purchase_price, user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-slate-400">Current Price</p>
-                            <p className="text-white font-medium">₹{(holding.current_value || holding.current_price || holding.purchase_price).toFixed(2)}</p>
+                            <p className="text-white font-medium">{formatCurrency((holding.current_value || holding.current_price || holding.purchase_price), user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-slate-400">Invested</p>
-                            <p className="text-blue-400 font-medium">₹{totalCost.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                            <p className="text-blue-400 font-medium">{formatCurrency(totalCost, user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-slate-400">Current Value</p>
-                            <p className="text-white font-medium">₹{currentValue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                            <p className="text-white font-medium">{formatCurrency(currentValue, user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                         </div>
 
@@ -549,7 +558,7 @@ const Portfolio = () => {
                           </div>
                           <div className="text-right">
                             <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {gain >= 0 ? '+' : ''}₹{gain.toFixed(2)}
+                              {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
                             </p>
                             <p className={`text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                               {gain >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
@@ -564,19 +573,19 @@ const Portfolio = () => {
                           </div>
                           <div>
                             <p className="text-slate-400">Avg NAV</p>
-                            <p className="text-white font-medium">₹{holding.purchase_price.toFixed(2)}</p>
+                            <p className="text-white font-medium">{formatCurrency(holding.purchase_price, user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-slate-400">Current NAV</p>
-                            <p className="text-white font-medium">₹{(holding.current_value || holding.current_nav || holding.purchase_price).toFixed(2)}</p>
+                            <p className="text-white font-medium">{formatCurrency((holding.current_value || holding.current_nav || holding.purchase_price), user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-slate-400">Invested</p>
-                            <p className="text-blue-400 font-medium">₹{totalCost.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                            <p className="text-blue-400 font-medium">{formatCurrency(totalCost, user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                           <div>
                             <p className="text-slate-400">Current Value</p>
-                            <p className="text-white font-medium">₹{currentValue.toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                            <p className="text-white font-medium">{formatCurrency(currentValue, user?.default_currency || 'INR', 'en-IN')}</p>
                           </div>
                         </div>
 

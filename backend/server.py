@@ -24,22 +24,8 @@ from auth_utils import (
 )
 from market_data import (
     get_stock_info, get_historical_data, get_market_indices, 
-    get_all_stocks_basic, get_batch_stock_info, get_mutual_fund_nav
+    get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
 )
-from mutual_fund_data import search_mutual_funds, get_current_nav
-from analytics import (
-    calculate_portfolio_analytics, calculate_rebalancing_suggestions,
-    generate_stock_recommendations
-)
-from watchlist_analytics import (
-    update_watchlist_analytics,
-    get_watchlist_analytics,
-    bulk_update_analytics
-)
-import asyncio
-from performance import generate_performance_summary
-from backtesting import backtest_strategy, calculate_strategy_score, generate_backtest_recommendations
-from ai_insights import generate_portfolio_optimization, generate_predictive_insights, generate_stock_analysis
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -365,7 +351,7 @@ async def download_portfolio(current_user: User = Depends(require_auth)):
 # === PATCH START: REPLACE LINES 207-218 WITH THIS CODE ===
 class WatchlistItem(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
-    id: str = Field(alias="_id")
+    id: str = Field(alias="_id", default_factory=lambda: str(uuid.uuid4()))
     user_id: str
     symbol: str
     name: str
@@ -480,8 +466,14 @@ class DividendRecordCreate(BaseModel):
     ex_date: str
     payment_date: str
 
-# ==================== REAL-TIME DATA ====================
-# All stock data now fetched from Yahoo Finance via market_data.py
+@api_router.get("/debug/stock-info/{symbol}")
+async def debug_stock_info(symbol: str):
+    """Temporary endpoint to debug get_stock_info for a specific symbol."""
+    logger.info(f"Debugging stock info for symbol: {symbol}")
+    stock_data = get_stock_info(symbol)
+    if not stock_data:
+        raise HTTPException(status_code=404, detail=f"No stock data found for {symbol}")
+    return stock_data
 
 # ==================== ROUTES ====================
 
@@ -715,25 +707,39 @@ import asyncio
 import yfinance as yf
 from datetime import datetime
 
+async def get_all_stocks_from_db():
+    """Helper to get all stocks from the database."""
+    stocks = await db.stocks.find({}, {"_id": 0, "symbol": 1, "name": 1, "exchange": 1, "sector": 1}).to_list(10000)
+    return stocks
+
 @api_router.get("/stocks/search")
-async def search_stocks(q: str = Query(..., min_length=1)):
+async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[str] = Query(None)):
     """
     Dynamic stock search:
     - Checks DB first
     - Falls back to local basic list
     - If not found, fetches from Yahoo Finance and auto-inserts into MongoDB
+    - Supports optional exchange filtering for more precise results.
     """
     q_raw = q.strip()
     q_upper = q_raw.upper()
 
     # 1️⃣ Try database first
     try:
-        doc = await db.stocks.find_one({"symbol": {"$in": [q_upper, q_upper + ".NS", q_upper + ".BO"]}})
+        db_query_symbols = [q_upper]
+        if exchange == "NSE":
+            db_query_symbols.append(q_upper + ".NS")
+        elif exchange == "BSE":
+            db_query_symbols.append(q_upper + ".BO")
+        elif not exchange: # If no exchange specified, try common Indian suffixes
+            db_query_symbols.extend([q_upper + ".NS", q_upper + ".BO"])
+
+        doc = await db.stocks.find_one({"symbol": {"$in": db_query_symbols}})
         if doc:
             stock_basic = {
                 "symbol": doc.get("symbol"),
                 "name": doc.get("name", ""),
-                "exchange": doc.get("exchange", "NSE"),
+                "exchange": doc.get("exchange", "N/A"), # Default to N/A if not found
                 "sector": doc.get("sector", "")
             }
             return [StockBasic(**stock_basic)]
@@ -742,38 +748,59 @@ async def search_stocks(q: str = Query(..., min_length=1)):
 
     # 2️⃣ Try local static list for fuzzy matches
     try:
-        all_stocks = get_all_stocks_basic() or []
+        all_stocks = await get_all_stocks_from_db() or []
         q_lower = q_raw.lower()
         fuzzy = [
             StockBasic(**stock)
             for stock in all_stocks
-            if q_lower in stock.get("symbol", "").lower() or q_lower in stock.get("name", "").lower()
+            if (q_lower in stock.get("symbol", "").lower() or q_lower in stock.get("name", "").lower())
+            and (not exchange or stock.get("exchange", "").upper() == exchange.upper())
         ]
         if fuzzy:
             return fuzzy[:10]
     except Exception as e:
-        logger.warning(f"get_all_stocks_basic() error: {e}")
+        logger.warning(f"get_all_stocks_from_db() error: {e}")
 
     # 3️⃣ Live lookup from Yahoo Finance if not found
-    possible_symbols = [q_upper]
-    if not q_upper.endswith(".NS"):
-        possible_symbols.append(q_upper + ".NS")
-    if not q_upper.endswith(".BO"):
-        possible_symbols.append(q_upper + ".BO")
+    yfinance_symbols_to_try = []
 
-    for sym in possible_symbols:
+    # Prioritize exact symbol if exchange is specified
+    if exchange:
+        if exchange.upper() == "NSE" and not q_upper.endswith(".NS"):
+            yfinance_symbols_to_try.append(q_upper + ".NS")
+        elif exchange.upper() == "BSE" and not q_upper.endswith(".BO"):
+            yfinance_symbols_to_try.append(q_upper + ".BO")
+        elif exchange.upper() == "NASDAQ" or exchange.upper() == "NYSE":
+            yfinance_symbols_to_try.append(q_upper) # Raw symbol for US exchanges
+        else:
+            yfinance_symbols_to_try.append(q_upper) # Fallback for other specified exchanges
+    else:
+        # If no exchange specified, try raw symbol first (for global stocks)
+        yfinance_symbols_to_try.append(q_upper)
+        # Then try common Indian suffixes
+        if not q_upper.endswith(".NS"):
+            yfinance_symbols_to_try.append(q_upper + ".NS")
+        if not q_upper.endswith(".BO"):
+            yfinance_symbols_to_try.append(q_upper + ".BO")
+    
+    # Remove duplicates and maintain order
+    yfinance_symbols_to_try = list(dict.fromkeys(yfinance_symbols_to_try))
+
+    for sym in yfinance_symbols_to_try:
         try:
             info = await asyncio.to_thread(lambda s=sym: getattr(yf.Ticker(s), "info", {}) or {})
             if info and ("longName" in info or "shortName" in info):
                 name = info.get("longName") or info.get("shortName") or q_raw
                 last_price = info.get("currentPrice") or info.get("regularMarketPrice")
-                exchange = info.get("exchange") or info.get("market") or ("NSE" if sym.endswith(".NS") else "BSE")
+                # Use exchange from yfinance info, or fallback to specified/default
+                yf_exchange = info.get("exchange") or info.get("market")
+                final_exchange = yf_exchange if yf_exchange else (exchange or "N/A")
                 sector = info.get("sector") or ""
 
                 stock_doc = {
                     "symbol": info.get("symbol", sym),
                     "name": name,
-                    "exchange": exchange,
+                    "exchange": final_exchange,
                     "sector": sector,
                     "last_price": last_price,
                     "meta": {"added_by": "auto", "created_at": datetime.utcnow()}
@@ -818,16 +845,16 @@ async def search_mutualfunds_api(q: str = Query(..., min_length=1)):
 @api_router.get("/stocks/all")
 async def get_all_stocks():
     """Get all available stocks"""
-    all_stocks = get_all_stocks_basic()
+    all_stocks = await get_all_stocks_from_db()
     return [StockBasic(**stock) for stock in all_stocks]
 
 @api_router.get("/stocks/{symbol}", response_model=StockDetail)
 async def get_stock_detail(symbol: str):
     """Get detailed stock information with real-time data"""
     stock_data = get_stock_info(symbol)
-    if not stock_data:
+    if not stock_data or symbol not in stock_data:
         raise HTTPException(status_code=404, detail="Stock not found")
-    return StockDetail(**stock_data)
+    return StockDetail(**stock_data[symbol])
 
 @api_router.get("/stocks/{symbol}/historical")
 async def get_stock_historical(symbol: str, days: int = Query(90, ge=1, le=365)):
@@ -865,6 +892,13 @@ async def get_mutual_fund_detail(scheme_code: str):
         logger.error(f"Error fetching mutual fund {scheme_code}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/market/major-stocks")
+@cached(key_prefix="major_stocks")
+async def get_major_stocks():
+    """Get real-time data for major world stocks."""
+    stocks_data = get_major_world_stocks()
+    return stocks_data
+
 @api_router.get("/market/overview")
 @cached(key_prefix="market_overview")
 async def get_market_overview():
@@ -880,7 +914,7 @@ async def screen_stocks(
     sector: Optional[str] = None
 ):
     """Screen stocks based on criteria with real-time data"""
-    all_stocks = get_all_stocks_basic()
+    all_stocks = await get_all_stocks_from_db()
     
     # Apply sector filter
     if sector and sector != "All":
@@ -920,7 +954,7 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 
     stock_data = {}
     if stock_symbols:
-        stock_data = get_batch_stock_info(stock_symbols)
+        stock_data = get_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}
@@ -929,6 +963,10 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
             nav_data = get_mutual_fund_nav(code)
             if nav_data:
                 mf_data[code] = nav_data
+
+    # Get user's default currency
+    user_currency = current_user.default_currency or "INR"
+    exchange_rate = get_exchange_rate("INR", user_currency)
 
     # Update current prices with real-time data
     for holding in holdings:
@@ -941,6 +979,11 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
             symbol = holding.get("symbol")
             if symbol in stock_data:
                 holding["current_price"] = float(Decimal(str(stock_data[symbol]["current_price"])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+        
+        # Convert to user's currency
+        if exchange_rate:
+            holding["purchase_price"] = holding["purchase_price"] * exchange_rate
+            holding["current_price"] = holding["current_price"] * exchange_rate
     
     # Sort alphabetically by symbol or scheme_code
     holdings = sorted(holdings, key=lambda x: x.get("symbol") or x.get("scheme_code") or "")
@@ -1056,6 +1099,10 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
     total_invested = Decimal('0.00')
     total_current = Decimal('0.00')
     
+    # Get user's default currency
+    user_currency = current_user.default_currency or "INR"
+    exchange_rate = get_exchange_rate("INR", user_currency)
+
     for holding in holdings:
         quantity = Decimal(str(holding["quantity"]))
         purchase_price = Decimal(str(holding["purchase_price"]))
@@ -1075,6 +1122,10 @@ async def get_portfolio_performance(current_user: User = Depends(require_auth)):
             total_current += current
             logger.warning(f"Could not find current price for {holding.get('symbol') or holding.get('scheme_code')}, using fallback: {fallback_price}, current_value_for_holding={current}, running_total_current={total_current}")
     
+    if exchange_rate:
+        total_invested = total_invested * Decimal(exchange_rate)
+        total_current = total_current * Decimal(exchange_rate)
+
     logger.info(f"Final total_current calculated: {total_current}")
     total_gain = total_current - total_invested
     
@@ -1101,10 +1152,11 @@ async def get_watchlist(current_user: User = Depends(require_auth)):
     
     stock_symbols = [item["symbol"] for item in items if not item.get("symbol", "").isdigit()]
     mf_scheme_codes = [item["symbol"] for item in items if item.get("symbol", "").isdigit()]
-
     stock_data = {}
     if stock_symbols:
-        stock_data = get_batch_stock_info(stock_symbols)
+        logger.info(f"Fetching stock info for symbols: {stock_symbols}")
+        stock_data = get_stock_info(stock_symbols)
+        logger.info(f"Received stock data: {stock_data}")
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}
@@ -1169,6 +1221,7 @@ async def watchlist_options():
 
 @api_router.post("/watchlist", response_model=WatchlistItem)
 async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Depends(require_auth)):
+    logger.info(f"Received item for watchlist: {item.model_dump()}")
     item_obj = WatchlistItem(**item.model_dump(), user_id=current_user.id)
     doc = item_obj.model_dump()
     await db.watchlist.insert_one(doc)
@@ -1215,7 +1268,7 @@ async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
     if stock_symbols:
-        stock_data = get_batch_stock_info(stock_symbols)
+        stock_data = get_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     # Update current prices in holdings
@@ -1225,9 +1278,9 @@ async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
             if symbol in stock_data:
                 holding["current_price"] = stock_data[symbol].get("current_price", 0)
         else:
-            nav_data = get_mutual_fund_nav(holding.get("scheme_code"))
-            if nav_data:
-                holding["current_price"] = nav_data.get('current_nav', 0)
+            mf_info = get_mutual_fund_nav(holding.get("scheme_code"))
+            if mf_info:
+                holding["current_price"] = mf_info.get('current_nav', 0)
 
     analytics = calculate_portfolio_analytics(holdings, stock_data)
     return analytics
@@ -1243,7 +1296,7 @@ async def get_rebalancing_suggestions(
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
     if stock_symbols:
-        stock_data = get_batch_stock_info(stock_symbols)
+        stock_data = get_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     # Update current prices in holdings
@@ -1253,9 +1306,9 @@ async def get_rebalancing_suggestions(
             if symbol in stock_data:
                 holding["current_price"] = stock_data[symbol].get("current_price", 0)
         else:
-            nav_data = get_mutual_fund_nav(holding.get("scheme_code"))
-            if nav_data:
-                holding["current_price"] = nav_data.get('current_nav', 0)
+            mf_info = get_mutual_fund_nav(holding.get("scheme_code"))
+            if mf_info:
+                holding["current_price"] = mf_info.get('current_nav', 0)
 
     suggestions = calculate_rebalancing_suggestions(holdings, target_allocation, stock_data)
     return {"suggestions": suggestions}
@@ -1281,7 +1334,7 @@ async def get_stock_recommendations(
         criteria = {"min_roe": 10, "max_pe": 30}
     
     # Get all stocks with full data
-    all_stocks_basic = get_all_stocks_basic()
+    all_stocks_basic = await get_all_stocks_from_db()
     all_stocks_detailed = []
     
     for stock_basic in all_stocks_basic[:30]:  # Limit to avoid timeout

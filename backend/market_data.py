@@ -8,285 +8,65 @@ from websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
-# Cache for all available NSE stocks (refreshed periodically)
-_NSE_STOCKS_CACHE = None
-_CACHE_TIMESTAMP = None
 
-def get_all_nse_stocks_dynamic():
-    """
-    Fetch all available NSE stocks dynamically from yfinance.
-    This function automatically includes new IPOs without code changes.
-    Results are cached for 1 hour to avoid excessive API calls.
-    """
-    global _NSE_STOCKS_CACHE, _CACHE_TIMESTAMP
-    
-    from datetime import datetime, timedelta
-    import time
-    
-    # Check if cache is still valid (refresh every 1 hour)
-    if _NSE_STOCKS_CACHE is not None and _CACHE_TIMESTAMP is not None:
-        if datetime.now() - _CACHE_TIMESTAMP < timedelta(hours=1):
-            return _NSE_STOCKS_CACHE
-    
-    logger.info("Fetching NSE stocks dynamically...")
-    
-    # Start with hardcoded popular stocks as fallback
-    stocks_dict = {
-        "RELIANCE.NS": "Reliance Industries",
-        "TCS.NS": "Tata Consultancy Services",
-        "HDFCBANK.NS": "HDFC Bank",
-        "INFY.NS": "Infosys",
-        "ICICIBANK.NS": "ICICI Bank",
-        "BHARTIARTL.NS": "Bharti Airtel",
-        "ITC.NS": "ITC Limited",
-        "SBIN.NS": "State Bank of India",
-        "LT.NS": "Larsen & Toubro",
-        "HCLTECH.NS": "HCL Technologies",
-        "AXISBANK.NS": "Axis Bank",
-        "WIPRO.NS": "Wipro Limited",
-        "ASIANPAINT.NS": "Asian Paints",
-        "MARUTI.NS": "Maruti Suzuki",
-        "SUNPHARMA.NS": "Sun Pharmaceutical",
-        "TITAN.NS": "Titan Company",
-        "NTPC.NS": "NTPC Limited",
-        "POWERGRID.NS": "Power Grid Corporation",
-        "ULTRACEMCO.NS": "UltraTech Cement",
-        "TECHM.NS": "Tech Mahindra",
-        "NMDC.NS": "NMDC Limited",
-        "COALINDIA.NS": "Coal India",
-        "HINDALCO.NS": "Hindalco Industries",
-        "TATASTEEL.NS": "Tata Steel",
-        "ADANIENT.NS": "Adani Enterprises",
-        "BAJFINANCE.NS": "Bajaj Finance",
-        "KOTAKBANK.NS": "Kotak Mahindra Bank",
-        "TMPV.NS": "Tata Motors Passenger Vehicles",
-        "ONGC.NS": "Oil & Natural Gas Corp",
-        "M&M.NS": "Mahindra & Mahindra",
-        "LICI.NS": "LIC of India",
-        "HYUNDAI.NS": "Hyundai Motor",
-        "AFCONS.NS": "Afcons Infrastructure Ltd",
-    }
-    
-    # Try to fetch additional stocks from yfinance
-    try:
-        # This will get data for a broader set of stocks
-        logger.info("Attempting to fetch extended stock list...")
-        # Note: yfinance doesn't have a direct "all stocks" API
-        # We use the hardcoded list as our source of truth
-        # but you can extend this with custom data sources
-    except Exception as e:
-        logger.warning(f"Error fetching extended stocks: {str(e)}")
-    
-    # Cache the results
-    _NSE_STOCKS_CACHE = stocks_dict
-    _CACHE_TIMESTAMP = datetime.now()
-    
-    logger.info(f"Loaded {len(stocks_dict)} stocks")
-    return stocks_dict
 
-# Indian stock symbols mapping - Top 50+ NSE/BSE stocks + User Portfolio
-INDIAN_STOCKS = {
-    "RELIANCE.NS": "Reliance Industries",
-    "TCS.NS": "Tata Consultancy Services",
-    "HDFCBANK.NS": "HDFC Bank",
-    "INFY.NS": "Infosys",
-    "ICICIBANK.NS": "ICICI Bank",
-    "BHARTIARTL.NS": "Bharti Airtel",
-    "ITC.NS": "ITC Limited",
-    "SBIN.NS": "State Bank of India",
-    "LT.NS": "Larsen & Toubro",
-    "HCLTECH.NS": "HCL Technologies",
-    "AXISBANK.NS": "Axis Bank",
-    "WIPRO.NS": "Wipro Limited",
-    "ASIANPAINT.NS": "Asian Paints",
-    "MARUTI.NS": "Maruti Suzuki",
-    "SUNPHARMA.NS": "Sun Pharmaceutical",
-    "TITAN.NS": "Titan Company",
-    "NTPC.NS": "NTPC Limited",
-    "POWERGRID.NS": "Power Grid Corporation",
-    "ULTRACEMCO.NS": "UltraTech Cement",
-    "TECHM.NS": "Tech Mahindra",
-    "NMDC.NS": "NMDC Limited",
-    "COALINDIA.NS": "Coal India",
-    "HINDALCO.NS": "Hindalco Industries",
-    "TATASTEEL.NS": "Tata Steel",
-    "ADANIENT.NS": "Adani Enterprises",
-    "BAJFINANCE.NS": "Bajaj Finance",
-    "KOTAKBANK.NS": "Kotak Mahindra Bank",
+def get_stock_info(symbols: any) -> Dict[str, Dict]:
+    """Fetch real-time stock information for a single symbol or a batch of stock symbols."""
+    if isinstance(symbols, str):
+        symbols = [symbols]
 
-    "ONGC.NS": "Oil & Natural Gas Corp",
-    "M&M.NS": "Mahindra & Mahindra",
-    "AFCONS.NS": "Afcons Infrastructure",
-    "ADANIPORTS.NS": "Adani Ports",
-    "ADANIPOWER.NS": "Adani Power",
-    "APOLLOHOSP.NS": "Apollo Hospitals",
-    "BAJAJFINSV.NS": "Bajaj Finserv",
-    "BAJAJ-AUTO.NS": "Bajaj Auto",
-    "BEL.NS": "Bharat Electronics",
-    "BPCL.NS": "Bharat Petroleum",
-    "BRITANNIA.NS": "Britannia Industries",
-    "CIPLA.NS": "Cipla",
-    "DIVISLAB.NS": "Divi's Laboratories",
-    "DRREDDY.NS": "Dr. Reddy's Laboratories",
-    "EICHERMOT.NS": "Eicher Motors",
-    "GRASIM.NS": "Grasim Industries",
-    "HEROMOTOCO.NS": "Hero MotoCorp",
-    "HINDUNILVR.NS": "Hindustan Unilever",
-    "INDUSINDBK.NS": "IndusInd Bank",
-    "IOC.NS": "Indian Oil Corporation",
-    "JSWSTEEL.NS": "JSW Steel",
-    "NESTLEIND.NS": "Nestle India",
-    "AFCONS.NS": "Afcons Infrastructure Ltd",
-    # User Portfolio Stocks
-    "CASTROLIND.NS": "Castrol India",
-    "HINDPETRO.NS": "Hindustan Petroleum",
-    "PHOENIXLTD.NS": "Phoenix Mills",
-    "RPOWER.NS": "Reliance Power",
-    "YESBANK.NS": "Yes Bank",
-    "HINDZINC.NS": "Hindustan Zinc",
-    "IEX.NS": "Indian Energy Exchange",
-    "INDIGRID.NS": "IndiGrid InvIT",
-    "IRBINVIT.NS": "IRB InvIT Fund",
-    "NTPCGREEN.NS": "NTPC Gree  n Energy",
-    "NIFTYBEES.NS": "Nippon India ETF Nifty BeES",
-    "TATACHEM.NS": "Tata Chemicals",
-    "OILIETF.NS": "ICICI Pru Nifty Oil & Gas ETF",
-}
-
-MARKET_INDICES = {
-    "^NSEI": "NIFTY 50",
-    "^BSESN": "SENSEX",
-    "^NSEBANK": "NIFTY Bank",
-}
-
-def get_stock_info(symbol: str) -> Optional[Dict]:
-    """Fetch real-time stock information for a single stock symbol."""
-    batch_result = get_batch_stock_info([symbol])
-    return batch_result.get(symbol)
-
-def get_batch_stock_info(symbols: List[str]) -> Dict[str, Dict]:
-    """Fetch real-time stock information for a batch of stock symbols."""
-    symbols = [s for s in symbols if s] # Filter out None or empty strings
     results = {}
-    
-    # Manual data for stocks where Yahoo Finance fails
-    MANUAL_DATA = {
-        "INDIGRID.NS": {
-            "current_price": 169.00, "prev_close": 170.50, "volume": 150000,
-            "market_cap": 1406230000000, "week_52_high": 173.79, "week_52_low": 137.00
-        },
-        "IRBINVIT.NS": {
-            "current_price": 63.01, "prev_close": 63.50, "volume": 200000,
-            "market_cap": 368000000000, "week_52_high": 70.00, "week_52_low": 55.00
-        }
-    }
 
-    # Separate symbols with manual data from those requiring yfinance lookup
-    manual_symbols = [s for s in symbols if s in MANUAL_DATA]
-    yfinance_symbols = [s for s in symbols if s not in MANUAL_DATA]
+    if not symbols:
+        return results
 
-    # Process manual data
-    for symbol in manual_symbols:
-        manual = MANUAL_DATA[symbol]
-        current_price = manual["current_price"]
-        prev_close = manual["prev_close"]
-        change = current_price - prev_close
-        change_percent = (change / prev_close) * 100 if prev_close else 0
+    try:
+        tickers = yf.Tickers(' '.join(symbols))
         
-        results[symbol] = {
-            "symbol": symbol,
-            "name": get_all_nse_stocks_dynamic().get(symbol, symbol),
-            "exchange": "NSE",
-            "sector": "Infrastructure" if "INVIT" in symbol or "GRID" in symbol else "Other",
-            "current_price": float(current_price),
-            "change": float(change),
-            "change_percent": float(change_percent),
-            "volume": manual["volume"],
-            "market_cap": float(manual["market_cap"]),
-            "pe_ratio": None, "pb_ratio": None, "roe": None, "debt_to_equity": None,
-            "dividend_yield": None, "week_52_high": float(manual["week_52_high"]),
-            "week_52_low": float(manual["week_52_low"]), "rsi": None, "ma_50": None, "ma_200": None
-        }
+        for symbol in symbols:
+            try:
+                info = tickers.tickers[symbol].info
+                hist = tickers.tickers[symbol].history(period="1d")
 
-    # Process yfinance data in a batch
-    if yfinance_symbols:
-        try:
-            tickers = yf.Tickers(' '.join(yfinance_symbols))
-            
-            for symbol in yfinance_symbols:
-                try:
-                    info = tickers.tickers[symbol].info
-                    hist = tickers.tickers[symbol].history(period="1d")
+                if hist.empty:
+                    logger.warning(f"No data available for {symbol}")
+                    continue
 
-                    if hist.empty:
-                        logger.warning(f"No data available for {symbol}")
-                        continue
+                current_price = hist['Close'].iloc[-1]
+                prev_close = info.get('previousClose', current_price)
+                change = current_price - prev_close
+                change_percent = (change / prev_close) * 100 if prev_close else 0
 
-                    current_price = hist['Close'].iloc[-1]
-                    prev_close = info.get('previousClose', current_price)
-                    change = current_price - prev_close
-                    change_percent = (change / prev_close) * 100 if prev_close else 0
+                results[symbol] = {
+                    "symbol": symbol,
+                    "name": info.get('longName', symbol),
+                    "exchange": info.get('exchange', 'N/A'),
+                    "sector": info.get('sector', 'Other'),
+                    "current_price": float(current_price),
+                    "change": float(change),
+                    "change_percent": float(change_percent),
+                    "volume": int(info.get('volume', hist['Volume'].iloc[-1])),
+                    "market_cap": float(info.get('marketCap', 0)),
+                    "pe_ratio": float(info.get('trailingPE', 0)) if info.get('trailingPE') else None,
+                    "pb_ratio": float(info.get('priceToBook', 0)) if info.get('priceToBook') else None,
+                    "roe": float(info.get('returnOnEquity', 0) * 100) if info.get('returnOnEquity') else None,
+                    "debt_to_equity": float(info.get('debtToEquity', 0) / 100) if info.get('debtToEquity') else None,
+                    "dividend_yield": float(info.get('dividendYield', 0) * 100) if info.get('dividendYield') else None,
+                    "week_52_high": float(info.get('fiftyTwoWeekHigh', current_price)),
+                    "week_52_low": float(info.get('fiftyTwoWeekLow', current_price)),
+                    "rsi": None,
+                    "ma_50": float(info.get('fiftyDayAverage', current_price)),
+                    "ma_200": float(info.get('twoHundredDayAverage', current_price)),
+                }
+            except Exception as e:
+                logger.error(f"Error processing symbol {symbol} in batch: {str(e)}")
 
-                    sector_map = {
-                        "RELIANCE.NS": "Energy", "TCS.NS": "IT", "HDFCBANK.NS": "Banking",
-                        "INFY.NS": "IT", "ICICIBANK.NS": "Banking", "BHARTIARTL.NS": "Telecom",
-                        "ITC.NS": "FMCG", "SBIN.NS": "Banking", "LT.NS": "Infrastructure",
-                        "HCLTECH.NS": "IT", "AXISBANK.NS": "Banking", "WIPRO.NS": "IT",
-                        "ASIANPAINT.NS": "Consumer Goods", "MARUTI.NS": "Automobile",
-                        "SUNPHARMA.NS": "Pharma", "TITAN.NS": "Consumer Goods",
-                        "NTPC.NS": "Power", "POWERGRID.NS": "Power", "ULTRACEMCO.NS": "Cement",
-                        "TECHM.NS": "IT", "NMDC.NS": "Metals & Mining", "COALINDIA.NS": "Metals & Mining",
-                        "HINDALCO.NS": "Metals & Mining", "TATASTEEL.NS": "Metals & Mining",
-                        "ADANIENT.NS": "Infrastructure", "BAJFINANCE.NS": "Finance",
-                        "KOTAKBANK.NS": "Banking", "TMPV.NS": "Automobile",
-                        "ONGC.NS": "Energy", "M&M.NS": "Automobile",
-                        "AFCONS.NS": "Infrastructure", "ADANIPORTS.NS": "Infrastructure",
-                        "ADANIPOWER.NS": "Power", "APOLLOHOSP.NS": "Healthcare",
-                        "BAJAJFINSV.NS": "Finance", "BAJAJ-AUTO.NS": "Automobile",
-                        "BEL.NS": "Defence", "BPCL.NS": "Energy",
-                        "BRITANNIA.NS": "FMCG", "CIPLA.NS": "Pharma",
-                        "DIVISLAB.NS": "Pharma", "DRREDDY.NS": "Pharma",
-                        "EICHERMOT.NS": "Automobile", "GRASIM.NS": "Cement",
-                        "HEROMOTOCO.NS": "Automobile", "HINDUNILVR.NS": "FMCG",
-                        "INDUSINDBK.NS": "Banking", "IOC.NS": "Energy",
-                        "JSWSTEEL.NS": "Metals & Mining", "NESTLEIND.NS": "FMCG",
-                        "CASTROLIND.NS": "Energy", "HINDPETRO.NS": "Energy",
-                        "PHOENIXLTD.NS": "Real Estate", "RPOWER.NS": "Power",
-                        "YESBANK.NS": "Banking", "HINDZINC.NS": "Metals & Mining",
-                        "IEX.NS": "Power", "INDIGRID.NS": "Infrastructure",
-                        "IRBINVIT.NS": "Infrastructure", "NTPCGREEN.NS": "Power",
-                        "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals",
-                        "OILIETF.NS": "ETF"
-                    }
-
-                    results[symbol] = {
-                        "symbol": symbol,
-                        "name": get_all_nse_stocks_dynamic().get(symbol, info.get('longName', symbol)),
-                        "exchange": "NSE",
-                        "sector": sector_map.get(symbol, info.get('sector', 'Other')),
-                        "current_price": float(current_price),
-                        "change": float(change),
-                        "change_percent": float(change_percent),
-                        "volume": int(info.get('volume', hist['Volume'].iloc[-1])),
-                        "market_cap": float(info.get('marketCap', 0)),
-                        "pe_ratio": float(info.get('trailingPE', 0)) if info.get('trailingPE') else None,
-                        "pb_ratio": float(info.get('priceToBook', 0)) if info.get('priceToBook') else None,
-                        "roe": float(info.get('returnOnEquity', 0) * 100) if info.get('returnOnEquity') else None,
-                        "debt_to_equity": float(info.get('debtToEquity', 0) / 100) if info.get('debtToEquity') else None,
-                        "dividend_yield": float(info.get('dividendYield', 0) * 100) if info.get('dividendYield') else None,
-                        "week_52_high": float(info.get('fiftyTwoWeekHigh', current_price)),
-                        "week_52_low": float(info.get('fiftyTwoWeekLow', current_price)),
-                        "rsi": None,
-                        "ma_50": float(info.get('fiftyDayAverage', current_price)),
-                        "ma_200": float(info.get('twoHundredDayAverage', current_price)),
-                    }
-                except Exception as e:
-                    logger.error(f"Error processing symbol {symbol} in batch: {str(e)}")
-
-        except Exception as e:
-            logger.error(f"Error fetching batch data for symbols {yfinance_symbols}: {str(e)}")
-            
+    except Exception as e:
+        logger.error(f"Error fetching batch data for symbols {symbols}: {str(e)}")
+        
     return results
+
+
 
 def get_historical_data(symbol: str, days: int = 90) -> List[Dict]:
     """Fetch historical stock data"""
@@ -309,6 +89,58 @@ def get_historical_data(symbol: str, days: int = 90) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error fetching historical data for {symbol}: {str(e)}")
         return []
+
+MARKET_INDICES = {
+    "^NSEI": "NIFTY 50",
+    "^BSESN": "SENSEX",
+    "^NSEBANK": "NIFTY Bank",
+    "^DJI": "Dow Jones",
+    "^IXIC": "NASDAQ",
+    "^FTSE": "FTSE 100",
+    "^STI": "STI"
+}
+
+def get_major_world_stocks() -> List[Dict]:
+    """Fetch data for major world stocks."""
+    major_stocks = {
+        "RELIANCE.NS": "Reliance",
+        "TCS.NS": "TCS",
+        "HDFCBANK.NS": "HDFC Bank",
+        "INFY.NS": "Infosys",
+        "AAPL": "Apple",
+        "GOOGL": "Google",
+        "MSFT": "Microsoft",
+        "AMZN": "Amazon",
+        "TSLA": "Tesla",
+        "HSBC": "HSBC",
+        "VOD": "Vodafone",
+        "TM": "Toyota",
+        "SONY": "Sony",
+    }
+
+    stocks_data = []
+    for symbol, name in major_stocks.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            hist = ticker.history(period="1d")
+            
+            if not hist.empty:
+                current_price = hist['Close'].iloc[-1]
+                prev_close = ticker.info.get('previousClose', current_price)
+                change = current_price - prev_close
+                change_percent = (change / prev_close) * 100 if prev_close else 0
+                
+                stocks_data.append({
+                    "symbol": symbol,
+                    "name": name,
+                    "value": float(current_price),
+                    "change": float(change),
+                    "change_percent": float(change_percent)
+                })
+        except Exception as e:
+            logger.error(f"Error fetching {name}: {str(e)}")
+    
+    return stocks_data
 
 def get_market_indices() -> List[Dict]:
     """Fetch market indices data"""
@@ -336,50 +168,7 @@ def get_market_indices() -> List[Dict]:
     
     return indices_data
 
-def get_all_stocks_basic() -> List[Dict]:
-    """Get basic info for all available stocks"""
-    stocks = []
-    sector_map = {
-        "RELIANCE.NS": "Energy", "TCS.NS": "IT", "HDFCBANK.NS": "Banking",
-        "INFY.NS": "IT", "ICICIBANK.NS": "Banking", "BHARTIARTL.NS": "Telecom",
-        "ITC.NS": "FMCG", "SBIN.NS": "Banking", "LT.NS": "Infrastructure",
-        "HCLTECH.NS": "IT", "AXISBANK.NS": "Banking", "WIPRO.NS": "IT",
-        "ASIANPAINT.NS": "Consumer Goods", "MARUTI.NS": "Automobile",
-        "SUNPHARMA.NS": "Pharma", "TITAN.NS": "Consumer Goods",
-        "NTPC.NS": "Power", "POWERGRID.NS": "Power", "ULTRACEMCO.NS": "Cement",
-        "TECHM.NS": "IT", "NMDC.NS": "Metals & Mining", "COALINDIA.NS": "Metals & Mining",
-        "HINDALCO.NS": "Metals & Mining", "TATASTEEL.NS": "Metals & Mining",
-        "ADANIENT.NS": "Infrastructure", "BAJFINANCE.NS": "Finance",
-        "KOTAKBANK.NS": "Banking", "TMPV.NS": "Automobile",
-        "ONGC.NS": "Energy", "M&M.NS": "Automobile",
-        "AFCONS.NS": "Infrastructure", "ADANIPORTS.NS": "Infrastructure",
-        "ADANIPOWER.NS": "Power", "APOLLOHOSP.NS": "Healthcare",
-        "BAJAJFINSV.NS": "Finance", "BAJAJ-AUTO.NS": "Automobile",
-        "BEL.NS": "Defence", "BPCL.NS": "Energy",
-        "BRITANNIA.NS": "FMCG", "CIPLA.NS": "Pharma",
-        "DIVISLAB.NS": "Pharma", "DRREDDY.NS": "Pharma",
-        "EICHERMOT.NS": "Automobile", "GRASIM.NS": "Cement",
-        "HEROMOTOCO.NS": "Automobile", "HINDUNILVR.NS": "FMCG",
-        "INDUSINDBK.NS": "Banking", "IOC.NS": "Energy",
-        "JSWSTEEL.NS": "Metals & Mining", "NESTLEIND.NS": "FMCG",
-        # User Portfolio Stocks
-        "CASTROLIND.NS": "Energy", "HINDPETRO.NS": "Energy",
-        "PHOENIXLTD.NS": "Real Estate", "RPOWER.NS": "Power",
-        "YESBANK.NS": "Banking", "HINDZINC.NS": "Metals & Mining",
-        "IEX.NS": "Power", "INDIGRID.NS": "Infrastructure",
-        "IRBINVIT.NS": "Infrastructure", "NTPCGREEN.NS": "Power",
-        "NIFTYBEES.NS": "ETF", "TATACHEM.NS": "Chemicals",
-        "OILIETF.NS": "ETF"
-    }
-    
-    for symbol, name in get_all_nse_stocks_dynamic().items():
-        stocks.append({
-            "symbol": symbol,
-            "name": name,
-            "exchange": "NSE",
-            "sector": sector_map.get(symbol, "Other")
-        })
-    return stocks
+
 
 def get_current_price(symbol: str) -> float:
     """Get current price for a stock"""
@@ -423,6 +212,27 @@ def load_mutual_fund_data():
 
 # Load the mutual fund data on startup
 load_mutual_fund_data()
+
+def get_exchange_rate(base_currency: str, target_currency: str) -> Optional[float]:
+    """Fetch the exchange rate between two currencies."""
+    if base_currency == target_currency:
+        return 1.0
+    
+    try:
+        # Use yfinance to get the exchange rate
+        ticker = f"{base_currency}{target_currency}=X"
+        data = yf.Ticker(ticker).history(period="1d")
+        if not data.empty:
+            return data['Close'].iloc[-1]
+        else:
+            # Try the other way around
+            ticker = f"{target_currency}{base_currency}=X"
+            data = yf.Ticker(ticker).history(period="1d")
+            if not data.empty:
+                return 1.0 / data['Close'].iloc[-1]
+    except Exception as e:
+        logger.error(f"Error fetching exchange rate for {base_currency} to {target_currency}: {e}")
+        return None
 
 def get_mutual_fund_nav(scheme_code: str) -> Dict:
     """Get current NAV and details for a mutual fund by scheme code from cached data."""

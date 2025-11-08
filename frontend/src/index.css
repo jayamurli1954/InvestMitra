@@ -2,6 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+
+@keyframes marquee2 {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.animate-marquee {
+  animation: marquee 60s linear infinite;
+}
+
+.animate-marquee2 {
+  animation: marquee2 60s linear infinite;
+}
+
 body {
     margin: 0;
     font-family:

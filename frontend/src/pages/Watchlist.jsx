@@ -16,6 +16,7 @@ const Watchlist = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [assetType, setAssetType] = useState("STOCK");
+  const [selectedExchange, setSelectedExchange] = useState(""); // New state
 
   // Helper function to check if market is open
   const isMarketHours = () => {
@@ -84,7 +85,8 @@ const Watchlist = () => {
     try {
       let response;
       if (assetType === "STOCK") {
-        response = await axios.get(`${API}/stocks/search?q=${searchQuery}`);
+        const exchangeParam = selectedExchange ? `&exchange=${selectedExchange}` : '';
+        response = await axios.get(`${API}/stocks/search?q=${searchQuery}${exchangeParam}`);
         setSearchResults(Array.isArray(response.data) ? response.data : response.data.results || []);
       } else {
         response = await axios.get(`${API}/mutual-funds/search?q=${searchQuery}`);
@@ -110,6 +112,7 @@ const Watchlist = () => {
       }
 
       await axios.post(`${API}/watchlist`, payload);
+      console.log('Payload sent to backend:', payload);
       toast.success(`Added ${payload.name} to watchlist`);
       setDialogOpen(false);
       setSearchQuery('');
@@ -201,6 +204,108 @@ const Watchlist = () => {
               </select>
             </div>
 
+            <div>
+              <Label className="text-slate-300">Exchange (Optional)</Label>
+              <select
+                value={selectedExchange}
+                onChange={(e) => setSelectedExchange(e.target.value)}
+                className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+              >
+                <option value="">Any</option>
+                <option value="NASDAQ">NASDAQ</option>
+                <option value="NYSE">NYSE</option>
+                <option value="NSE">NSE (India)</option>
+                <option value="BSE">BSE (India)</option>
+                <option value="LSE">LSE (London)</option>
+                <option value="TSE">TSE (Tokyo)</option>
+                <option value="HKSE">HKSE (Hong Kong)</option>
+                <option value="SSE">SSE (Shanghai)</option>
+                <option value="SZSE">SZSE (Shenzhen)</option>
+                <option value="ASX">ASX (Australia)</option>
+                <option value="TSX">TSX (Canada)</option>
+                <option value="FWB">FWB (Frankfurt)</option>
+                <option value="EPA">EPA (Paris)</option>
+                <option value="AMS">AMS (Amsterdam)</option>
+                <option value="BRU">BRU (Brussels)</option>
+                <option value="MIL">MIL (Milan)</option>
+                <option value="SWX">SWX (SIX Swiss)</option>
+                <option value="STO">STO (Stockholm)</option>
+                <option value="OSL">OSL (Oslo)</option>
+                <option value="HEL">HEL (Helsinki)</option>
+                <option value="CPH">CPH (Copenhagen)</option>
+                <option value="ISE">ISE (Ireland)</option>
+                <option value="JSE">JSE (Johannesburg)</option>
+                <option value="BVC">BVC (Colombia)</option>
+                <option value="BVL">BVL (Lima)</option>
+                <option value="BVM">BVM (Mexico)</option>
+                <option value="SAO">SAO (Sao Paulo)</option>
+                <option value="BUE">BUE (Buenos Aires)</option>
+                <option value="SCL">SCL (Santiago)</option>
+                <option value="TAI">TAI (Taipei)</option>
+                <option value="KOSDAQ">KOSDAQ (South Korea)</option>
+                <option value="KRX">KRX (South Korea)</option>
+                <option value="SGX">SGX (Singapore)</option>
+                <option value="IDX">IDX (Indonesia)</option>
+                <option value="SET">SET (Thailand)</option>
+                <option value="VSE">VSE (Vietnam)</option>
+                <option value="KSE">KSE (Karachi)</option>
+                <option value="DFM">DFM (Dubai)</option>
+                <option value="ADX">ADX (Abu Dhabi)</option>
+                <option value="QSE">QSE (Qatar)</option>
+                <option value="TADAWUL">TADAWUL (Saudi Arabia)</option>
+                <option value="EGX">EGX (Egypt)</option>
+                <option value="NGX">NGX (Nigeria)</option>
+                <option value="GHSE">GHSE (Ghana)</option>
+                <option value="NSE_NG">NSE (Nigeria)</option>
+                <option value="CSE">CSE (Colombo)</option>
+                <option value="PSX">PSX (Pakistan)</option>
+                <option value="BIST">BIST (Istanbul)</option>
+                <option value="ATHEX">ATHEX (Athens)</option>
+                <option value="BUX">BUX (Budapest)</option>
+                <option value="WSE">WSE (Warsaw)</option>
+                <option value="PRG">PRG (Prague)</option>
+                <option value="VIE">VIE (Vienna)</option>
+                <option value="XETRA">XETRA (Germany)</option>
+                <option value="EURONEXT">EURONEXT (Europe)</option>
+                <option value="SIX">SIX (Switzerland)</option>
+                <option value="OMX">OMX (Nordic/Baltic)</option>
+                <option value="JSE">JSE (Johannesburg)</option>
+                <option value="MEX">MEX (Mexico)</option>
+                <option value="BCBA">BCBA (Buenos Aires)</option>
+                <option value="BVMF">BVMF (Sao Paulo)</option>
+                <option value="BVL">BVL (Lima)</option>
+                <option value="SCL">SCL (Santiago)</option>
+                <option value="BVC">BVC (Colombia)</option>
+                <option value="NZX">NZX (New Zealand)</option>
+                <option value="PSE">PSE (Philippines)</option>
+                <option value="MYX">MYX (Malaysia)</option>
+                <option value="SET">SET (Thailand)</option>
+                <option value="HOSE">HOSE (Vietnam)</option>
+                <option value="HNX">HNX (Vietnam)</option>
+                <option value="UPCOM">UPCOM (Vietnam)</option>
+                <option value="KSE">KSE (Karachi)</option>
+                <option value="DFM">DFM (Dubai)</option>
+                <option value="ADX">ADX (Abu Dhabi)</option>
+                <option value="QSE">QSE (Qatar)</option>
+                <option value="TADAWUL">TADAWUL (Saudi Arabia)</option>
+                <option value="EGX">EGX (Egypt)</option>
+                <option value="NGX">NGX (Nigeria)</option>
+                <option value="GHSE">GHSE (Ghana)</option>
+                <option value="NSE_NG">NSE (Nigeria)</option>
+                <option value="CSE">CSE (Colombo)</option>
+                <option value="PSX">PSX (Pakistan)</option>
+                <option value="BIST">BIST (Istanbul)</option>
+                <option value="ATHEX">ATHEX (Athens)</option>
+                <option value="BUX">BUX (Budapest)</option>
+                <option value="WSE">WSE (Warsaw)</option>
+                <option value="PRG">PRG (Prague)</option>
+                <option value="VIE">VIE (Vienna)</option>
+                <option value="XETRA">XETRA (Germany)</option>
+                <option value="EURONEXT">EURONEXT (Europe)</option>
+                <option value="SIX">SIX (Switzerland)</option>
+                <option value="OMX">OMX (Nordic/Baltic)</option>
+              </select>
+            </div>
             <div>
               <Label className="text-slate-300">
                 {assetType === "STOCK" ? "Search Stock" : "Search Mutual Fund"}

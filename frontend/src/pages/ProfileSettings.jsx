@@ -136,13 +136,18 @@ const ProfileSettings = () => {
             </div>
             <div>
               <Label className="text-slate-300">Default Currency</Label>
-              <Input
-                type="text"
+              <select
                 value={defaultCurrency}
                 onChange={(e) => setDefaultCurrency(e.target.value)}
-                placeholder="INR"
-                className="bg-slate-800 border-slate-600 text-white"
-              />
+                className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+              >
+                <option value="INR">INR</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="JPY">JPY</option>
+                <option value="SGD">SGD</option>
+              </select>
             </div>
             <Button type="submit" className="bg-emerald-500 hover:bg-emerald-600">Update Profile</Button>
           </form>

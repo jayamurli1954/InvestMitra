@@ -6,6 +6,7 @@ import { ArrowLeft, TrendingUp, TrendingDown, Eye, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { AreaChart, BarChart, Card } from '@tremor/react';
+import { Label } from "@/components/ui/label";
 
 const StockDetail = () => {
   const { symbol } = useParams();
@@ -13,6 +14,7 @@ const StockDetail = () => {
   const [stock, setStock] = useState(null);
   const [historicalData, setHistoricalData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exchange, setExchange] = useState('NSE');
 
   useEffect(() => {
     fetchStockData();
@@ -21,8 +23,8 @@ const StockDetail = () => {
   const fetchStockData = async () => {
     try {
       const [stockRes, historyRes] = await Promise.all([
-        axios.get(`${API}/stocks/${symbol}`),
-        axios.get(`${API}/stocks/${symbol}/historical?days=30`)
+        axios.get(`${API}/stocks/${symbol}?exchange=${exchange}`),
+        axios.get(`${API}/stocks/${symbol}/historical?days=30&exchange=${exchange}`)
       ]);
       setStock(stockRes.data);
       setHistoricalData(historyRes.data);
@@ -67,14 +69,28 @@ const StockDetail = () => {
     <div className="space-y-8 fade-in" data-testid="stock-detail-page">
       {/* Header */}
       <div>
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center space-x-2 text-slate-400 hover:text-white mb-4 transition-colors"
-          data-testid="back-btn"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Back</span>
-        </button>
+        <div className="flex items-center justify-between mb-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="flex items-center space-x-2 text-slate-400 hover:text-white transition-colors"
+            data-testid="back-btn"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span>Back</span>
+          </button>
+          <div className="flex items-center space-x-2">
+            <Label className="text-slate-300">Exchange:</Label>
+            <select
+              value={exchange}
+              onChange={(e) => setExchange(e.target.value)}
+              className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+            >
+              <option value="NSE">NSE</option>
+              <option value="NYSE">NYSE</option>
+              <option value="NASDAQ">NASDAQ</option>
+            </select>
+          </div>
+        </div>
 
         <div className="flex items-start justify-between">
           <div>
