@@ -147,48 +147,48 @@ const Auth = () => {
               <Label htmlFor="password" className="text-slate-300">Password</Label>
               <div style={{ position: 'relative' }}>
                 <Input
-                id="password"
-                name="password"
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
-                value={formData.password}
-                onChange={handleChange}
-                className="mt-2 bg-slate-800 border-slate-700 text-white"
-                required
-              />
-              <button
-               type="button"
-               onClick={() => setShowPassword(!showPassword)}
-               style={{
-                 position: 'absolute',
-                 right: '10px',
-                 top: '50%',
-                 transform: 'translateY(-50%)',
-                 background: 'none',
-                 border: 'none',
-                 cursor: 'pointer',
-                 fontSize: '18px'
-               }}
-            >
-               {showPassword ? '👁️' : '👁️‍🗨️'}
-             </button>
-            </div>
-         <div style={{ marginTop: '10px', textAlign: 'right' }}>
-           <button
-             type="button"
-             onClick={() => navigate('/forgot-password')}
-             style={{
-               background: 'none',
-               border: 'none',
-               color: '#3b82f6',
-               cursor: 'pointer',
-               fontSize: '14px',
-               textDecoration: 'underline'
-             }}
-           >
-             Forgot Password?
-           </button>
-          </div>
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={formData.password}
+                  onChange={handleChange}
+                  className="mt-2 bg-slate-800 border-slate-700 text-white"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '18px'
+                  }}
+                >
+                  {showPassword ? '👁️' : '👁️‍🗨️'}
+                </button>
+              </div>
+              <div style={{ marginTop: '10px', textAlign: 'right' }}>
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#3b82f6',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    textDecoration: 'underline'
+                  }}
+                >
+                  Forgot Password?
+                </button>
+              </div>
             </div>
 
             <div className="mt-4 text-center text-xs text-slate-500">
