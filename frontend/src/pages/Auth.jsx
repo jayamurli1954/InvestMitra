@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
+import DisclaimerModal from '@/components/DisclaimerModal';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -16,6 +17,8 @@ const Auth = () => {
     name: ''
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
+  const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
   const { login, register, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -47,13 +50,20 @@ const Auth = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // For registration, show disclaimer modal first
+    if (!isLogin && !disclaimerAccepted) {
+      setShowDisclaimerModal(true);
+      return;
+    }
+
     setLoading(true);
     try {
       if (isLogin) {
         await login(formData.email, formData.password);
         toast.success('Logged in successfully!');
       } else {
-        await register(formData.email, formData.password, formData.name);
+        await register(formData.email, formData.password, formData.name, disclaimerAccepted);
         toast.success('Account created successfully!');
       }
     } catch (error) {
@@ -62,6 +72,28 @@ const Auth = () => {
       toast.error(errorMsg);
       setLoading(false);
     }
+  };
+
+  const handleDisclaimerAccept = async () => {
+    setDisclaimerAccepted(true);
+    setShowDisclaimerModal(false);
+
+    // Now proceed with registration
+    setLoading(true);
+    try {
+      await register(formData.email, formData.password, formData.name, true);
+      toast.success('Account created successfully!');
+    } catch (error) {
+      console.error('Auth error:', error);
+      const errorMsg = error.response?.data?.detail || 'Registration failed';
+      toast.error(errorMsg);
+      setLoading(false);
+    }
+  };
+
+  const handleDisclaimerDecline = () => {
+    setShowDisclaimerModal(false);
+    toast.info('You must accept the disclaimer to create an account');
   };
 
   return (
@@ -163,7 +195,15 @@ const Auth = () => {
 
             <div className="mt-4 text-center text-xs text-slate-500">
               <p>
-                <b>Disclaimer:</b> This application is for informational and educational purposes only. The content provided is not financial advice. You should always consult with a qualified financial professional before making any investment decisions.
+                <b>⚠️ Disclaimer:</b> For educational purposes only. Not financial advice. Investments carry risk.{' '}
+                <a
+                  href="/disclaimer"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-500 hover:text-emerald-400 underline"
+                >
+                  Read Full Disclaimer
+                </a>
               </p>
             </div>
 
@@ -202,6 +242,13 @@ const Auth = () => {
           </div>
         </div>
       </div>
+
+      {/* Disclaimer Modal for Registration */}
+      <DisclaimerModal
+        open={showDisclaimerModal}
+        onAccept={handleDisclaimerAccept}
+        onDecline={handleDisclaimerDecline}
+      />
     </div>
   );
 };

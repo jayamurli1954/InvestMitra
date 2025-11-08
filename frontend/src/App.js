@@ -21,6 +21,7 @@ import AIInsights from "@/pages/AIInsights";
 import Auth from "@/pages/Auth";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ProfileSettings from "@/pages/ProfileSettings";
+import Disclaimer from "@/pages/Disclaimer";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 import Marquee from "@/components/Marquee";
@@ -56,6 +57,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/auth" element={<Auth />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/disclaimer" element={<Disclaimer />} />
         <Route
           path="/*"
           element={

@@ -34,10 +34,16 @@ dist
 
 # Environment files
 *.env
-*.env.*
 *.env.local
+*.env.development
+*.env.production
+*.env.test
 *token.json*
 *credentials.json*
+
+# Allow .env.example files to be committed
+!.env.example
+!*.env.example
 
 # Logs and debug files
 *.log

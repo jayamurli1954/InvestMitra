@@ -28,7 +28,7 @@ export const WebSocketProvider = ({ children }) => {
     ws.current = new WebSocket(websocketUrl);
 
     ws.current.onopen = () => {
-      console.log('WebSocket connected');
+      // WebSocket connection established
     };
 
     ws.current.onmessage = (event) => {
@@ -43,11 +43,9 @@ export const WebSocketProvider = ({ children }) => {
     };
 
     ws.current.onclose = () => {
-      console.log('WebSocket disconnected');
       // Attempt to reconnect after a delay
       setTimeout(() => {
         if (isAuthenticated && user) {
-          console.log('Attempting to reconnect WebSocket...');
           // Re-establish connection by re-running effect
           // This is a simplified approach, a more robust solution would involve exponential backoff
           // and checking if the component is still mounted.

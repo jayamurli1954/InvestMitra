@@ -39,7 +39,6 @@ const Watchlist = () => {
     // Set up auto-refresh every 5 minutes during market hours
     const intervalId = setInterval(() => {
       if (isMarketHours()) {
-        console.log('🔄 Auto-refreshing watchlist (market hours)');
         fetchWatchlist();
       }
     }, 300000); // 5 minutes = 300,000 milliseconds
@@ -112,7 +111,6 @@ const Watchlist = () => {
       }
 
       await axios.post(`${API}/watchlist`, payload);
-      console.log('Payload sent to backend:', payload);
       toast.success(`Added ${payload.name} to watchlist`);
       setDialogOpen(false);
       setSearchQuery('');

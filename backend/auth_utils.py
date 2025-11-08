@@ -4,9 +4,16 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field, ConfigDict
 import uuid
+import os
 
 # JWT Configuration
-SECRET_KEY = "your-secret-key-change-in-production-12345678"
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError(
+        "SECRET_KEY environment variable is not set. "
+        "Please set it in your .env file or environment. "
+        "Generate a secure key using: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
@@ -28,6 +35,10 @@ class User(BaseModel):
     picture: Optional[str] = None
     auth_provider: str = "email"  # "email" or "google"
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    # Disclaimer acceptance tracking
+    disclaimer_accepted: bool = False
+    disclaimer_accepted_at: Optional[str] = None
+    disclaimer_version: str = "1.0"
 
 class UserPublic(BaseModel):
     id: str
@@ -53,6 +64,7 @@ class UserRegister(BaseModel):
     email: str
     password: str
     name: str
+    disclaimer_accepted: bool = False
 
 class UserLogin(BaseModel):
     email: str
