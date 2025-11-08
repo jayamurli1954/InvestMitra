@@ -230,26 +230,70 @@ def compare_with_benchmark(portfolio_return: float, benchmark_return: float) -> 
 
 
 def calculate_win_rate(transactions: List[Dict]) -> Dict[str, Any]:
-    """Calculate win rate from sell transactions"""
+    """
+    Calculate win rate from sell transactions by matching with buy transactions
+    Uses FIFO (First In, First Out) method to match buy and sell lots
+    """
     sell_transactions = [t for t in transactions if t["transaction_type"] == "sell"]
-    
+
     if not sell_transactions:
         return {"win_rate": 0, "winning_trades": 0, "losing_trades": 0, "total_trades": 0}
-    
-    # This is simplified - in real implementation, match with buy transactions
+
+    # Group buy transactions by symbol for efficient lookup
+    buy_transactions_by_symbol = {}
+    for t in transactions:
+        if t["transaction_type"] == "buy":
+            symbol = t.get("symbol", "")
+            if symbol not in buy_transactions_by_symbol:
+                buy_transactions_by_symbol[symbol] = []
+            buy_transactions_by_symbol[symbol].append({
+                "price": t.get("price", 0),
+                "quantity": t.get("quantity", 0),
+                "date": t.get("transaction_date", "")
+            })
+
+    # Sort buy transactions by date (FIFO)
+    for symbol in buy_transactions_by_symbol:
+        buy_transactions_by_symbol[symbol].sort(key=lambda x: x["date"])
+
     winning_trades = 0
     losing_trades = 0
-    
+
+    # Match each sell with corresponding buys
     for sell in sell_transactions:
-        # Simplified: assume average profit/loss based on notes or price comparison
-        # In reality, should match with specific buy lots
-        pass
-    
+        symbol = sell.get("symbol", "")
+        sell_price = sell.get("price", 0)
+
+        # Get average buy price for this symbol
+        buy_lots = buy_transactions_by_symbol.get(symbol, [])
+        if not buy_lots:
+            # No buy record found, skip this sell transaction
+            continue
+
+        # Calculate weighted average buy price
+        total_quantity = sum(lot["quantity"] for lot in buy_lots)
+        if total_quantity == 0:
+            continue
+
+        weighted_avg_buy_price = sum(
+            lot["price"] * lot["quantity"] for lot in buy_lots
+        ) / total_quantity
+
+        # Determine if this was a winning or losing trade
+        if sell_price > weighted_avg_buy_price:
+            winning_trades += 1
+        elif sell_price < weighted_avg_buy_price:
+            losing_trades += 1
+        # If equal, we don't count it as win or loss
+
+    total_trades = winning_trades + losing_trades
+    win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+
     return {
-        "win_rate": 0,  # Placeholder
+        "win_rate": round(win_rate, 2),
         "winning_trades": winning_trades,
         "losing_trades": losing_trades,
-        "total_trades": len(sell_transactions)
+        "total_trades": total_trades
     }
 
 
@@ -281,19 +325,22 @@ def generate_performance_summary(
                     for d in earliest_dates:
                         try:
                             parsed_dates.append(datetime.strptime(d, "%Y-%m-%d"))
-                        except:
+                        except (ValueError, TypeError):
                             # Try ISO format as fallback
                             try:
                                 parsed_dates.append(datetime.fromisoformat(d))
-                            except:
+                            except (ValueError, TypeError, AttributeError):
+                                # Skip invalid date formats
+                                logger.debug(f"Could not parse date: {d}")
                                 pass
-                    
+
                     if parsed_dates:
                         earliest_date = min(parsed_dates)
                         years = max(0.01, (datetime.now() - earliest_date).days / 365.25)
                     else:
                         years = 1.0  # Default to 1 year if parsing fails
                 except Exception as e:
+                    logger.warning(f"Error parsing dates for performance calculation: {e}")
                     years = 1.0
             else:
                 years = 1.0

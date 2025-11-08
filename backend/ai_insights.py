@@ -269,44 +269,32 @@ Respond with ONLY the JSON object, nothing else.
             )
         )
         
-        # Handle different response formats - WITH DEBUGGING
+        # Handle different response formats
         raw_text = None
-        
-        # Log full response structure for debugging
-        logger.info(f"🔍 Response type: {type(response)}")
-        logger.info(f"🔍 Has text attr: {hasattr(response, 'text')}")
-        logger.info(f"🔍 Has candidates: {hasattr(response, 'candidates')}")
-        
+
         try:
             raw_text = response.text
-            if raw_text:
-                logger.info(f"✅ Got response via .text: {len(raw_text)} chars")
+            logger.debug(f"Got Gemini response: {len(raw_text)} chars")
         except Exception as e:
-            logger.warning(f"⚠️ .text failed: {e}")
-            
-            # Try alternative access method
+            logger.debug(f"Response .text access failed, trying candidates: {e}")
+
+            # Try alternative access method via candidates
             if hasattr(response, 'candidates') and response.candidates and len(response.candidates) > 0:
-                logger.info(f"🔍 Found {len(response.candidates)} candidates")
                 candidate = response.candidates[0]
-                
-                logger.info(f"🔍 Candidate finish_reason: {getattr(candidate, 'finish_reason', 'N/A')}")
-                logger.info(f"🔍 Candidate has content: {hasattr(candidate, 'content')}")
-                
+
                 if hasattr(candidate, 'content') and candidate.content:
                     if hasattr(candidate.content, 'parts') and candidate.content.parts:
-                        logger.info(f"🔍 Found {len(candidate.content.parts)} parts")
                         raw_text = candidate.content.parts[0].text
-                        logger.info(f"✅ Got response via candidates: {len(raw_text)} chars")
+                        logger.debug(f"Got response via candidates: {len(raw_text)} chars")
                     else:
-                        logger.error(f"❌ Content has no parts. Content type: {type(candidate.content)}")
+                        logger.error("Gemini response candidate content has no parts")
                 else:
-                    logger.error(f"❌ Candidate has no content")
+                    logger.error("Gemini response candidate has no content")
             else:
-                logger.error(f"❌ No candidates found in response")
-        
+                logger.error("Gemini response has no candidates")
+
         if not raw_text:
-            logger.error("❌ Gemini returned empty response after trying all methods")
-            logger.error(f"   Response object: {response}")
+            logger.error("Gemini returned empty response after trying all access methods")
             return {
                 "optimization_suggestions": {
                     "rebalancing": ["AI returned empty response. This may be due to content filters or API issues."],
@@ -316,8 +304,8 @@ Respond with ONLY the JSON object, nothing else.
                 },
                 "error": "empty_response"
             }
-        
-        logger.info(f"📝 Gemini response received: {len(raw_text)} characters")
+
+        logger.debug(f"Processing Gemini response: {len(raw_text)} characters")
         
         json_str = extract_json_from_markdown(raw_text)
         

@@ -120,6 +120,17 @@ def cached(key_prefix: str):
         return wrapper
     return decorator
 
+# ==================== DATABASE DEPENDENCY ====================
+
+async def get_db():
+    """Dependency to check database availability"""
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection unavailable. Please check MongoDB configuration."
+        )
+    return db
+
 # ==================== AUTH DEPENDENCY ====================
 
 async def get_current_user(
@@ -128,37 +139,41 @@ async def get_current_user(
     session_token: Optional[str] = Cookie(None)
 ) -> Optional[User]:
     """Get current user from session token (cookie or header)"""
+    if db is None:
+        logger.error("Database not available for authentication")
+        return None
+
     token = None
-    
+
     # Check cookie first, then Authorization header
     if session_token:
         token = session_token
     elif credentials:
         token = credentials.credentials
-    
+
     if not token:
         return None
-    
+
     # Check session in database
     session = await db.user_sessions.find_one({
         "session_token": token,
         "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}
     })
-    
+
     if not session:
         return None
-    
+
     # Get user
     user_doc = await db.users.find_one({"_id": session["user_id"]})
     if not user_doc:
         return None
-    
+
     user_doc["id"] = user_doc.pop("_id")
-    
+
     # Convert datetime to string if needed
     if "created_at" in user_doc and isinstance(user_doc["created_at"], datetime):
         user_doc["created_at"] = user_doc["created_at"].isoformat()
-    
+
     return User(**user_doc)
 
 async def require_auth(current_user: Optional[User] = Depends(get_current_user)) -> User:
@@ -319,7 +334,7 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
 
         except Exception as e:
             failed_count += 1
-            print(f"Failed to process row: {row}. Error: {e}")
+            logger.error(f"Failed to process portfolio row. Error: {e}")
 
     return {
         "message": "Portfolio upload processed.",
@@ -2072,15 +2087,31 @@ app.include_router(api_router)
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
+    """
+    WebSocket endpoint for real-time updates to clients.
+
+    Architecture: Push-only design (server -> client)
+    - Server pushes real-time stock price updates to connected clients
+    - Client messages are not processed (receive_text() is called only to keep connection alive)
+    - The websocket manager handles broadcasting updates to all connected clients
+
+    Args:
+        websocket: WebSocket connection
+        user_id: Unique identifier for the user
+
+    Note: If bidirectional communication is needed in the future, implement
+    message handling in the while loop to process client requests.
+    """
     await manager.connect(user_id, websocket)
     try:
         while True:
+            # Keep the connection alive by receiving (but not processing) client messages
+            # This is a push-only WebSocket - server sends updates, client doesn't send commands
             data = await websocket.receive_text()
-            # For now, we don't need to handle incoming messages
-            # We are just using the websocket to push data to the client
+            # Intentionally not processing incoming messages - this is server-push only
             pass
     except Exception as e:
-        print(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for user {user_id}: {e}")
     finally:
         manager.disconnect(user_id)
 
@@ -2249,7 +2280,7 @@ async def forgot_password(request_data: dict):
             )
     
     except Exception as e:
-        print(f"Error in forgot_password: {str(e)}")
+        logger.exception(f"Error in forgot_password: {str(e)}")
         return JSONResponse(
             content={"error": "An error occurred"},
             status_code=500
@@ -2261,97 +2292,97 @@ async def reset_password(request_data: dict):
     """
     Reset password with token
     """
-    print(f"DEBUG: Received request_data: {request_data}")
-    
+    logger.debug(f"Password reset attempt - request received")
+
     try:
         token = request_data.get("token", "").strip()
         new_password = request_data.get("new_password")
         confirm_password = request_data.get("confirm_password")
-        
+
         # If token contains full URL, extract just the token part
         if token and "token=" in token:
             token = token.split("token=")[-1].strip()
-            print(f"DEBUG: Extracted token from URL: {token}")
-        
-        print(f"DEBUG: token={token}, new_password={new_password}, confirm_password={confirm_password}")
-        
+            logger.debug("Extracted token from URL parameter")
+
+        logger.debug(f"Password reset validation - token present: {bool(token)}, passwords provided: {bool(new_password and confirm_password)}")
+
         # Validate input
         if not token or not new_password or not confirm_password:
             error_msg = f"Missing fields: token={bool(token)}, new_password={bool(new_password)}, confirm_password={bool(confirm_password)}"
-            print(f"DEBUG: {error_msg}")
+            logger.warning(f"Password reset failed - {error_msg}")
             return JSONResponse(
                 content={"error": error_msg},
                 status_code=400
             )
-        
+
         # Check passwords match
         if new_password != confirm_password:
-            print(f"DEBUG: Passwords don't match")
+            logger.warning("Password reset failed - passwords don't match")
             return JSONResponse(
                 content={"error": "Passwords do not match"},
                 status_code=400
             )
-        
+
         # Validate password length
         if len(new_password) < 8:
-            print(f"DEBUG: Password too short: {len(new_password)}")
+            logger.warning(f"Password reset failed - password too short: {len(new_password)} characters")
             return JSONResponse(
                 content={"error": "Password must be at least 8 characters long"},
                 status_code=400
             )
-        
-        print(f"DEBUG: Validation passed, looking for token in DB")
-        
+
+        logger.debug("Password reset validation passed, verifying token in database")
+
         # Validate token from database (ASYNC)
         from datetime import datetime, timezone
         reset_record = await db["password_resets"].find_one({"token": token})
-        
-        print(f"DEBUG: reset_record found: {reset_record is not None}")
-        
+
+        logger.debug(f"Password reset token lookup - record found: {reset_record is not None}")
+
         if not reset_record:
-            print(f"DEBUG: Token not found in database")
+            logger.warning("Password reset failed - token not found in database")
             return JSONResponse(
                 content={"error": "Invalid or expired reset token"},
                 status_code=400
             )
-        
+
         # Check if expired
         expires_at = datetime.fromisoformat(reset_record["expires_at"])
         if datetime.now(timezone.utc) > expires_at:
-            print(f"DEBUG: Token expired")
+            logger.warning("Password reset failed - token expired")
             return JSONResponse(
                 content={"error": "Reset token has expired"},
                 status_code=400
             )
-        
+
         # Check if already used
         if reset_record.get("used"):
-            print(f"DEBUG: Token already used")
+            logger.warning("Password reset failed - token already used")
             return JSONResponse(
                 content={"error": "This reset token has already been used"},
                 status_code=400
             )
-        
-        print(f"DEBUG: All checks passed, updating password")
-        
+
+        logger.debug("Password reset token validated, updating password")
+
         # Update user password
         user_id = reset_record["user_id"]
         hashed_password = get_password_hash(new_password)
-        
+
         await db.users.update_one(
             {"_id": user_id},
             {"$set": {"password_hash": hashed_password}}
         )
-        
-        print(f"DEBUG: Password updated")
-        
+
+        logger.debug("Password updated successfully")
+
         # Mark token as used
         await db["password_resets"].update_one(
             {"token": token},
             {"$set": {"used": True}}
         )
-        
-        print(f"DEBUG: Token marked as used - SUCCESS!")
+
+        logger.info(f"Password reset completed successfully for user: {user_id}")
         
         return JSONResponse(
             content={"message": "Password has been reset successfully", "success": True},
@@ -2359,9 +2390,7 @@ async def reset_password(request_data: dict):
         )
     
     except Exception as e:
-        print(f"ERROR in reset_password: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Error in reset_password: {str(e)}")
         return JSONResponse(
             content={"error": "An error occurred: " + str(e)},
             status_code=500
@@ -2404,7 +2433,7 @@ async def recover_email(request_data: dict):
         )
     
     except Exception as e:
-        print(f"Error in recover_email: {str(e)}")
+        logger.exception(f"Error in recover_email: {str(e)}")
         return JSONResponse(
             content={"error": "An error occurred"},
             status_code=500
@@ -2435,7 +2464,7 @@ async def verify_email(request_data: dict):
         )
     
     except Exception as e:
-        print(f"Error in verify_email: {str(e)}")
+        logger.exception(f"Error in verify_email: {str(e)}")
         return JSONResponse(
             content={"error": "An error occurred"},
             status_code=500
