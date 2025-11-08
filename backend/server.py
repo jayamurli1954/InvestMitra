@@ -1,14 +1,19 @@
+from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Load .env FIRST before importing auth_utils
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket
 import pandas as pd
 from websocket_manager import manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os
 import logging
-from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
@@ -29,9 +34,6 @@ from market_data import (
 from performance import (
     generate_performance_summary, calculate_win_rate, calculate_sector_performance
 )
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection - will be initialized on app startup
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
