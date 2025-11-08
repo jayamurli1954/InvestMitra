@@ -23,8 +23,11 @@ from auth_utils import (
     verify_password, get_password_hash, create_access_token, decode_access_token
 )
 from market_data import (
-    get_stock_info, get_historical_data, get_market_indices, 
+    get_stock_info, get_historical_data, get_market_indices,
     get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
+)
+from performance import (
+    generate_performance_summary, calculate_win_rate, calculate_sector_performance
 )
 
 ROOT_DIR = Path(__file__).parent
@@ -948,10 +951,16 @@ async def screen_stocks(
     results = []
     for stock_basic in all_stocks:
         # Get detailed real-time info
-        stock_data = get_stock_info(stock_basic["symbol"])
-        if not stock_data:
+        stock_data_dict = get_stock_info(stock_basic["symbol"])
+        if not stock_data_dict:
             continue
-        
+
+        # Extract the inner dict (get_stock_info returns {symbol: {data}})
+        symbol = stock_basic["symbol"]
+        if symbol not in stock_data_dict:
+            continue
+        stock_data = stock_data_dict[symbol]
+
         # Apply filters
         if min_pe and (not stock_data.get("pe_ratio") or stock_data["pe_ratio"] < min_pe):
             continue
@@ -959,7 +968,7 @@ async def screen_stocks(
             continue
         if min_roe and (not stock_data.get("roe") or stock_data["roe"] < min_roe):
             continue
-        
+
         results.append(StockDetail(**stock_data))
     
     return results
@@ -1285,6 +1294,154 @@ async def delete_strategy(strategy_id: str, current_user: User = Depends(require
 
 # ==================== ANALYTICS ENDPOINTS ====================
 
+def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Dict]) -> Dict[str, Any]:
+    """Calculate comprehensive portfolio analytics"""
+    if not holdings:
+        return {
+            "total_value": 0,
+            "total_invested": 0,
+            "total_gain_loss": 0,
+            "total_gain_loss_percent": 0,
+            "sector_allocation": [],
+            "asset_allocation": [],
+            "top_gainers": [],
+            "top_losers": [],
+            "diversification_score": 0
+        }
+
+    total_value = 0
+    total_invested = 0
+    sector_allocation = {}
+    asset_allocation = {}
+    stock_performance = []
+
+    for holding in holdings:
+        quantity = holding.get("quantity", 0)
+        avg_price = holding.get("average_price", 0)
+        current_price = holding.get("current_price", 0)
+
+        invested = quantity * avg_price
+        current_value = quantity * current_price
+        gain_loss = current_value - invested
+        gain_loss_percent = (gain_loss / invested * 100) if invested > 0 else 0
+
+        total_value += current_value
+        total_invested += invested
+
+        # Sector allocation
+        symbol = holding.get("symbol", "")
+        if symbol in stock_data:
+            sector = stock_data[symbol].get("sector", "Other")
+            sector_allocation[sector] = sector_allocation.get(sector, 0) + current_value
+
+        # Asset allocation
+        asset_type = holding.get("asset_type", "STOCK")
+        asset_allocation[asset_type] = asset_allocation.get(asset_type, 0) + current_value
+
+        # Track individual stock performance
+        if current_value > 0:
+            stock_performance.append({
+                "symbol": symbol,
+                "name": holding.get("name", symbol),
+                "gain_loss": gain_loss,
+                "gain_loss_percent": gain_loss_percent,
+                "current_value": current_value
+            })
+
+    # Convert allocations to percentages
+    sector_allocation_list = [
+        {"name": sector, "value": value, "percentage": (value / total_value * 100) if total_value > 0 else 0}
+        for sector, value in sector_allocation.items()
+    ]
+
+    asset_allocation_list = [
+        {"name": asset, "value": value, "percentage": (value / total_value * 100) if total_value > 0 else 0}
+        for asset, value in asset_allocation.items()
+    ]
+
+    # Sort stock performance
+    stock_performance.sort(key=lambda x: x["gain_loss_percent"], reverse=True)
+    top_gainers = stock_performance[:5]
+    top_losers = sorted(stock_performance, key=lambda x: x["gain_loss_percent"])[:5]
+
+    # Calculate diversification score (0-100)
+    num_holdings = len(holdings)
+    num_sectors = len(sector_allocation)
+    diversification_score = min(100, (num_holdings * 5 + num_sectors * 10))
+
+    total_gain_loss = total_value - total_invested
+    total_gain_loss_percent = (total_gain_loss / total_invested * 100) if total_invested > 0 else 0
+
+    return {
+        "total_value": round(total_value, 2),
+        "total_invested": round(total_invested, 2),
+        "total_gain_loss": round(total_gain_loss, 2),
+        "total_gain_loss_percent": round(total_gain_loss_percent, 2),
+        "sector_allocation": sector_allocation_list,
+        "asset_allocation": asset_allocation_list,
+        "top_gainers": top_gainers,
+        "top_losers": top_losers,
+        "diversification_score": diversification_score
+    }
+
+def generate_stock_recommendations(
+    criteria: Dict[str, Any],
+    all_stocks: List[Dict],
+    existing_symbols: List[str],
+    limit: int = 10
+) -> List[Dict[str, Any]]:
+    """Generate stock recommendations based on criteria"""
+    recommendations = []
+
+    for stock in all_stocks:
+        symbol = stock.get("symbol")
+
+        # Skip if already in portfolio
+        if symbol in existing_symbols:
+            continue
+
+        # Apply criteria filters
+        pe_ratio = stock.get("pe_ratio")
+        roe = stock.get("roe")
+        pb_ratio = stock.get("pb_ratio")
+        market_cap = stock.get("market_cap", 0)
+
+        # Check minimum criteria
+        if criteria.get("min_roe") and (not roe or roe < criteria["min_roe"]):
+            continue
+        if criteria.get("max_pe") and (not pe_ratio or pe_ratio > criteria["max_pe"]):
+            continue
+        if criteria.get("min_market_cap") and market_cap < criteria.get("min_market_cap", 0):
+            continue
+        if criteria.get("max_pb") and (not pb_ratio or pb_ratio > criteria["max_pb"]):
+            continue
+
+        # Calculate a simple score
+        score = 0
+        if roe:
+            score += min(roe, 50)  # Max 50 points for ROE
+        if pe_ratio and pe_ratio > 0:
+            score += max(0, 50 - pe_ratio)  # Lower PE is better
+        if pb_ratio and pb_ratio > 0:
+            score += max(0, 25 - pb_ratio * 5)  # Lower PB is better
+
+        recommendations.append({
+            "symbol": symbol,
+            "name": stock.get("name", symbol),
+            "sector": stock.get("sector", "Other"),
+            "current_price": stock.get("current_price", 0),
+            "pe_ratio": pe_ratio,
+            "pb_ratio": pb_ratio,
+            "roe": roe,
+            "market_cap": market_cap,
+            "score": score,
+            "reason": f"ROE: {roe:.1f}%, PE: {pe_ratio:.1f}" if roe and pe_ratio else "Meets criteria"
+        })
+
+    # Sort by score and return top recommendations
+    recommendations.sort(key=lambda x: x["score"], reverse=True)
+    return recommendations[:limit]
+
 @api_router.get("/analytics/portfolio")
 async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
     """Get comprehensive portfolio analytics"""
@@ -1361,11 +1518,14 @@ async def get_stock_recommendations(
     # Get all stocks with full data
     all_stocks_basic = await get_all_stocks_from_db()
     all_stocks_detailed = []
-    
+
     for stock_basic in all_stocks_basic[:30]:  # Limit to avoid timeout
-        stock_detail = get_stock_info(stock_basic["symbol"])
-        if stock_detail:
-            all_stocks_detailed.append(stock_detail)
+        stock_detail_dict = get_stock_info(stock_basic["symbol"])
+        if stock_detail_dict:
+            # Extract the inner dict (get_stock_info returns {symbol: {data}})
+            symbol = stock_basic["symbol"]
+            if symbol in stock_detail_dict:
+                all_stocks_detailed.append(stock_detail_dict[symbol])
     
     recommendations = generate_stock_recommendations(
         criteria, all_stocks_detailed, existing_symbols, limit=10
