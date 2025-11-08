@@ -92,11 +92,11 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (email, password, name) => {
+  const register = async (email, password, name, disclaimerAccepted = false) => {
     try {
       const response = await axios.post(
         `${API}/auth/register`,
-        { email, password, name },
+        { email, password, name, disclaimer_accepted: disclaimerAccepted },
         { withCredentials: true }
       );
       setUser(response.data.user);

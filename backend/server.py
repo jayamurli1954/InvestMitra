@@ -505,17 +505,27 @@ async def register_options():
 @api_router.post("/auth/register", response_model=Token)
 async def register(user_data: UserRegister, response: Response):
     """Register new user with email/password"""
+    # Validate disclaimer acceptance
+    if not user_data.disclaimer_accepted:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the Investment Disclaimer to register"
+        )
+
     # Check if user exists
     existing_user = await db.users.find_one({"email": user_data.email})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create user
+
+    # Create user with disclaimer acceptance
     user = User(
         email=user_data.email,
         name=user_data.name,
         password_hash=get_password_hash(user_data.password),
-        auth_provider="email"
+        auth_provider="email",
+        disclaimer_accepted=True,
+        disclaimer_accepted_at=datetime.now(timezone.utc).isoformat(),
+        disclaimer_version="1.0"
     )
     
     user_dict = user.model_dump(by_alias=True)
