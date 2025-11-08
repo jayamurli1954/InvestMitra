@@ -189,9 +189,7 @@ const Auth = () => {
              Forgot Password?
            </button>
           </div>
-
-⏸️ Pause here - Add this link button and tell me "Done"RetryClaude can make mistakes. Please double-check responses.
-
+            </div>
 
             <div className="mt-4 text-center text-xs text-slate-500">
               <p>
