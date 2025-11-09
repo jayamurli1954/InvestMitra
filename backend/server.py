@@ -1835,6 +1835,7 @@ async def delete_transaction(
 @api_router.get("/transactions/summary")
 async def get_transactions_summary(current_user: User = Depends(require_auth)):
     """Get comprehensive transaction summary with current portfolio value"""
+    logger.info("🔥 NEW TRANSACTION SUMMARY ENDPOINT CALLED - FIXED CODE RUNNING!")
     # Get all transactions
     transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
 
@@ -2382,6 +2383,9 @@ async def get_performance_report(
     current_user: User = Depends(require_auth)
 ):
     """Generate advanced performance report"""
+    logger.info("=" * 80)
+    logger.info("🔥 NEW PERFORMANCE REPORT CODE IS RUNNING - CACHE CLEARED SUCCESSFULLY!")
+    logger.info("=" * 80)
     try:
         # Get transactions
         transactions = await db.transactions.find({
