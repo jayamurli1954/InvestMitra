@@ -1829,8 +1829,198 @@ async def delete_transaction(
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     return {"message": "Transaction deleted"}
+
+@api_router.get("/transactions/summary")
+async def get_transactions_summary(current_user: User = Depends(require_auth)):
+    """Get comprehensive transaction summary with current portfolio value"""
+    # Get all transactions
+    transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+
+    total_bought = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "buy")
+    total_sold = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "sell")
+    net_invested = total_bought - total_sold
+
+    # Get current portfolio value
+    holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+
+    current_value = 0
+    portfolio_cost_basis = 0
+
+    for holding in holdings:
+        quantity = holding.get("quantity", 0)
+        purchase_price = holding.get("purchase_price", 0)
+        portfolio_cost_basis += quantity * purchase_price
+
+        # Get current price
+        current_price = 0
+        if holding.get("asset_type") == "MUTUAL_FUND":
+            mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+            if mf_data:
+                current_price = mf_data.get("current_nav", 0)
+        else:
+            symbol = holding.get("symbol")
+            if symbol:
+                stock_data_dict = get_stock_info(symbol)
+                if stock_data_dict and symbol in stock_data_dict:
+                    current_price = stock_data_dict[symbol].get("current_price", 0)
+
+        current_value += quantity * current_price
+
+    # Calculate P&L
+    total_gain_loss = current_value - net_invested
+    total_gain_loss_percent = (total_gain_loss / net_invested * 100) if net_invested > 0 else 0
+
+    # Check for mismatch
+    mismatch = portfolio_cost_basis - net_invested
+    has_mismatch = abs(mismatch) > 1  # Allow ₹1 rounding difference
+
+    return {
+        "total_bought": round(total_bought, 2),
+        "total_sold": round(total_sold, 2),
+        "net_invested": round(net_invested, 2),
+        "current_value": round(current_value, 2),
+        "total_gain_loss": round(total_gain_loss, 2),
+        "total_gain_loss_percent": round(total_gain_loss_percent, 2),
+        "portfolio_cost_basis": round(portfolio_cost_basis, 2),
+        "mismatch": round(mismatch, 2),
+        "has_mismatch": has_mismatch,
+        "num_holdings": len(holdings),
+        "num_transactions": len(transactions)
+    }
+
+@api_router.get("/transactions/diagnostic")
+async def diagnose_transaction_mismatch(current_user: User = Depends(require_auth)):
+    """Diagnose mismatches between portfolio and transactions"""
+    # Get portfolio holdings
+    holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+
+    # Get all transactions
+    transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+
+    # Calculate portfolio cost basis
+    portfolio_items = []
+    total_portfolio_cost = 0
+
+    for holding in holdings:
+        quantity = holding.get("quantity", 0)
+        purchase_price = holding.get("purchase_price", 0)
+        cost = quantity * purchase_price
+        total_portfolio_cost += cost
+
+        symbol = holding.get("symbol") or holding.get("scheme_code")
+        name = holding.get("name") or holding.get("scheme_name")
+
+        portfolio_items.append({
+            "symbol": symbol,
+            "name": name,
+            "quantity": quantity,
+            "purchase_price": purchase_price,
+            "total_cost": round(cost, 2),
+            "asset_type": holding.get("asset_type", "STOCK")
+        })
+
+    # Calculate transaction totals
+    total_bought = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "buy")
+    total_sold = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "sell")
+    net_from_transactions = total_bought - total_sold
+
+    # Find mismatch
+    mismatch = total_portfolio_cost - net_from_transactions
+
+    # Group transactions by symbol
+    transaction_summary = {}
+    for txn in transactions:
+        symbol = txn["symbol"]
+        if symbol not in transaction_summary:
+            transaction_summary[symbol] = {"bought": 0, "sold": 0, "net": 0}
+
+        if txn["transaction_type"] == "buy":
+            transaction_summary[symbol]["bought"] += txn["total_amount"]
+            transaction_summary[symbol]["net"] += txn["total_amount"]
+        else:
+            transaction_summary[symbol]["sold"] += txn["total_amount"]
+            transaction_summary[symbol]["net"] -= txn["total_amount"]
+
+    # Find holdings without transactions
+    missing_transactions = []
+    for item in portfolio_items:
+        if item["symbol"] not in transaction_summary:
+            missing_transactions.append({
+                "symbol": item["symbol"],
+                "name": item["name"],
+                "quantity": item["quantity"],
+                "purchase_price": item["purchase_price"],
+                "missing_amount": item["total_cost"],
+                "reason": "No buy transaction found for this holding"
+            })
+
+    return {
+        "summary": {
+            "total_portfolio_cost_basis": round(total_portfolio_cost, 2),
+            "total_bought_from_transactions": round(total_bought, 2),
+            "total_sold_from_transactions": round(total_sold, 2),
+            "net_from_transactions": round(net_from_transactions, 2),
+            "mismatch": round(mismatch, 2),
+            "has_mismatch": abs(mismatch) > 1
+        },
+        "portfolio_items": portfolio_items,
+        "transaction_summary": transaction_summary,
+        "missing_transactions": missing_transactions,
+        "diagnosis": "Data is in sync" if abs(mismatch) <= 1 else f"Mismatch of ₹{abs(mismatch):.2f} detected. {len(missing_transactions)} holdings have no corresponding transactions."
+    }
+
+@api_router.post("/transactions/sync")
+async def sync_transactions_with_portfolio(current_user: User = Depends(require_auth)):
+    """Auto-sync: Create missing transactions for portfolio holdings"""
+    # Get portfolio holdings
+    holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+
+    # Get existing transactions
+    transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+
+    # Find symbols with transactions
+    symbols_with_transactions = set(t["symbol"] for t in transactions)
+
+    # Create missing transactions
+    created_transactions = []
+
+    for holding in holdings:
+        symbol = holding.get("symbol") or holding.get("scheme_code")
+        name = holding.get("name") or holding.get("scheme_name")
+
+        if symbol not in symbols_with_transactions:
+            # Create a buy transaction for this holding
+            transaction_doc = {
+                "id": str(uuid.uuid4()),
+                "user_id": current_user.id,
+                "symbol": symbol,
+                "name": name,
+                "transaction_type": "buy",
+                "quantity": holding.get("quantity", 0),
+                "price": holding.get("purchase_price", 0),
+                "total_amount": holding.get("quantity", 0) * holding.get("purchase_price", 0),
+                "transaction_date": holding.get("purchase_date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "note": "Auto-synced from portfolio"
+            }
+
+            await db.transactions.insert_one(transaction_doc)
+            created_transactions.append({
+                "symbol": symbol,
+                "name": name,
+                "amount": transaction_doc["total_amount"]
+            })
+
+            logger.info(f"Auto-created transaction for {symbol}: ₹{transaction_doc['total_amount']}")
+
+    return {
+        "message": "Sync completed successfully",
+        "created_count": len(created_transactions),
+        "created_transactions": created_transactions,
+        "total_synced_amount": sum(t["amount"] for t in created_transactions)
+    }
 
 @api_router.get("/tax-report")
 async def get_tax_report(

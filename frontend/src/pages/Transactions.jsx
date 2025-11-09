@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowUpRight, ArrowDownLeft, Trash2, Plus, AlertCircle } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Trash2, Plus, AlertCircle, RefreshCw, Search } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from '../hooks/use-toast';
 
@@ -22,16 +22,30 @@ export default function Transactions() {
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
 
+  // New state for enhanced summary and diagnostic
+  const [summary, setSummary] = useState(null);
+  const [diagnostic, setDiagnostic] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
+
   const fetchTransactions = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`${API}/transactions`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch transactions');
-      const data = await response.json();
-      setTransactions(data);
+      // Fetch both transactions and summary in parallel
+      const [txnResponse, summaryResponse] = await Promise.all([
+        fetch(`${API}/transactions`, { credentials: 'include' }),
+        fetch(`${API}/transactions/summary`, { credentials: 'include' })
+      ]);
+
+      if (!txnResponse.ok) throw new Error('Failed to fetch transactions');
+      if (!summaryResponse.ok) throw new Error('Failed to fetch summary');
+
+      const txnData = await txnResponse.json();
+      const summaryData = await summaryResponse.json();
+
+      setTransactions(txnData);
+      setSummary(summaryData);
     } catch (err) {
       setError(err.message);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -75,10 +89,11 @@ export default function Transactions() {
       }
 
       const createdTransaction = await response.json();
-      setTransactions([createdTransaction, ...transactions]);
       setFormData({ symbol: '', name: '', transaction_type: 'buy', quantity: '', price: '', transaction_date: new Date().toISOString().split('T')[0] });
       setShowForm(false);
       toast({ title: 'Success', description: 'Transaction added successfully.' });
+      // Refresh transactions and summary
+      fetchTransactions();
     } catch (err) {
       setError(err.message);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -104,9 +119,56 @@ export default function Transactions() {
       setTransactions(transactions.filter(t => t.id !== id));
       setShowDeleteConfirm(null);
       toast({ title: 'Success', description: 'Transaction deleted successfully.' });
+      // Refresh summary after delete
+      fetchTransactions();
     } catch (err) {
       setError(err.message);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDiagnose = async () => {
+    try {
+      const response = await fetch(`${API}/transactions/diagnostic`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to fetch diagnostic data');
+      const data = await response.json();
+      setDiagnostic(data);
+      setShowDiagnostic(true);
+      toast({ title: 'Diagnostic Complete', description: 'Check results below.' });
+    } catch (err) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleSync = async () => {
+    if (!window.confirm('This will create missing transactions for your portfolio holdings. Continue?')) {
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const response = await fetch(`${API}/transactions/sync`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to sync transactions');
+      const data = await response.json();
+
+      toast({
+        title: 'Sync Complete',
+        description: `Created ${data.created_count} missing transactions totaling ₹${data.total_synced_amount.toFixed(2)}`,
+      });
+
+      // Refresh data
+      fetchTransactions();
+      setShowDiagnostic(false);
+      setDiagnostic(null);
+    } catch (err) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -136,29 +198,147 @@ export default function Transactions() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-gray-900">Transactions</h1>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-4 h-4" />
-          New Transaction
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleDiagnose}
+            className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+          >
+            <Search className="w-4 h-4" />
+            Diagnose
+          </button>
+          {summary?.has_mismatch && (
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="flex items-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              {syncing ? 'Syncing...' : 'Sync Transactions'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-4 h-4" />
+            New Transaction
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-          <p className="text-sm text-gray-600">Total Bought</p>
-          <p className="text-2xl font-bold text-green-600">₹{totalBought.toFixed(2)}</p>
+      {/* Enhanced Summary Cards */}
+      {summary && (
+        <>
+          <div className="grid grid-cols-5 gap-4">
+            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+              <p className="text-sm text-gray-600">Total Bought</p>
+              <p className="text-2xl font-bold text-green-600">₹{summary.total_bought.toFixed(2)}</p>
+            </div>
+            <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+              <p className="text-sm text-gray-600">Total Sold</p>
+              <p className="text-2xl font-bold text-red-600">₹{summary.total_sold.toFixed(2)}</p>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <p className="text-sm text-gray-600">Net Invested</p>
+              <p className="text-2xl font-bold text-blue-600">₹{summary.net_invested.toFixed(2)}</p>
+            </div>
+            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+              <p className="text-sm text-gray-600">Current Value</p>
+              <p className="text-2xl font-bold text-purple-600">₹{summary.current_value.toFixed(2)}</p>
+            </div>
+            <div className={`p-4 rounded-lg border ${summary.total_gain_loss >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+              <p className="text-sm text-gray-600">Total Gain/Loss</p>
+              <p className={`text-2xl font-bold ${summary.total_gain_loss >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {summary.total_gain_loss >= 0 ? '+' : ''}₹{summary.total_gain_loss.toFixed(2)}
+              </p>
+              <p className={`text-xs ${summary.total_gain_loss >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                {summary.total_gain_loss_percent >= 0 ? '+' : ''}{summary.total_gain_loss_percent.toFixed(2)}%
+              </p>
+            </div>
+          </div>
+
+          {/* Mismatch Warning */}
+          {summary.has_mismatch && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-yellow-900">Data Mismatch Detected</h3>
+                <p className="text-sm text-yellow-800 mt-1">
+                  Your portfolio cost basis (₹{summary.portfolio_cost_basis.toFixed(2)}) doesn't match your transaction history (₹{summary.net_invested.toFixed(2)}).
+                  This suggests some holdings may be missing buy transactions.
+                  Click "Diagnose" to see details or "Sync Transactions" to auto-fix.
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Diagnostic Panel */}
+      {showDiagnostic && diagnostic && (
+        <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold text-gray-900">Diagnostic Report</h2>
+            <button
+              onClick={() => setShowDiagnostic(false)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-gray-50 p-3 rounded border">
+              <p className="text-xs text-gray-600">Portfolio Cost Basis</p>
+              <p className="text-lg font-bold">₹{diagnostic.summary.total_portfolio_cost_basis.toFixed(2)}</p>
+            </div>
+            <div className="bg-gray-50 p-3 rounded border">
+              <p className="text-xs text-gray-600">Transaction Net</p>
+              <p className="text-lg font-bold">₹{diagnostic.summary.net_from_transactions.toFixed(2)}</p>
+            </div>
+            <div className={`p-3 rounded border ${diagnostic.summary.has_mismatch ? 'bg-red-50' : 'bg-green-50'}`}>
+              <p className="text-xs text-gray-600">Mismatch</p>
+              <p className={`text-lg font-bold ${diagnostic.summary.has_mismatch ? 'text-red-600' : 'text-green-600'}`}>
+                ₹{Math.abs(diagnostic.summary.mismatch).toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <p className="text-sm font-medium text-gray-700 mb-2">Diagnosis:</p>
+            <p className="text-sm text-gray-600">{diagnostic.diagnosis}</p>
+          </div>
+
+          {diagnostic.missing_transactions && diagnostic.missing_transactions.length > 0 && (
+            <div>
+              <h3 className="font-semibold text-gray-900 mb-2">Missing Transactions ({diagnostic.missing_transactions.length}):</h3>
+              <div className="bg-yellow-50 border border-yellow-200 rounded p-3 max-h-60 overflow-y-auto">
+                <ul className="text-sm space-y-1">
+                  {diagnostic.missing_transactions.map((item, idx) => (
+                    <li key={idx} className="text-yellow-900">
+                      <span className="font-medium">{item.symbol}</span>: {item.quantity} units @ ₹{item.purchase_price.toFixed(2)}
+                      = ₹{item.total_cost.toFixed(2)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
+          {diagnostic.summary.has_mismatch && (
+            <div className="pt-4 border-t">
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                className="w-full flex items-center justify-center gap-2 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                {syncing ? 'Syncing...' : `Sync ${diagnostic.missing_transactions.length} Missing Transactions`}
+              </button>
+            </div>
+          )}
         </div>
-        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-          <p className="text-sm text-gray-600">Total Sold</p>
-          <p className="text-2xl font-bold text-red-600">₹{totalSold.toFixed(2)}</p>
-        </div>
-        <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <p className="text-sm text-gray-600">Net Position</p>
-          <p className="text-2xl font-bold text-blue-600">₹{(totalBought - totalSold).toFixed(2)}</p>
-        </div>
-      </div>
+      )}
 
       {showForm && (
         <div className="bg-white p-6 rounded-lg border border-gray-200">
