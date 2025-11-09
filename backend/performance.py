@@ -23,29 +23,33 @@ def calculate_annualized_return(transactions: List[Dict], current_value: float) 
     """Calculate annualized returns based on transaction history"""
     if not transactions:
         return {"cagr": 0, "years": 0, "total_return": 0}
-    
+
     # Get earliest transaction date
     earliest_date = min(datetime.fromisoformat(t["transaction_date"]) for t in transactions)
     today = datetime.now()
     years = (today - earliest_date).days / 365.25
     years = max(0.01, years)
-    
-    # Calculate total invested
-    total_invested = sum(
+
+    # Calculate net invested (bought - sold)
+    total_bought = sum(
         t["total_amount"] for t in transactions if t["transaction_type"] == "buy"
     )
-    logger.info(f"Transactions in calculate_annualized_return: {transactions}")
-    logger.info(f"Calculated total_invested in calculate_annualized_return: {total_invested}")
-    
+    total_sold = sum(
+        t["total_amount"] for t in transactions if t["transaction_type"] == "sell"
+    )
+    total_invested = total_bought - total_sold
+
+    logger.info(f"Performance calculation: bought={total_bought}, sold={total_sold}, net_invested={total_invested}, current_value={current_value}")
+
     total_return = ((current_value - total_invested) / total_invested * 100) if total_invested > 0 else 0
     cagr = calculate_cagr(total_invested, current_value, years) if total_invested > 0 else 0
-    
+
     return {
         "cagr": round(cagr, 2),
         "years": round(years, 2),
         "total_return": round(total_return, 2),
-        "total_invested": total_invested,
-        "current_value": current_value
+        "total_invested": round(total_invested, 2),
+        "current_value": round(current_value, 2)
     }
 
 

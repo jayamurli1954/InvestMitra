@@ -1974,14 +1974,19 @@ async def diagnose_transaction_mismatch(current_user: User = Depends(require_aut
 @api_router.post("/transactions/sync")
 async def sync_transactions_with_portfolio(current_user: User = Depends(require_auth)):
     """Auto-sync: Create missing transactions for portfolio holdings"""
+    logger.info(f"Sync requested by user {current_user.id}")
+
     # Get portfolio holdings
     holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+    logger.info(f"Found {len(holdings)} portfolio holdings")
 
     # Get existing transactions
     transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+    logger.info(f"Found {len(transactions)} existing transactions")
 
     # Find symbols with transactions
     symbols_with_transactions = set(t["symbol"] for t in transactions)
+    logger.info(f"Symbols with existing transactions: {symbols_with_transactions}")
 
     # Create missing transactions
     created_transactions = []
@@ -1989,6 +1994,8 @@ async def sync_transactions_with_portfolio(current_user: User = Depends(require_
     for holding in holdings:
         symbol = holding.get("symbol") or holding.get("scheme_code")
         name = holding.get("name") or holding.get("scheme_name")
+
+        logger.info(f"Checking holding: {symbol} ({name})")
 
         if symbol not in symbols_with_transactions:
             # Create a buy transaction for this holding
@@ -2013,13 +2020,17 @@ async def sync_transactions_with_portfolio(current_user: User = Depends(require_
                 "amount": transaction_doc["total_amount"]
             })
 
-            logger.info(f"Auto-created transaction for {symbol}: ₹{transaction_doc['total_amount']}")
+            logger.info(f"✓ Auto-created transaction for {symbol}: qty={transaction_doc['quantity']}, price={transaction_doc['price']}, total=₹{transaction_doc['total_amount']}")
+        else:
+            logger.info(f"✗ Skipping {symbol} - already has transactions")
+
+    logger.info(f"Sync complete: Created {len(created_transactions)} transactions totaling ₹{sum(t['amount'] for t in created_transactions)}")
 
     return {
         "message": "Sync completed successfully",
         "created_count": len(created_transactions),
         "created_transactions": created_transactions,
-        "total_synced_amount": sum(t["amount"] for t in created_transactions)
+        "total_synced_amount": round(sum(t["amount"] for t in created_transactions), 2)
     }
 
 @api_router.get("/tax-report")
@@ -2386,25 +2397,44 @@ async def get_performance_report(
         # Calculate current portfolio value
         current_value = 0
         holdings_with_prices = []
-        
+
+        logger.info(f"Performance report: Processing {len(holdings)} holdings")
+
         for holding in holdings:
             try:
                 current_price = 0
+                symbol_or_code = holding.get("symbol") or holding.get("scheme_code")
+
                 if holding.get("asset_type") == "MUTUAL_FUND":
                     # For mutual funds, use scheme_code
-                    mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+                    scheme_code = holding.get("scheme_code")
+                    logger.info(f"Fetching MF price for {scheme_code}")
+                    mf_data = get_mutual_fund_nav(scheme_code)
                     if mf_data:
                         current_price = mf_data.get("current_nav", 0)
+                        logger.info(f"MF {scheme_code}: NAV={current_price}")
+                    else:
+                        logger.warning(f"No MF data returned for {scheme_code}")
                 else:
                     # For stocks
                     symbol = holding.get("symbol")
                     if symbol:
+                        logger.info(f"Fetching stock price for {symbol}")
                         stock_data_dict = get_stock_info(symbol)
+                        logger.info(f"get_stock_info returned: {stock_data_dict is not None}, keys: {list(stock_data_dict.keys()) if stock_data_dict else 'None'}")
+
                         if stock_data_dict and symbol in stock_data_dict:
                             current_price = stock_data_dict[symbol].get("current_price", 0)
+                            logger.info(f"Stock {symbol}: price={current_price}")
+                        else:
+                            logger.warning(f"No stock data for {symbol} in response")
+                    else:
+                        logger.warning(f"Holding has no symbol: {holding}")
 
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
+
+                logger.info(f"{symbol_or_code}: qty={holding['quantity']}, price={current_price}, value={holding_value}, running_total={current_value}")
 
                 holdings_with_prices.append({
                     **holding,
@@ -2412,7 +2442,7 @@ async def get_performance_report(
                     "current_value": holding_value
                 })
             except Exception as e:
-                logger.error(f"Error fetching price for {holding.get('symbol') or holding.get('scheme_code')}: {e}")
+                logger.error(f"Error fetching price for {holding.get('symbol') or holding.get('scheme_code')}: {e}", exc_info=True)
                 # Use existing price if fetch fails
                 current_price = holding.get("current_price", holding.get("purchase_price", 0))
                 holding_value = holding["quantity"] * current_price
@@ -2422,6 +2452,8 @@ async def get_performance_report(
                     "current_price": current_price,
                     "current_value": holding_value
                 })
+
+        logger.info(f"Performance report: Total current value calculated = {current_value}")
         
         # Generate performance summary
         performance_data = generate_performance_summary(
