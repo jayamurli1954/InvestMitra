@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import DisclaimerModal from '@/components/DisclaimerModal';
+import logger from '@/utils/logger';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -42,7 +43,7 @@ const Auth = () => {
       await login('test@example.com', 'Test123!@#');
       toast.success('Quick login successful!');
     } catch (error) {
-      console.error('Quick login error:', error);
+      logger.error('Quick login error:', error);
       toast.error('Quick login failed');
       setLoading(false);
     }
@@ -67,7 +68,7 @@ const Auth = () => {
         toast.success('Account created successfully!');
       }
     } catch (error) {
-      console.error('Auth error:', error);
+      logger.error('Auth error:', error);
       const errorMsg = error.response?.data?.detail || 'Authentication failed';
       toast.error(errorMsg);
       setLoading(false);
@@ -84,7 +85,7 @@ const Auth = () => {
       await register(formData.email, formData.password, formData.name, true);
       toast.success('Account created successfully!');
     } catch (error) {
-      console.error('Auth error:', error);
+      logger.error('Auth error:', error);
       const errorMsg = error.response?.data?.detail || 'Registration failed';
       toast.error(errorMsg);
       setLoading(false);

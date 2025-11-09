@@ -41,19 +41,42 @@ client = None
 db = None
 
 async def init_db():
-    """Initialize MongoDB connection on startup"""
+    """Initialize MongoDB connection on startup with retry logic"""
     global client, db
-    try:
-        from motor.motor_asyncio import AsyncIOMotorClient
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        db = client[os.environ['DB_NAME']]
-        # Test connection
-        await db.command('ping')
-        logging.info("✓ MongoDB connected successfully")
-    except Exception as e:
-        logging.error(f"✗ MongoDB connection failed: {e}")
-        db = None
-        client = None
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError, ConfigurationError
+    import asyncio
+
+    max_retries = 3
+    retry_delay = 2  # seconds
+
+    for attempt in range(max_retries):
+        try:
+            client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+            db = client[os.environ['DB_NAME']]
+            # Test connection
+            await db.command('ping')
+            logging.info("✓ MongoDB connected successfully")
+            return
+        except (ConnectionFailure, ServerSelectionTimeoutError) as e:
+            logging.warning(f"MongoDB connection attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logging.error(f"✗ MongoDB connection failed after {max_retries} attempts")
+                db = None
+                client = None
+        except ConfigurationError as e:
+            logging.error(f"✗ MongoDB configuration error: {e}")
+            db = None
+            client = None
+            break
+        except KeyError as e:
+            logging.error(f"✗ Missing environment variable: {e}")
+            db = None
+            client = None
+            break
 
 async def close_db():
     """Close MongoDB connection on shutdown"""
@@ -73,6 +96,15 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+# Rate limiting configuration
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # Register startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
@@ -81,6 +113,29 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_db()
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    health_status = {
+        "status": "healthy",
+        "mongodb": "disconnected",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+    # Check MongoDB connection
+    if db is not None:
+        try:
+            await db.command('ping')
+            health_status["mongodb"] = "connected"
+        except Exception as e:
+            health_status["mongodb"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+    else:
+        health_status["status"] = "degraded"
+
+    return health_status
 
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
@@ -507,8 +562,10 @@ async def root():
 async def register_options():
     """Handle CORS preflight for register"""
     return Response(status_code=200)
+
 @api_router.post("/auth/register", response_model=Token)
-async def register(user_data: UserRegister, response: Response):
+@limiter.limit("5/minute")
+async def register(user_data: UserRegister, response: Response, request: Request):
     """Register new user with email/password"""
     # Validate disclaimer acceptance
     if not user_data.disclaimer_accepted:
@@ -571,9 +628,11 @@ async def register_options():
 
 @api_router.options("/auth/login")
 async def login_options():
-    return Response(status_code=200)    
+    return Response(status_code=200)
+
 @api_router.post("/auth/login", response_model=Token)
-async def login(user_data: UserLogin, response: Response):
+@limiter.limit("10/minute")
+async def login(user_data: UserLogin, response: Response, request: Request):
     """Login with email/password"""
     logger.info(f"Login attempt for email: {user_data.email}")
     # Find user
@@ -627,14 +686,24 @@ async def google_auth_callback(session_id: str = Query(...), response: Response 
     try:
         auth_response = requests.get(
             "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": session_id}
+            headers={"X-Session-ID": session_id},
+            timeout=10
         )
         auth_response.raise_for_status()
         session_data = auth_response.json()
         logger.info(f"Google OAuth successful for user: {session_data.get('email')}")
-    except Exception as e:
-        logger.error(f"Google OAuth failed: {str(e)}")
+    except requests.exceptions.Timeout:
+        logger.error("Google OAuth service timeout")
+        raise HTTPException(status_code=504, detail="Authentication service temporarily unavailable")
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Google OAuth HTTP error: {e.response.status_code}")
         raise HTTPException(status_code=400, detail="Invalid session ID")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Google OAuth connection failed: {str(e)}")
+        raise HTTPException(status_code=503, detail="Authentication service unavailable")
+    except (KeyError, ValueError) as e:
+        logger.error(f"Invalid OAuth response format: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication error")
     
     # Check if user exists
     user_doc = await db.users.find_one({"email": session_data["email"]})

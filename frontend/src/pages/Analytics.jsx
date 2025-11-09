@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { 
-  TrendingUp, TrendingDown, Target, AlertCircle, Lightbulb, 
+import {
+  TrendingUp, TrendingDown, Target, AlertCircle, Lightbulb,
   PieChart, BarChart3, RefreshCw, Shield
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { DonutChart, BarChart as TremorBarChart, Card } from '@tremor/react';
+import logger from '@/utils/logger';
 
 const Analytics = () => {
   const [analytics, setAnalytics] = useState(null);
@@ -26,7 +27,7 @@ const Analytics = () => {
       const response = await axios.get(`${API}/analytics/portfolio`);
       setAnalytics(response.data);
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      logger.error('Error fetching analytics:', error);
       toast.error('Failed to load analytics');
     } finally {
       setLoading(false);
@@ -38,7 +39,7 @@ const Analytics = () => {
       const response = await axios.get(`${API}/analytics/recommendations`);
       setRecommendations(response.data.recommendations);
     } catch (error) {
-      console.error('Error fetching recommendations:', error);
+      logger.error('Error fetching recommendations:', error);
     }
   };
 
@@ -58,7 +59,7 @@ const Analytics = () => {
       setRebalanceSuggestions(response.data.suggestions);
       toast.success('Rebalancing suggestions generated!');
     } catch (error) {
-      console.error('Error generating rebalancing:', error);
+      logger.error('Error generating rebalancing:', error);
       toast.error('Failed to generate suggestions');
     }
   };
