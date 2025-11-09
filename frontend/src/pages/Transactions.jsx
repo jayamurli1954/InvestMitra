@@ -254,7 +254,12 @@ export default function Transactions() {
             ) : (
               transactions.map((tx) => (
                 <tr key={tx.id} className="border-b hover:bg-gray-50">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900">{tx.symbol}</td>
+                  <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    <div>
+                      <div className="font-medium">{tx.name || tx.symbol}</div>
+                      {tx.name && <div className="text-xs text-gray-500">{tx.symbol}</div>}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-sm">
                     <span className={`flex items-center gap-1 ${tx.transaction_type === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
                       {tx.transaction_type === 'buy' ? <ArrowDownLeft className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}

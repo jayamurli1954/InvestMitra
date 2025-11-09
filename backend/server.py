@@ -1536,10 +1536,10 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
 
     for holding in holdings:
         quantity = holding.get("quantity", 0)
-        avg_price = holding.get("average_price", 0)
+        purchase_price = holding.get("purchase_price", 0)
         current_price = holding.get("current_price", 0)
 
-        invested = quantity * avg_price
+        invested = quantity * purchase_price
         current_value = quantity * current_price
         gain_loss = current_value - invested
         gain_loss_percent = (gain_loss / invested * 100) if invested > 0 else 0
@@ -1600,7 +1600,10 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
         "asset_allocation": asset_allocation_list,
         "top_gainers": top_gainers,
         "top_losers": top_losers,
-        "diversification_score": diversification_score
+        "diversification_score": diversification_score,
+        "num_holdings": num_holdings,
+        "num_sectors": num_sectors,
+        "risk_level": "Medium"  # Default risk level, can be calculated based on portfolio metrics
     }
 
 def generate_stock_recommendations(
@@ -2196,18 +2199,30 @@ async def get_performance_report(
         
         for holding in holdings:
             try:
-                stock_data = get_stock_info(holding["symbol"])
-                current_price = stock_data.get("current_price", 0) if stock_data else 0
+                current_price = 0
+                if holding.get("asset_type") == "MUTUAL_FUND":
+                    # For mutual funds, use scheme_code
+                    mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+                    if mf_data:
+                        current_price = mf_data.get("current_nav", 0)
+                else:
+                    # For stocks
+                    symbol = holding.get("symbol")
+                    if symbol:
+                        stock_data_dict = get_stock_info(symbol)
+                        if stock_data_dict and symbol in stock_data_dict:
+                            current_price = stock_data_dict[symbol].get("current_price", 0)
+
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
-                
+
                 holdings_with_prices.append({
                     **holding,
                     "current_price": current_price,
                     "current_value": holding_value
                 })
             except Exception as e:
-                logger.error(f"Error fetching price for {holding['symbol']}: {e}")
+                logger.error(f"Error fetching price for {holding.get('symbol') or holding.get('scheme_code')}: {e}")
                 # Use existing price if fetch fails
                 current_price = holding.get("current_price", holding.get("purchase_price", 0))
                 holding_value = holding["quantity"] * current_price

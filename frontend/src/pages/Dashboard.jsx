@@ -142,11 +142,19 @@ const Dashboard = () => {
               {portfolio.slice(0, 5).map((holding, idx) => {
                 const gain = (holding.current_price - holding.purchase_price) * holding.quantity;
                 const gainPercent = ((holding.current_price - holding.purchase_price) / holding.purchase_price) * 100;
+                const displayName = holding.asset_type === 'MUTUAL_FUND'
+                  ? (holding.scheme_name || holding.scheme_code)
+                  : (holding.name || holding.symbol);
+                const displaySymbol = holding.asset_type === 'MUTUAL_FUND'
+                  ? holding.scheme_code
+                  : holding.symbol;
+                const unit = holding.asset_type === 'MUTUAL_FUND' ? 'units' : 'shares';
+
                 return (
                   <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-white/5 hover:bg-white/10 transition-colors" data-testid={`holding-${idx}`}>
                     <div>
-                      <p className="font-medium text-white">{holding.symbol}</p>
-                      <p className="text-sm text-slate-400">{holding.quantity} shares</p>
+                      <p className="font-medium text-white">{displayName}</p>
+                      <p className="text-sm text-slate-400">{holding.quantity} {unit}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium text-white">₹{holding.current_price.toFixed(2)}</p>
