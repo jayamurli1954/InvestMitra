@@ -23,8 +23,10 @@ import ForgotPassword from "@/pages/ForgotPassword";
 import ProfileSettings from "@/pages/ProfileSettings";
 import Disclaimer from "@/pages/Disclaimer";
 import Layout from "@/components/Layout";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
 import Marquee from "@/components/Marquee";
+import logger from "@/utils/logger";
 
 const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
 export const API = `${BACKEND_URL}/api`;
@@ -106,7 +108,7 @@ function App() {
         setIndices(indicesRes.data);
         setMajorStocks(majorStocksRes.data);
       } catch (error) {
-        console.error('Error fetching market data:', error);
+        logger.error('Error fetching market data:', error);
       }
     };
 
@@ -114,13 +116,15 @@ function App() {
   }, []);
 
   return (
-    <div className="App">
-      <AuthProvider>
-        <Marquee items={indices} />
-        <Marquee items={majorStocks} />
-        <AppRoutes />
-      </AuthProvider>
-    </div>
+    <ErrorBoundary>
+      <div className="App">
+        <AuthProvider>
+          <Marquee items={indices} />
+          <Marquee items={majorStocks} />
+          <AppRoutes />
+        </AuthProvider>
+      </div>
+    </ErrorBoundary>
   );
 }
 

@@ -35,6 +35,66 @@ from performance import (
     generate_performance_summary, calculate_win_rate, calculate_sector_performance
 )
 
+# ==================== ENVIRONMENT VARIABLE VALIDATION ====================
+
+def validate_environment_variables():
+    """Validate required and optional environment variables at startup"""
+    required_vars = {
+        'SECRET_KEY': 'Required for JWT token generation',
+        'DB_NAME': 'Required for MongoDB database name'
+    }
+
+    optional_vars = {
+        'MONGO_URL': 'MongoDB connection URL (defaults to localhost)',
+        'FRONTEND_URL': 'Frontend URL for CORS (defaults to localhost:3000)',
+        'SMTP_SERVER': 'SMTP server for email (optional)',
+        'SMTP_PORT': 'SMTP port (optional)',
+        'SMTP_EMAIL': 'Email address for sending (optional)',
+        'SMTP_PASSWORD': 'Email password (optional)',
+        'GEMINI_API_KEY': 'Google Gemini API key for AI features (optional)'
+    }
+
+    errors = []
+    warnings = []
+
+    # Check required variables
+    for var, description in required_vars.items():
+        value = os.environ.get(var)
+        if not value or value == 'your-secret-key-here-replace-with-generated-key':
+            errors.append(f"❌ {var}: {description} - NOT SET or using placeholder value!")
+
+    # Check optional variables
+    for var, description in optional_vars.items():
+        value = os.environ.get(var)
+        if not value or value in ['placeholder', 'your-api-key-here', 'your-email@gmail.com']:
+            warnings.append(f"⚠️  {var}: {description} - Not configured (some features may not work)")
+
+    # Log results
+    if errors:
+        logging.error("\n" + "="*60)
+        logging.error("ENVIRONMENT VALIDATION FAILED - MISSING REQUIRED VARIABLES:")
+        for error in errors:
+            logging.error(error)
+        logging.error("="*60 + "\n")
+        raise EnvironmentError("Required environment variables are missing. Check logs above.")
+
+    if warnings:
+        logging.warning("\n" + "="*60)
+        logging.warning("OPTIONAL ENVIRONMENT VARIABLES NOT CONFIGURED:")
+        for warning in warnings:
+            logging.warning(warning)
+        logging.warning("="*60 + "\n")
+
+    logging.info("✓ Environment validation passed")
+
+# Validate environment variables
+try:
+    validate_environment_variables()
+except EnvironmentError as e:
+    logging.critical(f"Startup aborted: {e}")
+    # In development, we might want to continue anyway
+    # In production, you should exit: sys.exit(1)
+
 # MongoDB connection - will be initialized on app startup
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 client = None
@@ -137,45 +197,133 @@ async def health_check():
 
     return health_status
 
+# Cache statistics endpoint (for monitoring)
+@app.get("/cache-stats")
+async def get_cache_stats():
+    """Get cache statistics for monitoring"""
+    return cache_instance.get_stats()
+
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
 import time
 from functools import wraps
+from collections import OrderedDict
+from typing import Optional, Pattern
+import re
 
-class Cache:
-    def __init__(self, ttl: int = 60):
-        self.cache = {}
-        self.ttl = ttl
+class ImprovedCache:
+    """Enhanced caching with TTL, size limits, and invalidation"""
 
-    def get(self, key: str):
+    def __init__(self, default_ttl: int = 60, max_size: int = 1000):
+        self.cache = OrderedDict()  # Maintains insertion order for LRU eviction
+        self.default_ttl = default_ttl
+        self.max_size = max_size
+        self.stats = {
+            'hits': 0,
+            'misses': 0,
+            'evictions': 0,
+            'invalidations': 0
+        }
+
+    def get(self, key: str) -> Optional[any]:
+        """Get cached value if not expired"""
         if key in self.cache:
-            data, timestamp = self.cache[key]
-            if (time.time() - timestamp) < self.ttl:
+            data, timestamp, ttl = self.cache[key]
+            if (time.time() - timestamp) < ttl:
+                self.stats['hits'] += 1
+                # Move to end (most recently used)
+                self.cache.move_to_end(key)
                 return data
+            else:
+                # Expired, remove it
+                del self.cache[key]
+
+        self.stats['misses'] += 1
         return None
 
-    def set(self, key: str, value: any):
-        self.cache[key] = (value, time.time())
+    def set(self, key: str, value: any, ttl: Optional[int] = None):
+        """Set cached value with optional custom TTL"""
+        if ttl is None:
+            ttl = self.default_ttl
 
-cache_instance = Cache(ttl=60) # Cache for 60 seconds
+        # Check size limit and evict oldest if necessary
+        if key not in self.cache and len(self.cache) >= self.max_size:
+            # Remove oldest (first) item
+            oldest_key = next(iter(self.cache))
+            del self.cache[oldest_key]
+            self.stats['evictions'] += 1
+            logger.debug(f"Cache full, evicted oldest key: {oldest_key}")
 
-def cached(key_prefix: str):
+        self.cache[key] = (value, time.time(), ttl)
+        # Move to end (most recently used)
+        self.cache.move_to_end(key)
+
+    def invalidate(self, key: str) -> bool:
+        """Invalidate a specific cache key"""
+        if key in self.cache:
+            del self.cache[key]
+            self.stats['invalidations'] += 1
+            logger.debug(f"Cache invalidated: {key}")
+            return True
+        return False
+
+    def invalidate_pattern(self, pattern: str) -> int:
+        """Invalidate all keys matching a pattern (regex)"""
+        regex = re.compile(pattern)
+        keys_to_delete = [key for key in self.cache.keys() if regex.match(key)]
+
+        for key in keys_to_delete:
+            del self.cache[key]
+            self.stats['invalidations'] += 1
+
+        if keys_to_delete:
+            logger.debug(f"Cache invalidated {len(keys_to_delete)} keys matching pattern: {pattern}")
+
+        return len(keys_to_delete)
+
+    def invalidate_user(self, user_id: str) -> int:
+        """Invalidate all cache entries for a specific user"""
+        return self.invalidate_pattern(f".*:{user_id}$")
+
+    def clear(self):
+        """Clear all cache entries"""
+        count = len(self.cache)
+        self.cache.clear()
+        self.stats['invalidations'] += count
+        logger.info(f"Cache cleared: {count} entries removed")
+
+    def get_stats(self) -> dict:
+        """Get cache statistics"""
+        total_requests = self.stats['hits'] + self.stats['misses']
+        hit_rate = (self.stats['hits'] / total_requests * 100) if total_requests > 0 else 0
+
+        return {
+            **self.stats,
+            'size': len(self.cache),
+            'max_size': self.max_size,
+            'hit_rate': round(hit_rate, 2)
+        }
+
+cache_instance = ImprovedCache(default_ttl=60, max_size=1000)
+
+def cached(key_prefix: str, ttl: Optional[int] = None):
+    """Decorator to cache function results"""
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             current_user = kwargs.get('current_user')
             user_id = current_user.id if current_user else 'public'
             cache_key = f"{key_prefix}:{user_id}"
-            
+
             cached_data = cache_instance.get(cache_key)
             if cached_data is not None:
                 logger.info(f"Cache hit for {cache_key}")
                 return cached_data
-            
+
             logger.info(f"Cache miss for {cache_key}, fetching data...")
             result = await func(*args, **kwargs)
-            cache_instance.set(cache_key, result)
+            cache_instance.set(cache_key, result, ttl=ttl)
             return result
         return wrapper
     return decorator

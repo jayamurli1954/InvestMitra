@@ -5,6 +5,11 @@ import logging
 import asyncio
 from typing import Optional, Dict, List
 from websocket_manager import manager
+from validation_models import (
+    YFinanceStockInfo, HistoricalDataPoint, MarketIndex,
+    safe_float, safe_int, safe_string
+)
+from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -32,32 +37,45 @@ def get_stock_info(symbols: any) -> Dict[str, Dict]:
                     logger.warning(f"No data available for {symbol}")
                     continue
 
-                current_price = hist['Close'].iloc[-1]
-                prev_close = info.get('previousClose', current_price)
-                change = current_price - prev_close
-                change_percent = (change / prev_close) * 100 if prev_close else 0
+                current_price = safe_float(hist['Close'].iloc[-1], 0)
+                if current_price <= 0:
+                    logger.warning(f"Invalid price for {symbol}, skipping")
+                    continue
 
-                results[symbol] = {
+                prev_close = safe_float(info.get('previousClose'), current_price)
+                change = current_price - prev_close
+                change_percent = (change / prev_close) * 100 if prev_close > 0 else 0
+
+                # Build stock data with safe conversions
+                stock_data = {
                     "symbol": symbol,
-                    "name": info.get('longName', symbol),
-                    "exchange": info.get('exchange', 'N/A'),
-                    "sector": info.get('sector', 'Other'),
-                    "current_price": float(current_price),
-                    "change": float(change),
-                    "change_percent": float(change_percent),
-                    "volume": int(info.get('volume', hist['Volume'].iloc[-1])),
-                    "market_cap": float(info.get('marketCap', 0)),
-                    "pe_ratio": float(info.get('trailingPE', 0)) if info.get('trailingPE') else None,
-                    "pb_ratio": float(info.get('priceToBook', 0)) if info.get('priceToBook') else None,
-                    "roe": float(info.get('returnOnEquity', 0) * 100) if info.get('returnOnEquity') else None,
-                    "debt_to_equity": float(info.get('debtToEquity', 0) / 100) if info.get('debtToEquity') else None,
-                    "dividend_yield": float(info.get('dividendYield', 0) * 100) if info.get('dividendYield') else None,
-                    "week_52_high": float(info.get('fiftyTwoWeekHigh', current_price)),
-                    "week_52_low": float(info.get('fiftyTwoWeekLow', current_price)),
+                    "name": safe_string(info.get('longName'), symbol),
+                    "exchange": safe_string(info.get('exchange'), 'N/A'),
+                    "sector": safe_string(info.get('sector'), 'Other'),
+                    "current_price": current_price,
+                    "change": change,
+                    "change_percent": change_percent,
+                    "volume": safe_int(info.get('volume', hist['Volume'].iloc[-1])),
+                    "market_cap": safe_float(info.get('marketCap'), 0),
+                    "pe_ratio": safe_float(info.get('trailingPE')) if info.get('trailingPE') else None,
+                    "pb_ratio": safe_float(info.get('priceToBook')) if info.get('priceToBook') else None,
+                    "roe": safe_float(info.get('returnOnEquity'), 0) * 100 if info.get('returnOnEquity') else None,
+                    "debt_to_equity": safe_float(info.get('debtToEquity'), 0) / 100 if info.get('debtToEquity') else None,
+                    "dividend_yield": safe_float(info.get('dividendYield'), 0) * 100 if info.get('dividendYield') else None,
+                    "week_52_high": safe_float(info.get('fiftyTwoWeekHigh'), current_price),
+                    "week_52_low": safe_float(info.get('fiftyTwoWeekLow'), current_price),
                     "rsi": None,
-                    "ma_50": float(info.get('fiftyDayAverage', current_price)),
-                    "ma_200": float(info.get('twoHundredDayAverage', current_price)),
+                    "ma_50": safe_float(info.get('fiftyDayAverage'), current_price),
+                    "ma_200": safe_float(info.get('twoHundredDayAverage'), current_price),
                 }
+
+                # Validate with Pydantic model
+                try:
+                    validated_data = YFinanceStockInfo(**stock_data)
+                    results[symbol] = validated_data.model_dump()
+                except ValidationError as e:
+                    logger.error(f"Validation failed for {symbol}: {e}")
+                    continue
             except Exception as e:
                 logger.error(f"Error processing symbol {symbol} in batch: {str(e)}")
 
@@ -69,22 +87,30 @@ def get_stock_info(symbols: any) -> Dict[str, Dict]:
 
 
 def get_historical_data(symbol: str, days: int = 90) -> List[Dict]:
-    """Fetch historical stock data"""
+    """Fetch historical stock data with validation"""
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=f"{days}d")
-        
+
         data = []
         for date, row in hist.iterrows():
-            data.append({
-                "date": date.strftime("%Y-%m-%d"),
-                "open": float(row['Open']),
-                "high": float(row['High']),
-                "low": float(row['Low']),
-                "close": float(row['Close']),
-                "volume": int(row['Volume'])
-            })
-        
+            try:
+                data_point = {
+                    "date": date.strftime("%Y-%m-%d"),
+                    "open": safe_float(row['Open'], 0),
+                    "high": safe_float(row['High'], 0),
+                    "low": safe_float(row['Low'], 0),
+                    "close": safe_float(row['Close'], 0),
+                    "volume": safe_int(row['Volume'], 0)
+                }
+
+                # Validate with Pydantic model
+                validated_point = HistoricalDataPoint(**data_point)
+                data.append(validated_point.model_dump())
+            except ValidationError as e:
+                logger.warning(f"Invalid data point for {symbol} on {date}: {e}")
+                continue
+
         return data
     except Exception as e:
         logger.error(f"Error fetching historical data for {symbol}: {str(e)}")
