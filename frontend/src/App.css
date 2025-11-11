@@ -259,4 +259,25 @@ select:focus {
 [data-testid="sector-donut-chart"] .recharts-pie path {
   opacity: 1 !important;
   stroke-opacity: 1 !important;
+}}
+
+/* Skeleton loader shimmer animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
+  background: linear-gradient(
+    90deg,
+    rgba(229, 231, 235, 0) 0%,
+    rgba(229, 231, 235, 0.4) 50%,
+    rgba(229, 231, 235, 0) 100%
+  );
+  background-size: 200% 100%;
 }

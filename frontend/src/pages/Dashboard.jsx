@@ -4,6 +4,7 @@ import { API } from '@/App';
 import { TrendingUp, TrendingDown, Briefcase, Eye, ArrowUpRight, ArrowDownRight, Filter, Target, BarChart3 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { DashboardSkeleton } from '@/components/SkeletonLoader';
 
 const Dashboard = () => {
   const [marketIndices, setMarketIndices] = useState([]);
@@ -38,11 +39,7 @@ const Dashboard = () => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen" data-testid="loading-spinner">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
