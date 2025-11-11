@@ -328,6 +328,75 @@ def cached(key_prefix: str, ttl: Optional[int] = None):
         return wrapper
     return decorator
 
+# ==================== CACHED MARKET DATA FUNCTIONS ====================
+
+def get_cached_stock_info(symbols):
+    """
+    Get stock info with 5-minute caching to prevent rate limiting.
+
+    Args:
+        symbols: Single symbol string or list of symbol strings
+
+    Returns:
+        Dict mapping symbols to their stock data
+    """
+    if isinstance(symbols, str):
+        symbols = [symbols]
+
+    results = {}
+    uncached_symbols = []
+
+    # Check cache for each symbol
+    for symbol in symbols:
+        cache_key = f"stock_info:{symbol}"
+        cached_data = cache_instance.get(cache_key)
+        if cached_data is not None:
+            results[symbol] = cached_data
+            logger.debug(f"🔥 Cache hit for stock {symbol}")
+        else:
+            uncached_symbols.append(symbol)
+
+    # Fetch uncached symbols from API
+    if uncached_symbols:
+        logger.info(f"🔥 Cache miss for {len(uncached_symbols)} stocks, fetching from API...")
+        fresh_data = get_stock_info(uncached_symbols)
+
+        # Cache individual results with 5-minute TTL (300 seconds)
+        for symbol, data in fresh_data.items():
+            cache_key = f"stock_info:{symbol}"
+            cache_instance.set(cache_key, data, ttl=300)  # 5 minutes
+            results[symbol] = data
+            logger.debug(f"🔥 Cached stock {symbol} for 5 minutes")
+
+    return results
+
+
+def get_cached_mutual_fund_nav(scheme_code: str):
+    """
+    Get mutual fund NAV with 1-hour caching.
+
+    Args:
+        scheme_code: Mutual fund scheme code
+
+    Returns:
+        Dict with NAV data or None
+    """
+    cache_key = f"mf_nav:{scheme_code}"
+    cached_data = cache_instance.get(cache_key)
+
+    if cached_data is not None:
+        logger.debug(f"🔥 Cache hit for MF {scheme_code}")
+        return cached_data
+
+    logger.info(f"🔥 Cache miss for MF {scheme_code}, fetching from CSV...")
+    data = get_mutual_fund_nav(scheme_code)
+
+    if data:
+        cache_instance.set(cache_key, data, ttl=3600)  # 1 hour
+        logger.debug(f"🔥 Cached MF {scheme_code} for 1 hour")
+
+    return data
+
 # ==================== DATABASE DEPENDENCY ====================
 
 async def get_db():
@@ -693,7 +762,7 @@ class DividendRecordCreate(BaseModel):
 async def debug_stock_info(symbol: str):
     """Temporary endpoint to debug get_stock_info for a specific symbol."""
     logger.info(f"Debugging stock info for symbol: {symbol}")
-    stock_data = get_stock_info(symbol)
+    stock_data = get_cached_stock_info(symbol)
     if not stock_data:
         raise HTTPException(status_code=404, detail=f"No stock data found for {symbol}")
     return stock_data
@@ -1098,7 +1167,7 @@ async def get_all_stocks():
 @api_router.get("/stocks/{symbol}", response_model=StockDetail)
 async def get_stock_detail(symbol: str):
     """Get detailed stock information with real-time data"""
-    stock_data = get_stock_info(symbol)
+    stock_data = get_cached_stock_info(symbol)
     if not stock_data or symbol not in stock_data:
         raise HTTPException(status_code=404, detail="Stock not found")
     return StockDetail(**stock_data[symbol])
@@ -1116,7 +1185,7 @@ async def get_mutual_fund_detail(scheme_code: str):
     """Get mutual fund details by scheme code"""
     try:
         # Get mutual fund NAV data
-        mf_data = get_mutual_fund_nav(scheme_code)
+        mf_data = get_cached_mutual_fund_nav(scheme_code)
         
         if mf_data and mf_data.get('current_nav'):
             return {
@@ -1170,11 +1239,11 @@ async def screen_stocks(
     results = []
     for stock_basic in all_stocks:
         # Get detailed real-time info
-        stock_data_dict = get_stock_info(stock_basic["symbol"])
+        stock_data_dict = get_cached_stock_info(stock_basic["symbol"])
         if not stock_data_dict:
             continue
 
-        # Extract the inner dict (get_stock_info returns {symbol: {data}})
+        # Extract the inner dict (get_cached_stock_info returns {symbol: {data}})
         symbol = stock_basic["symbol"]
         if symbol not in stock_data_dict:
             continue
@@ -1207,13 +1276,13 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}
     if mf_scheme_codes:
         for code in mf_scheme_codes:
-            nav_data = get_mutual_fund_nav(code)
+            nav_data = get_cached_mutual_fund_nav(code)
             if nav_data:
                 mf_data[code] = nav_data
 
@@ -1250,11 +1319,11 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
     # Get real-time current price
     current_price = 0
     if holding.asset_type == "STOCK":
-        stock_info = get_stock_info(holding.symbol)
-        if stock_info:
-            current_price = stock_info.get('current_price', 0)
+        stock_info = get_cached_stock_info(holding.symbol)
+        if stock_info and holding.symbol in stock_info:
+            current_price = stock_info[holding.symbol].get('current_price', 0)
     elif holding.asset_type == "MUTUAL_FUND":
-        mf_info = get_mutual_fund_nav(holding.scheme_code)
+        mf_info = get_cached_mutual_fund_nav(holding.scheme_code)
         if mf_info:
             current_price = mf_info.get('current_nav', 0)
 
@@ -1408,14 +1477,14 @@ async def get_watchlist(current_user: User = Depends(require_auth)):
     stock_data = {}
     if stock_symbols:
         logger.info(f"Fetching stock info for symbols: {stock_symbols}")
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         logger.info(f"Received stock data: {stock_data}")
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}
     if mf_scheme_codes:
         for code in mf_scheme_codes:
-            nav_data = get_mutual_fund_nav(code)
+            nav_data = get_cached_mutual_fund_nav(code)
             if nav_data:
                 mf_data[code] = nav_data
 
@@ -1668,11 +1737,11 @@ def generate_stock_recommendations(
 async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
     """Get comprehensive portfolio analytics"""
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
-    
+
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     # Update current prices in holdings
@@ -1682,7 +1751,7 @@ async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
             if symbol in stock_data:
                 holding["current_price"] = stock_data[symbol].get("current_price", 0)
         else:
-            mf_info = get_mutual_fund_nav(holding.get("scheme_code"))
+            mf_info = get_cached_mutual_fund_nav(holding.get("scheme_code"))
             if mf_info:
                 holding["current_price"] = mf_info.get('current_nav', 0)
 
@@ -1696,11 +1765,11 @@ async def get_rebalancing_suggestions(
 ):
     """Get portfolio rebalancing suggestions"""
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
-    
+
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     # Update current prices in holdings
@@ -1710,7 +1779,7 @@ async def get_rebalancing_suggestions(
             if symbol in stock_data:
                 holding["current_price"] = stock_data[symbol].get("current_price", 0)
         else:
-            mf_info = get_mutual_fund_nav(holding.get("scheme_code"))
+            mf_info = get_cached_mutual_fund_nav(holding.get("scheme_code"))
             if mf_info:
                 holding["current_price"] = mf_info.get('current_nav', 0)
 
@@ -1742,9 +1811,9 @@ async def get_stock_recommendations(
     all_stocks_detailed = []
 
     for stock_basic in all_stocks_basic[:30]:  # Limit to avoid timeout
-        stock_detail_dict = get_stock_info(stock_basic["symbol"])
+        stock_detail_dict = get_cached_stock_info(stock_basic["symbol"])
         if stock_detail_dict:
-            # Extract the inner dict (get_stock_info returns {symbol: {data}})
+            # Extract the inner dict (get_cached_stock_info returns {symbol: {data}})
             symbol = stock_basic["symbol"]
             if symbol in stock_detail_dict:
                 all_stocks_detailed.append(stock_detail_dict[symbol])
@@ -1857,13 +1926,13 @@ async def get_transactions_summary(current_user: User = Depends(require_auth)):
         # Get current price
         current_price = 0
         if holding.get("asset_type") == "MUTUAL_FUND":
-            mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+            mf_data = get_cached_mutual_fund_nav(holding.get("scheme_code"))
             if mf_data:
                 current_price = mf_data.get("current_nav", 0)
         else:
             symbol = holding.get("symbol")
             if symbol:
-                stock_data_dict = get_stock_info(symbol)
+                stock_data_dict = get_cached_stock_info(symbol)
                 if stock_data_dict and symbol in stock_data_dict:
                     current_price = stock_data_dict[symbol].get("current_price", 0)
 
@@ -2129,13 +2198,14 @@ async def get_tax_report(
         try:
             current_price = 0
             if holding.get("asset_type") == "MUTUAL_FUND":
-                mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+                mf_data = get_cached_mutual_fund_nav(holding.get("scheme_code"))
                 if mf_data:
                     current_price = mf_data.get('current_nav', 0)
             else:
-                stock_data = get_stock_info(holding.get("symbol"))
-                if stock_data:
-                    current_price = stock_data.get("current_price", 0)
+                symbol = holding.get("symbol")
+                stock_data = get_cached_stock_info(symbol)
+                if stock_data and symbol in stock_data:
+                    current_price = stock_data[symbol].get("current_price", 0)
             
             # Calculate average cost from transactions
             buy_transactions = [t for t in transactions 
@@ -2271,8 +2341,11 @@ async def check_alerts(
     
     for alert in alerts:
         try:
-            stock_data = await get_stock_info(alert["symbol"])
-            current_price = stock_data.get("current_price", 0)
+            symbol = alert["symbol"]
+            stock_data = get_cached_stock_info(symbol)
+            current_price = 0
+            if stock_data and symbol in stock_data:
+                current_price = stock_data[symbol].get("current_price", 0)
             
             should_trigger = False
             
@@ -2412,8 +2485,8 @@ async def get_performance_report(
                 if holding.get("asset_type") == "MUTUAL_FUND":
                     # For mutual funds, use scheme_code
                     scheme_code = holding.get("scheme_code")
-                    logger.info(f"Fetching MF price for {scheme_code}")
-                    mf_data = get_mutual_fund_nav(scheme_code)
+                    logger.info(f"🔥 Fetching MF price for {scheme_code} (cached)")
+                    mf_data = get_cached_mutual_fund_nav(scheme_code)
                     if mf_data:
                         current_price = mf_data.get("current_nav", 0)
                         logger.info(f"MF {scheme_code}: NAV={current_price}")
@@ -2423,9 +2496,9 @@ async def get_performance_report(
                     # For stocks
                     symbol = holding.get("symbol")
                     if symbol:
-                        logger.info(f"Fetching stock price for {symbol}")
-                        stock_data_dict = get_stock_info(symbol)
-                        logger.info(f"get_stock_info returned: {stock_data_dict is not None}, keys: {list(stock_data_dict.keys()) if stock_data_dict else 'None'}")
+                        logger.info(f"🔥 Fetching stock price for {symbol} (cached)")
+                        stock_data_dict = get_cached_stock_info(symbol)
+                        logger.info(f"get_cached_stock_info returned: {stock_data_dict is not None}, keys: {list(stock_data_dict.keys()) if stock_data_dict else 'None'}")
 
                         if stock_data_dict and symbol in stock_data_dict:
                             current_price = stock_data_dict[symbol].get("current_price", 0)
@@ -2620,14 +2693,16 @@ async def get_ai_portfolio_optimization(
         
         for holding in holdings:
             try:
-                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
+                symbol = holding["symbol"]
+                stock_data_dict = get_cached_stock_info(symbol)  # This is synchronous and cached
+                stock_info = stock_data_dict.get(symbol, {}) if stock_data_dict else {}
                 holdings_with_prices.append({
                     **holding,
                     "current_price": stock_info.get("current_price", 0),
                     "current_value": holding["quantity"] * stock_info.get("current_price", 0),
                     "sector": stock_info.get("sector", "Other")
                 })
-                all_stock_data[holding["symbol"]] = stock_info
+                all_stock_data[symbol] = stock_info
             except Exception as e:
                 logger.error(f"Error fetching price for {holding['symbol']}: {e}")
         
@@ -2667,7 +2742,9 @@ async def get_ai_predictive_insights(
         holdings_with_prices = []
         for holding in holdings:
             try:
-                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
+                symbol = holding["symbol"]
+                stock_data_dict = get_cached_stock_info(symbol)  # This is synchronous and cached
+                stock_info = stock_data_dict.get(symbol, {}) if stock_data_dict else {}
                 holdings_with_prices.append({
                     **holding,
                     "current_price": stock_info.get("current_price", 0),
@@ -2699,7 +2776,8 @@ async def get_ai_stock_analysis(
     """Generate AI-powered analysis for a specific stock"""
     try:
         # Get stock data
-        stock_data = await get_stock_info(symbol)
+        stock_data_dict = get_cached_stock_info(symbol)
+        stock_data = stock_data_dict.get(symbol, {}) if stock_data_dict else {}
         
         # Generate AI analysis
         analysis = await generate_stock_analysis(symbol, stock_data)

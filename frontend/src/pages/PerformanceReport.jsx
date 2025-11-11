@@ -5,6 +5,7 @@ import { TrendingUp, TrendingDown, Activity, Target, Award, RefreshCw, Info } fr
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { LineChart, BarChart as TremorBarChart, AreaChart } from '@tremor/react';
+import { PerformanceReportSkeleton } from '@/components/SkeletonLoader';
 
 const PerformanceReport = () => {
   const [report, setReport] = useState(null);
@@ -28,11 +29,7 @@ const PerformanceReport = () => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
+    return <PerformanceReportSkeleton />;
   }
 
   if (!report || !report.summary) {

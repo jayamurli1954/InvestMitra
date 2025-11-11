@@ -63,4 +63,8 @@ const StaticMarketBar = ({ indices = [] }) => {
   );
 };
 
+<<<<<<< HEAD
 export default StaticMarketBar;
+=======
+export default StaticMarketBar;
+>>>>>>> 196e3d74d7f950b7a20b5e5601c8c8aee9923568

@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import asyncio
+import time
 from typing import Optional, Dict, List
 from websocket_manager import manager
 from validation_models import (
@@ -13,10 +14,13 @@ from pydantic import ValidationError
 
 logger = logging.getLogger(__name__)
 
+# Rate limiting configuration
+BATCH_SIZE = 10  # Process 10 symbols at a time
+DELAY_BETWEEN_BATCHES = 1.5  # 1.5 seconds delay between batches
 
 
 def get_stock_info(symbols: any) -> Dict[str, Dict]:
-    """Fetch real-time stock information for a single symbol or a batch of stock symbols."""
+    """Fetch real-time stock information for a single symbol or a batch of stock symbols with rate limiting."""
     if isinstance(symbols, str):
         symbols = [symbols]
 
@@ -25,63 +29,84 @@ def get_stock_info(symbols: any) -> Dict[str, Dict]:
     if not symbols:
         return results
 
-    try:
-        tickers = yf.Tickers(' '.join(symbols))
-        
-        for symbol in symbols:
-            try:
-                info = tickers.tickers[symbol].info
-                hist = tickers.tickers[symbol].history(period="1d")
+    # Process symbols in smaller batches to avoid rate limiting
+    for i in range(0, len(symbols), BATCH_SIZE):
+        batch = symbols[i:i + BATCH_SIZE]
 
-                if hist.empty:
-                    logger.warning(f"No data available for {symbol}")
-                    continue
+        try:
+            # Add delay between batches (except for first batch)
+            if i > 0:
+                logger.info(f"Rate limiting: waiting {DELAY_BETWEEN_BATCHES}s before fetching next batch...")
+                time.sleep(DELAY_BETWEEN_BATCHES)
 
-                current_price = safe_float(hist['Close'].iloc[-1], 0)
-                if current_price <= 0:
-                    logger.warning(f"Invalid price for {symbol}, skipping")
-                    continue
+            logger.info(f"Fetching batch {i//BATCH_SIZE + 1}: {len(batch)} symbols")
+            tickers = yf.Tickers(' '.join(batch))
 
-                prev_close = safe_float(info.get('previousClose'), current_price)
-                change = current_price - prev_close
-                change_percent = (change / prev_close) * 100 if prev_close > 0 else 0
-
-                # Build stock data with safe conversions
-                stock_data = {
-                    "symbol": symbol,
-                    "name": safe_string(info.get('longName'), symbol),
-                    "exchange": safe_string(info.get('exchange'), 'N/A'),
-                    "sector": safe_string(info.get('sector'), 'Other'),
-                    "current_price": current_price,
-                    "change": change,
-                    "change_percent": change_percent,
-                    "volume": safe_int(info.get('volume', hist['Volume'].iloc[-1])),
-                    "market_cap": safe_float(info.get('marketCap'), 0),
-                    "pe_ratio": safe_float(info.get('trailingPE')) if info.get('trailingPE') else None,
-                    "pb_ratio": safe_float(info.get('priceToBook')) if info.get('priceToBook') else None,
-                    "roe": safe_float(info.get('returnOnEquity'), 0) * 100 if info.get('returnOnEquity') else None,
-                    "debt_to_equity": safe_float(info.get('debtToEquity'), 0) / 100 if info.get('debtToEquity') else None,
-                    "dividend_yield": safe_float(info.get('dividendYield'), 0) * 100 if info.get('dividendYield') else None,
-                    "week_52_high": safe_float(info.get('fiftyTwoWeekHigh'), current_price),
-                    "week_52_low": safe_float(info.get('fiftyTwoWeekLow'), current_price),
-                    "rsi": None,
-                    "ma_50": safe_float(info.get('fiftyDayAverage'), current_price),
-                    "ma_200": safe_float(info.get('twoHundredDayAverage'), current_price),
-                }
-
-                # Validate with Pydantic model
+            for symbol in batch:
                 try:
-                    validated_data = YFinanceStockInfo(**stock_data)
-                    results[symbol] = validated_data.model_dump()
-                except ValidationError as e:
-                    logger.error(f"Validation failed for {symbol}: {e}")
-                    continue
-            except Exception as e:
-                logger.error(f"Error processing symbol {symbol} in batch: {str(e)}")
+                    info = tickers.tickers[symbol].info
+                    hist = tickers.tickers[symbol].history(period="1d")
 
-    except Exception as e:
-        logger.error(f"Error fetching batch data for symbols {symbols}: {str(e)}")
-        
+                    if hist.empty:
+                        logger.warning(f"No data available for {symbol}")
+                        continue
+
+                    current_price = safe_float(hist['Close'].iloc[-1], 0)
+                    if current_price <= 0:
+                        logger.warning(f"Invalid price for {symbol}, skipping")
+                        continue
+
+                    prev_close = safe_float(info.get('previousClose'), current_price)
+                    change = current_price - prev_close
+                    change_percent = (change / prev_close) * 100 if prev_close > 0 else 0
+
+                    # Build stock data with safe conversions
+                    stock_data = {
+                        "symbol": symbol,
+                        "name": safe_string(info.get('longName'), symbol),
+                        "exchange": safe_string(info.get('exchange'), 'N/A'),
+                        "sector": safe_string(info.get('sector'), 'Other'),
+                        "current_price": current_price,
+                        "change": change,
+                        "change_percent": change_percent,
+                        "volume": safe_int(info.get('volume', hist['Volume'].iloc[-1])),
+                        "market_cap": safe_float(info.get('marketCap'), 0),
+                        "pe_ratio": safe_float(info.get('trailingPE')) if info.get('trailingPE') else None,
+                        "pb_ratio": safe_float(info.get('priceToBook')) if info.get('priceToBook') else None,
+                        "roe": safe_float(info.get('returnOnEquity'), 0) * 100 if info.get('returnOnEquity') else None,
+                        "debt_to_equity": safe_float(info.get('debtToEquity'), 0) / 100 if info.get('debtToEquity') else None,
+                        "dividend_yield": safe_float(info.get('dividendYield'), 0) * 100 if info.get('dividendYield') else None,
+                        "week_52_high": safe_float(info.get('fiftyTwoWeekHigh'), current_price),
+                        "week_52_low": safe_float(info.get('fiftyTwoWeekLow'), current_price),
+                        "rsi": None,
+                        "ma_50": safe_float(info.get('fiftyDayAverage'), current_price),
+                        "ma_200": safe_float(info.get('twoHundredDayAverage'), current_price),
+                    }
+
+                    # Validate with Pydantic model
+                    try:
+                        validated_data = YFinanceStockInfo(**stock_data)
+                        results[symbol] = validated_data.model_dump()
+                    except ValidationError as e:
+                        logger.error(f"Validation failed for {symbol}: {e}")
+                        continue
+                except Exception as e:
+                    # Check if it's a rate limiting error
+                    error_msg = str(e)
+                    if "Too Many Requests" in error_msg or "Rate limited" in error_msg:
+                        logger.warning(f"Rate limited on {symbol}, waiting 5 seconds before continuing...")
+                        time.sleep(5)
+                    else:
+                        logger.error(f"Error processing symbol {symbol} in batch: {error_msg}")
+
+        except Exception as e:
+            error_msg = str(e)
+            if "Too Many Requests" in error_msg or "Rate limited" in error_msg:
+                logger.warning(f"Rate limited on batch, waiting 5 seconds before continuing...")
+                time.sleep(5)
+            else:
+                logger.error(f"Error fetching batch data for symbols {batch}: {error_msg}")
+
     return results
 
 
