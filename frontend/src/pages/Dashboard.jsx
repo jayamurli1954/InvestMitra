@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { TrendingUp, TrendingDown, Briefcase, Eye, ArrowUpRight, ArrowDownRight, Filter, Target, BarChart3 } from 'lucide-react';
+import {
+  TrendingUp, TrendingDown, Briefcase, Eye, ArrowUpRight, ArrowDownRight,
+  Filter, Target, BarChart3, Plus, FileText, ChevronDown, ChevronUp, PieChart
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { DashboardSkeleton } from '@/components/SkeletonLoader';
@@ -12,6 +15,7 @@ const Dashboard = () => {
   const [watchlist, setWatchlist] = useState([]);
   const [portfolioPerformance, setPortfolioPerformance] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showMarketIndices, setShowMarketIndices] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -38,6 +42,34 @@ const Dashboard = () => {
     }
   };
 
+  // Calculate sector allocation from portfolio
+  const calculateSectorAllocation = () => {
+    if (!portfolio || portfolio.length === 0) return [];
+
+    const sectorTotals = {};
+    let totalValue = 0;
+
+    portfolio.forEach(holding => {
+      if (holding.asset_type !== 'MUTUAL_FUND') {
+        const value = holding.current_price * holding.quantity;
+        const sector = holding.sector || 'Other';
+        sectorTotals[sector] = (sectorTotals[sector] || 0) + value;
+        totalValue += value;
+      }
+    });
+
+    return Object.entries(sectorTotals)
+      .map(([sector, value]) => ({
+        sector,
+        value,
+        percentage: (value / totalValue * 100).toFixed(1)
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5); // Top 5 sectors
+  };
+
+  const sectorAllocation = calculateSectorAllocation();
+
   if (loading) {
     return <DashboardSkeleton />;
   }
@@ -47,77 +79,184 @@ const Dashboard = () => {
       {/* Header */}
       <div>
         <h1 className="text-4xl font-bold text-white mb-2" data-testid="dashboard-title">Investment Dashboard</h1>
-        <p className="text-slate-400">Track your portfolio and market performance</p>
+        <p className="text-slate-400">Your portfolio at a glance</p>
       </div>
 
-      {/* Market Indices */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {marketIndices.map((index, idx) => (
-          <div key={idx} className="glass-card p-6 fade-in" data-testid={`market-index-${idx}`}>
-            <p className="text-sm text-slate-400 mb-2">{index.name}</p>
-            <div className="flex items-end justify-between">
-              <div>
-                <p className="text-2xl font-bold text-white">{index.value.toLocaleString('en-IN')}</p>
-                <div className={`flex items-center space-x-1 mt-1 ${index.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {index.change >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                  <span className="text-sm font-medium">{Math.abs(index.change).toFixed(2)} ({index.change_percent.toFixed(2)}%)</span>
-                </div>
-              </div>
-              {index.change >= 0 ? (
-                <TrendingUp className="w-8 h-8 text-emerald-400/30" />
-              ) : (
-                <TrendingDown className="w-8 h-8 text-rose-400/30" />
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Portfolio Summary */}
+      {/* HERO: Portfolio Summary - BIG and BOLD */}
       {portfolioPerformance && (
-        <div className="glass-card p-8" data-testid="portfolio-summary">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-xl flex items-center justify-center">
-                <Briefcase className="w-6 h-6 text-white" />
+        <div className="glass-card p-8 bg-gradient-to-br from-emerald-500/10 to-blue-500/10 border border-emerald-500/20" data-testid="portfolio-summary">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-2xl flex items-center justify-center">
+                <Briefcase className="w-8 h-8 text-white" />
               </div>
               <div>
-                <h2 className="text-2xl font-bold text-white">Portfolio Performance</h2>
-                <p className="text-sm text-slate-400">Your investment overview</p>
+                <h2 className="text-3xl font-bold text-white">Portfolio Value</h2>
+                <p className="text-slate-400">Your investment overview</p>
               </div>
             </div>
             <Link to="/portfolio" data-testid="view-portfolio-link">
-              <button className="px-6 py-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20 hover:bg-emerald-500/20 font-medium">
-                View Details
+              <button className="px-6 py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-semibold transition-all shadow-lg shadow-emerald-500/20">
+                View Full Portfolio
               </button>
             </Link>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Total Invested</p>
-              <p className="text-2xl font-bold text-white" data-testid="total-invested">₹{portfolioPerformance.total_invested.toLocaleString('en-IN')}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Current Value</p>
-              <p className="text-2xl font-bold text-white" data-testid="current-value">₹{portfolioPerformance.total_current.toLocaleString('en-IN')}</p>
-            </div>
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Total Gain/Loss</p>
-              <p className={`text-2xl font-bold ${portfolioPerformance.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="total-gain">
-                ₹{Math.abs(portfolioPerformance.total_gain).toLocaleString('en-IN')}
+          {/* Big Numbers */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            <div className="space-y-2">
+              <p className="text-sm text-slate-400 uppercase tracking-wide font-medium">Current Value</p>
+              <p className="text-5xl font-bold text-white" data-testid="current-value">
+                ₹{portfolioPerformance.total_current.toLocaleString('en-IN')}
               </p>
             </div>
-            <div>
-              <p className="text-sm text-slate-400 mb-1">Returns</p>
-              <div className={`flex items-center space-x-2 ${portfolioPerformance.total_gain_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                {portfolioPerformance.total_gain_percent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-                <p className="text-2xl font-bold" data-testid="total-gain-percent">{Math.abs(portfolioPerformance.total_gain_percent).toFixed(2)}%</p>
+
+            <div className="space-y-2">
+              <p className="text-sm text-slate-400 uppercase tracking-wide font-medium">Total Invested</p>
+              <p className="text-5xl font-bold text-white" data-testid="total-invested">
+                ₹{portfolioPerformance.total_invested.toLocaleString('en-IN')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm text-slate-400 uppercase tracking-wide font-medium">Total Gain/Loss</p>
+              <p className={`text-5xl font-bold ${portfolioPerformance.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="total-gain">
+                {portfolioPerformance.total_gain >= 0 ? '+' : ''}₹{Math.abs(portfolioPerformance.total_gain).toLocaleString('en-IN')}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-sm text-slate-400 uppercase tracking-wide font-medium">Returns</p>
+              <div className={`flex items-center space-x-3 ${portfolioPerformance.total_gain_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {portfolioPerformance.total_gain_percent >= 0 ? (
+                  <TrendingUp className="w-10 h-10" />
+                ) : (
+                  <TrendingDown className="w-10 h-10" />
+                )}
+                <p className="text-5xl font-bold" data-testid="total-gain-percent">
+                  {portfolioPerformance.total_gain_percent >= 0 ? '+' : ''}{portfolioPerformance.total_gain_percent.toFixed(2)}%
+                </p>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <Link to="/portfolio" data-testid="quick-action-add-stock">
+          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer border-2 border-emerald-500/30 hover:border-emerald-500">
+            <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-3">
+              <Plus className="w-6 h-6 text-emerald-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Add Stock</h3>
+            <p className="text-sm text-slate-400">Add holdings to portfolio</p>
+          </div>
+        </Link>
+
+        <Link to="/performance" data-testid="quick-action-reports">
+          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer">
+            <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-3">
+              <FileText className="w-6 h-6 text-purple-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Reports</h3>
+            <p className="text-sm text-slate-400">View performance reports</p>
+          </div>
+        </Link>
+
+        <Link to="/screener" data-testid="quick-action-screener">
+          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer">
+            <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mb-3">
+              <Filter className="w-6 h-6 text-blue-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Stock Screener</h3>
+            <p className="text-sm text-slate-400">Find investment opportunities</p>
+          </div>
+        </Link>
+
+        <Link to="/analytics" data-testid="quick-action-analytics">
+          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer">
+            <div className="w-12 h-12 bg-amber-500/20 rounded-xl flex items-center justify-center mb-3">
+              <BarChart3 className="w-6 h-6 text-amber-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">Analytics</h3>
+            <p className="text-sm text-slate-400">Deep portfolio analysis</p>
+          </div>
+        </Link>
+      </div>
+
+      {/* Asset Allocation */}
+      {sectorAllocation.length > 0 && (
+        <div className="glass-card p-6">
+          <div className="flex items-center space-x-3 mb-6">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+              <PieChart className="w-5 h-5 text-blue-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Sector Allocation</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {sectorAllocation.map((sector, idx) => (
+              <div key={idx} className="p-4 bg-white/5 rounded-lg border border-white/10">
+                <p className="text-sm text-slate-400 mb-1">{sector.sector}</p>
+                <p className="text-2xl font-bold text-white">{sector.percentage}%</p>
+                <p className="text-xs text-slate-500 mt-1">₹{sector.value.toLocaleString('en-IN')}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Market Indices - Collapsible & Secondary */}
+      <div className="glass-card p-6">
+        <button
+          onClick={() => setShowMarketIndices(!showMarketIndices)}
+          className="w-full flex items-center justify-between text-left group"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 bg-slate-500/20 rounded-lg flex items-center justify-center group-hover:bg-slate-500/30 transition-colors">
+              <TrendingUp className="w-5 h-5 text-slate-400" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Market Indices</h2>
+              <p className="text-sm text-slate-400">Global market overview</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-slate-400">
+              {showMarketIndices ? 'Hide' : 'Show'}
+            </span>
+            {showMarketIndices ? (
+              <ChevronUp className="w-5 h-5 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-slate-400" />
+            )}
+          </div>
+        </button>
+
+        {showMarketIndices && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 fade-in">
+            {marketIndices.map((index, idx) => (
+              <div key={idx} className="p-4 bg-white/5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors" data-testid={`market-index-${idx}`}>
+                <p className="text-sm text-slate-400 mb-2">{index.name}</p>
+                <div className="flex items-end justify-between">
+                  <div>
+                    <p className="text-xl font-bold text-white">{index.value.toLocaleString('en-IN')}</p>
+                    <div className={`flex items-center space-x-1 mt-1 ${index.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {index.change >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                      <span className="text-xs font-medium">{Math.abs(index.change).toFixed(2)} ({index.change_percent.toFixed(2)}%)</span>
+                    </div>
+                  </div>
+                  {index.change >= 0 ? (
+                    <TrendingUp className="w-6 h-6 text-emerald-400/30" />
+                  ) : (
+                    <TrendingDown className="w-6 h-6 text-rose-400/30" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Recent Holdings & Watchlist */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -195,39 +334,6 @@ const Dashboard = () => {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Link to="/screener" data-testid="quick-action-screener">
-          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer">
-            <div className="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mb-3">
-              <Filter className="w-6 h-6 text-blue-400" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Stock Screener</h3>
-            <p className="text-sm text-slate-400">Find stocks matching your criteria</p>
-          </div>
-        </Link>
-
-        <Link to="/strategies" data-testid="quick-action-strategies">
-          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer">
-            <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-3">
-              <Target className="w-6 h-6 text-purple-400" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Build Strategy</h3>
-            <p className="text-sm text-slate-400">Create your investment framework</p>
-          </div>
-        </Link>
-
-        <Link to="/market" data-testid="quick-action-market">
-          <div className="glass-card p-6 hover:scale-105 transition-transform cursor-pointer">
-            <div className="w-12 h-12 bg-emerald-500/20 rounded-xl flex items-center justify-center mb-3">
-              <TrendingUp className="w-6 h-6 text-emerald-400" />
-            </div>
-            <h3 className="text-lg font-bold text-white mb-2">Market Analysis</h3>
-            <p className="text-sm text-slate-400">Explore market trends and insights</p>
-          </div>
-        </Link>
       </div>
     </div>
   );
