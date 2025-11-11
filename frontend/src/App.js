@@ -25,7 +25,7 @@ import Disclaimer from "@/pages/Disclaimer";
 import Layout from "@/components/Layout";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { Toaster } from "@/components/ui/sonner";
-import Marquee from "@/components/Marquee";
+import StaticMarketBar from "@/components/StaticMarketBar";
 import logger from "@/utils/logger";
 
 const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
@@ -96,31 +96,30 @@ function AppRoutes() {
 
 function App() {
   const [indices, setIndices] = useState([]);
-  const [majorStocks, setMajorStocks] = useState([]);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [indicesRes, majorStocksRes] = await Promise.all([
-          axios.get(`${API}/market/overview`),
-          axios.get(`${API}/market/major-stocks`)
-        ]);
+        // Only fetch indices, not major stocks (prevents rate limiting)
+        const indicesRes = await axios.get(`${API}/market/overview`);
         setIndices(indicesRes.data);
-        setMajorStocks(majorStocksRes.data);
       } catch (error) {
-        logger.error('Error fetching market data:', error);
+        logger.error('Error fetching market indices:', error);
       }
     };
 
     fetchData();
+
+    // Refresh every 5 minutes (not too frequent to avoid rate limits)
+    const interval = setInterval(fetchData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
     <ErrorBoundary>
       <div className="App">
         <AuthProvider>
-          <Marquee items={indices} />
-          <Marquee items={majorStocks} />
+          <StaticMarketBar indices={indices} />
           <AppRoutes />
         </AuthProvider>
       </div>
