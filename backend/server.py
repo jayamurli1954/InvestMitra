@@ -2247,44 +2247,53 @@ async def forgot_password(request_data: dict):
     Body: {"email": "user@example.com"}
     """
     from email_utils import send_password_reset_email
-    
+
     try:
         email = request_data.get("email")
-        
+        logger.info(f"🔐 Password reset requested for email: {email}")
+
         if not email:
+            logger.warning("Password reset failed: No email provided")
             return JSONResponse(
                 content={"error": "Email is required"},
                 status_code=400
             )
-        
+
         # Find user by email
         user = await db.users.find_one({"email": {"$regex": f"^{email.strip().lower()}$", "$options": "i"}})
-        
+
         if not user:
             # Don't reveal if email exists (security)
+            logger.warning(f"Password reset: User not found for email: {email}")
             return JSONResponse(
                 content={"message": "If email exists, reset link has been sent"},
                 status_code=200
             )
-        
+
+        logger.info(f"✅ User found: {user.get('name')} (ID: {str(user.get('_id'))[:8]}...)")
+
         # Create reset token
         reset_token = create_password_reset_record(db, user["_id"], email)
+        logger.info(f"✅ Reset token created: {reset_token[:20]}...")
 
         # Send email
+        logger.info(f"📧 Attempting to send password reset email to: {email}")
         email_sent = send_password_reset_email(
             user_email=email,
             reset_token=reset_token,
             user_name=user.get("name", "User")
         )
-        
+
         if email_sent:
+            logger.info(f"✅ Password reset email sent successfully to: {email}")
             return JSONResponse(
                 content={"message": "Password reset email has been sent"},
                 status_code=200
             )
         else:
+            logger.error(f"❌ Failed to send password reset email to: {email}")
             return JSONResponse(
-                content={"error": "Failed to send email"},
+                content={"error": "Failed to send email. Please check server logs."},
                 status_code=500
             )
     
