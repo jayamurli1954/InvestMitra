@@ -12,9 +12,19 @@ from dotenv import load_dotenv
 
 # Load environment variables
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+env_path = ROOT_DIR / '.env'
+
+# Load .env file with explicit path and override
+loaded = load_dotenv(env_path, override=True)
 
 logger = logging.getLogger(__name__)
+
+# Debug: Check if .env was loaded
+if loaded:
+    logger.info(f"✅ Loaded .env file from: {env_path}")
+else:
+    logger.warning(f"⚠️  Could not load .env file from: {env_path}")
+    logger.warning(f"   File exists: {env_path.exists()}")
 
 
 class ConfigValidator:
@@ -189,6 +199,12 @@ class Config:
         self.SENDER_NAME = os.getenv("SENDER_NAME", "Investment Framework")
         self.GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
         self.CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*').split(',')
+
+        # Debug: Print what was actually loaded
+        logger.debug(f"DEBUG: SMTP_SERVER = {self.SMTP_SERVER}")
+        logger.debug(f"DEBUG: SMTP_EMAIL = {self.SMTP_EMAIL}")
+        logger.debug(f"DEBUG: SMTP_PASSWORD = {'*' * len(self.SMTP_PASSWORD) if self.SMTP_PASSWORD else 'None'}")
+        logger.debug(f"DEBUG: GEMINI_API_KEY = {self.GEMINI_API_KEY[:10] + '...' if self.GEMINI_API_KEY else 'None'}")
 
         # Check optional variables and print warnings
         self.validator.validate_optional()
