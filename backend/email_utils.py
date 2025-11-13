@@ -211,9 +211,12 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
         message.attach(part2)
         
         # Send email
+        # Remove spaces from password (Gmail app passwords have spaces but need to be used without)
+        password = SMTP_PASSWORD.replace(" ", "") if SMTP_PASSWORD else ""
+
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()  # Secure connection
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.login(SMTP_EMAIL, password)
             server.sendmail(SMTP_EMAIL, to_email, message.as_string())
         
         print(f"✓ Email sent successfully to {to_email}")

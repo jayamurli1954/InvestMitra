@@ -2269,12 +2269,12 @@ async def forgot_password(request_data: dict):
         
         # Create reset token
         reset_token = create_password_reset_record(db, user["_id"], email)
-        
+
         # Send email
         email_sent = send_password_reset_email(
             user_email=email,
             reset_token=reset_token,
-            user_name=user.get("full_name", "User")
+            user_name=user.get("name", "User")
         )
         
         if email_sent:
