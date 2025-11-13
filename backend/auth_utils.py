@@ -4,16 +4,10 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, Field, ConfigDict
 import uuid
-import os
+from config import config
 
 # JWT Configuration
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise ValueError(
-        "SECRET_KEY environment variable is not set. "
-        "Please set it in your .env file or environment. "
-        "Generate a secure key using: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-    )
+SECRET_KEY = config.SECRET_KEY  # Already validated by config module
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 

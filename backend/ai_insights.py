@@ -1,86 +1,48 @@
 """
 AI-Powered Portfolio Insights Module
-Uses Google Gemini LLM to generate personalized investment recommendations 
+Uses Google Gemini LLM to generate personalized investment recommendations
 and portfolio optimization.
 
 FINAL VERSION - November 2, 2025
 Model: gemini-2.5-flash (latest & fastest)
 """
 
-import os
 import re
 import json
 import logging
 from typing import List, Dict, Any
-from dotenv import load_dotenv
+from config import config, is_ai_enabled
 
 # --- GEMINI IMPORTS ---
 from google import genai
 from google.genai import types
-from google.genai.errors import APIError 
+from google.genai.errors import APIError
 # ----------------------
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 
 # --- GEMINI CLIENT INITIALIZATION ---
 client = None
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = config.GEMINI_API_KEY
 
-print("\n" + "="*70)
-print("🤖 INITIALIZING GEMINI AI")
-print("="*70)
-
-try:
-    if not GEMINI_API_KEY:
-        error_msg = "❌ GEMINI_API_KEY not found in environment variables"
-        print(error_msg)
-        logger.error(error_msg)
-    elif not GEMINI_API_KEY.startswith("AIzaSy"):
-        error_msg = f"❌ GEMINI_API_KEY has wrong format: starts with '{GEMINI_API_KEY[:10]}'"
-        print(error_msg)
-        print("   API key should start with 'AIzaSy'")
-        logger.error(error_msg)
-        logger.error("   API key should start with 'AIzaSy'")
-    else:
-        # Initialize with explicit API key
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        success_msg1 = "✅ Gemini client initialized successfully"
-        success_msg2 = f"   Using API key: {GEMINI_API_KEY[:10]}...{GEMINI_API_KEY[-4:]}"
-        success_msg3 = "   Model: gemini-2.5-flash (latest & fastest)"
-        
-        print(success_msg1)
-        print(success_msg2)
-        print(success_msg3)
-        
-        logger.info(success_msg1)
-        logger.info(success_msg2)
-        logger.info(success_msg3)
-except Exception as e:
-    error_msg1 = f"❌ Error initializing Gemini client: {e}"
-    error_msg2 = f"   Error type: {type(e).__name__}"
-    
-    print(error_msg1)
-    print(error_msg2)
-    
-    logger.error(error_msg1)
-    logger.error(error_msg2)
-
-if client is not None:
-    final_msg = "🎉 ai_insights module loaded - Gemini AI ready!"
-    print(final_msg)
-    logger.info(final_msg)
+if is_ai_enabled():
+    try:
+        if not GEMINI_API_KEY.startswith("AIzaSy"):
+            error_msg = f"❌ GEMINI_API_KEY has wrong format: starts with '{GEMINI_API_KEY[:10]}'"
+            logger.error(error_msg)
+            logger.error("   API key should start with 'AIzaSy'")
+        else:
+            # Initialize with explicit API key
+            client = genai.Client(api_key=GEMINI_API_KEY)
+            logger.info("✅ Gemini client initialized successfully")
+            logger.info(f"   Using API key: {GEMINI_API_KEY[:10]}...{GEMINI_API_KEY[-4:]}")
+            logger.info("   Model: gemini-2.5-flash (latest & fastest)")
+    except Exception as e:
+        logger.error(f"❌ Error initializing Gemini client: {e}")
+        logger.error(f"   Error type: {type(e).__name__}")
+        client = None
 else:
-    warning_msg1 = "⚠️  ai_insights module loaded - Gemini AI NOT available"
-    warning_msg2 = "   Check GEMINI_API_KEY in .env file"
-    
-    print(warning_msg1)
-    print(warning_msg2)
-    
-    logger.warning(warning_msg1)
-    logger.warning(warning_msg2)
-
-print("="*70 + "\n")
+    logger.info("ℹ️  AI insights disabled - GEMINI_API_KEY not configured")
 # ------------------------------------
 
 

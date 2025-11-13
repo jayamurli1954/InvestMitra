@@ -2,7 +2,6 @@ from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, R
 import pandas as pd
 from websocket_manager import manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
@@ -18,20 +17,20 @@ import requests
 import io
 from fastapi.responses import StreamingResponse
 from decimal import Decimal, ROUND_HALF_UP
+
+# Import configuration (this will validate environment variables)
+from config import config, is_email_enabled, is_ai_enabled
+
 from auth_utils import (
     User, UserPublic, UserSession, UserRegister, UserLogin, Token,
     verify_password, get_password_hash, create_access_token, decode_access_token
 )
 from market_data import (
-    get_stock_info, get_historical_data, get_market_indices, 
+    get_stock_info, get_historical_data, get_market_indices,
     get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
 )
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
-
 # MongoDB connection - will be initialized on app startup
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 client = None
 db = None
 
@@ -40,8 +39,8 @@ async def init_db():
     global client, db
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        db = client[os.environ['DB_NAME']]
+        client = AsyncIOMotorClient(config.MONGO_URL, serverSelectionTimeoutMS=5000)
+        db = client[config.DB_NAME]
         # Test connection
         await db.command('ping')
         logging.info("✓ MongoDB connected successfully")
@@ -56,9 +55,6 @@ async def close_db():
     if client:
         client.close()
         logging.info("MongoDB connection closed")
-
-# CORS configuration
-CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1376,14 +1372,17 @@ async def get_stock_recommendations(
 
 
 # Enable CORS
+# Configure CORS - use environment variable or sensible defaults
+cors_origins = config.CORS_ORIGINS if config.CORS_ORIGINS != ['*'] else [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",  # Vite default
+    "http://127.0.0.1:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",  # Vite default
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],

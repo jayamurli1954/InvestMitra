@@ -5,18 +5,15 @@ Email utility functions for sending password reset and verification emails
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import os
-from dotenv import load_dotenv
+from config import config, is_email_enabled
 
-load_dotenv()
-
-# Email Configuration
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-SMTP_EMAIL = os.getenv("SMTP_EMAIL")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-SENDER_NAME = os.getenv("SENDER_NAME", "Investment Framework")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+# Email Configuration from centralized config
+SMTP_SERVER = config.SMTP_SERVER
+SMTP_PORT = config.SMTP_PORT
+SMTP_EMAIL = config.SMTP_EMAIL
+SMTP_PASSWORD = config.SMTP_PASSWORD
+SENDER_NAME = config.SENDER_NAME
+FRONTEND_URL = config.FRONTEND_URL
 
 
 def send_password_reset_email(user_email: str, reset_token: str, user_name: str) -> bool:
