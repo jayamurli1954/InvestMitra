@@ -1,14 +1,20 @@
+from pathlib import Path
+import os
+import asyncio
+from dotenv import load_dotenv
+
+# Load .env FIRST before importing auth_utils
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket
 import pandas as pd
 from websocket_manager import manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os
 import logging
-from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
@@ -16,39 +22,63 @@ from datetime import datetime, timezone, timedelta
 import random
 import requests
 import io
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from decimal import Decimal, ROUND_HALF_UP
+
+# Import configuration (this will validate environment variables)
+from config import config, is_email_enabled, is_ai_enabled
+
 from auth_utils import (
     User, UserPublic, UserSession, UserRegister, UserLogin, Token,
     verify_password, get_password_hash, create_access_token, decode_access_token
 )
 from market_data import (
-    get_stock_info, get_historical_data, get_market_indices, 
-    get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
+    get_stock_info, get_historical_data, get_market_indices,
+    get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate,
+    search_equities
 )
-
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+from performance import (
+    generate_performance_summary, calculate_win_rate, calculate_sector_performance
+)
+from analytics import (
+    calculate_portfolio_analytics,
+    calculate_rebalancing_suggestions,
+    generate_stock_recommendations,
+)
+from routes.auth_recovery import create_auth_recovery_router
 
 # MongoDB connection - will be initialized on app startup
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 client = None
 db = None
+ticker_task = None
 
 async def init_db():
-    """Initialize MongoDB connection on startup"""
+    """Initialize MongoDB connection on startup with retry logic"""
     global client, db
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
-        client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        db = client[os.environ['DB_NAME']]
+        # Try connecting to real MongoDB first
+        client = AsyncIOMotorClient(config.MONGO_URL, serverSelectionTimeoutMS=2000)
+        db = client[config.DB_NAME]
         # Test connection
         await db.command('ping')
         logging.info("✓ MongoDB connected successfully")
     except Exception as e:
-        logging.error(f"✗ MongoDB connection failed: {e}")
-        db = None
-        client = None
+        logging.warning(f"⚠ MongoDB connection failed: {e}")
+        logging.warning("⚠ Switching to In-Memory Mock Database (Data will be lost on restart)")
+        try:
+            from mongomock_motor import AsyncMongoMockClient
+            client = AsyncMongoMockClient()
+            db = client[config.DB_NAME]
+            logging.info("✓ Mock Database initialized successfully")
+        except ImportError:
+            logging.error("✗ Failed to initialize Mock DB: mongomock_motor not installed")
+            db = None
+            client = None
+        except Exception as mock_error:
+            logging.error(f"✗ Mock DB initialization failed: {mock_error}")
+            db = None
+            client = None
 
 async def close_db():
     """Close MongoDB connection on shutdown"""
@@ -56,9 +86,6 @@ async def close_db():
     if client:
         client.close()
         logging.info("MongoDB connection closed")
-
-# CORS configuration
-CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -68,57 +95,279 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
+# Rate limiting configuration
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Configure CORS
+origins = config.CORS_ORIGINS
+logger.info(f"CORS origins configured: {origins}")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Register startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
+    global ticker_task
     await init_db()
+    # Start the ticker simulation task once.
+    if ticker_task is None or ticker_task.done():
+        ticker_task = asyncio.create_task(simulate_ticker_updates())
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    global ticker_task
+    if ticker_task and not ticker_task.done():
+        ticker_task.cancel()
+        try:
+            await ticker_task
+        except asyncio.CancelledError:
+            pass
+        ticker_task = None
     await close_db()
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    health_status = {
+        "status": "healthy",
+        "mongodb": "disconnected",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+    # Check MongoDB connection
+    if db is not None:
+        try:
+            await db.command('ping')
+            health_status["mongodb"] = "connected"
+        except Exception as e:
+            health_status["mongodb"] = f"error: {str(e)}"
+            health_status["status"] = "degraded"
+    else:
+        health_status["status"] = "degraded"
+
+    return health_status
+
+@app.get("/")
+async def root():
+    """Root endpoint for status check"""
+    return {
+        "message": "InvestMitra Backend Running", 
+        "status": "Online",
+        "db_mode": "Real (MongoDB)" if "mongomock" not in str(type(client)) and client is not None else "In-Memory (Mock)"
+    }
+
+# Cache statistics endpoint (for monitoring)
+@app.get("/cache-stats")
+async def get_cache_stats():
+    """Get cache statistics for monitoring"""
+    return cache_instance.get_stats()
 
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer(auto_error=False)
 
 import time
 from functools import wraps
+from collections import OrderedDict
+from typing import Optional, Pattern
+import re
 
-class Cache:
-    def __init__(self, ttl: int = 60):
-        self.cache = {}
-        self.ttl = ttl
+class ImprovedCache:
+    """Enhanced caching with TTL, size limits, and invalidation"""
 
-    def get(self, key: str):
+    def __init__(self, default_ttl: int = 60, max_size: int = 1000):
+        self.cache = OrderedDict()  # Maintains insertion order for LRU eviction
+        self.default_ttl = default_ttl
+        self.max_size = max_size
+        self.stats = {
+            'hits': 0,
+            'misses': 0,
+            'evictions': 0,
+            'invalidations': 0
+        }
+
+    def get(self, key: str) -> Optional[any]:
+        """Get cached value if not expired"""
         if key in self.cache:
-            data, timestamp = self.cache[key]
-            if (time.time() - timestamp) < self.ttl:
+            data, timestamp, ttl = self.cache[key]
+            if (time.time() - timestamp) < ttl:
+                self.stats['hits'] += 1
+                # Move to end (most recently used)
+                self.cache.move_to_end(key)
                 return data
+            else:
+                # Expired, remove it
+                del self.cache[key]
+
+        self.stats['misses'] += 1
         return None
 
-    def set(self, key: str, value: any):
-        self.cache[key] = (value, time.time())
+    def set(self, key: str, value: any, ttl: Optional[int] = None):
+        """Set cached value with optional custom TTL"""
+        if ttl is None:
+            ttl = self.default_ttl
 
-cache_instance = Cache(ttl=60) # Cache for 60 seconds
+        # Check size limit and evict oldest if necessary
+        if key not in self.cache and len(self.cache) >= self.max_size:
+            # Remove oldest (first) item
+            oldest_key = next(iter(self.cache))
+            del self.cache[oldest_key]
+            self.stats['evictions'] += 1
+            logger.debug(f"Cache full, evicted oldest key: {oldest_key}")
 
-def cached(key_prefix: str):
+        self.cache[key] = (value, time.time(), ttl)
+        # Move to end (most recently used)
+        self.cache.move_to_end(key)
+
+    def invalidate(self, key: str) -> bool:
+        """Invalidate a specific cache key"""
+        if key in self.cache:
+            del self.cache[key]
+            self.stats['invalidations'] += 1
+            logger.debug(f"Cache invalidated: {key}")
+            return True
+        return False
+
+    def invalidate_pattern(self, pattern: str) -> int:
+        """Invalidate all keys matching a pattern (regex)"""
+        regex = re.compile(pattern)
+        keys_to_delete = [key for key in self.cache.keys() if regex.match(key)]
+
+        for key in keys_to_delete:
+            del self.cache[key]
+            self.stats['invalidations'] += 1
+
+        if keys_to_delete:
+            logger.debug(f"Cache invalidated {len(keys_to_delete)} keys matching pattern: {pattern}")
+
+        return len(keys_to_delete)
+
+    def invalidate_user(self, user_id: str) -> int:
+        """Invalidate all cache entries for a specific user"""
+        return self.invalidate_pattern(f".*:{user_id}$")
+
+    def clear(self):
+        """Clear all cache entries"""
+        count = len(self.cache)
+        self.cache.clear()
+        self.stats['invalidations'] += count
+        logger.info(f"Cache cleared: {count} entries removed")
+
+    def get_stats(self) -> dict:
+        """Get cache statistics"""
+        total_requests = self.stats['hits'] + self.stats['misses']
+        hit_rate = (self.stats['hits'] / total_requests * 100) if total_requests > 0 else 0
+
+        return {
+            **self.stats,
+            'size': len(self.cache),
+            'max_size': self.max_size,
+            'hit_rate': round(hit_rate, 2)
+        }
+
+cache_instance = ImprovedCache(default_ttl=60, max_size=1000)
+
+def cached(key_prefix: str, ttl: Optional[int] = None):
+    """Decorator to cache function results"""
     def decorator(func):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             current_user = kwargs.get('current_user')
             user_id = current_user.id if current_user else 'public'
             cache_key = f"{key_prefix}:{user_id}"
-            
+
             cached_data = cache_instance.get(cache_key)
             if cached_data is not None:
                 logger.info(f"Cache hit for {cache_key}")
                 return cached_data
-            
+
             logger.info(f"Cache miss for {cache_key}, fetching data...")
             result = await func(*args, **kwargs)
-            cache_instance.set(cache_key, result)
+            cache_instance.set(cache_key, result, ttl=ttl)
             return result
         return wrapper
     return decorator
+
+# ==================== CACHED MARKET DATA FUNCTIONS ====================
+
+def get_cached_stock_info(symbols):
+    """
+    Get stock info with 5-minute caching to prevent rate limiting.
+
+    Args:
+        symbols: Single symbol string or list of symbol strings
+
+    Returns:
+        Dict mapping symbols to their stock data
+    """
+    if isinstance(symbols, str):
+        symbols = [symbols]
+
+    results = {}
+    uncached_symbols = []
+
+    # Check cache for each symbol
+    for symbol in symbols:
+        cache_key = f"stock_info:{symbol}"
+        cached_data = cache_instance.get(cache_key)
+        if cached_data is not None:
+            results[symbol] = cached_data
+            logger.debug(f"🔥 Cache hit for stock {symbol}")
+        else:
+            uncached_symbols.append(symbol)
+
+    # Fetch uncached symbols from API
+    if uncached_symbols:
+        logger.info(f"🔥 Cache miss for {len(uncached_symbols)} stocks, fetching from API...")
+        fresh_data = get_stock_info(uncached_symbols)
+
+        # Cache individual results with 5-minute TTL (300 seconds)
+        for symbol, data in fresh_data.items():
+            cache_key = f"stock_info:{symbol}"
+            cache_instance.set(cache_key, data, ttl=300)  # 5 minutes
+            results[symbol] = data
+            logger.debug(f"🔥 Cached stock {symbol} for 5 minutes")
+
+    return results
+
+
+def get_cached_mutual_fund_nav(scheme_code: str):
+    """
+    Get mutual fund NAV with 1-hour caching.
+
+    Args:
+        scheme_code: Mutual fund scheme code
+
+    Returns:
+        Dict with NAV data or None
+    """
+    cache_key = f"mf_nav:{scheme_code}"
+    cached_data = cache_instance.get(cache_key)
+
+    if cached_data is not None:
+        logger.debug(f"🔥 Cache hit for MF {scheme_code}")
+        return cached_data
+
+    logger.info(f"🔥 Cache miss for MF {scheme_code}, fetching from CSV...")
+    data = get_mutual_fund_nav(scheme_code)
+
+    if data:
+        cache_instance.set(cache_key, data, ttl=3600)  # 1 hour
+        logger.debug(f"🔥 Cached MF {scheme_code} for 1 hour")
+
+    return data
 
 # ==================== DATABASE DEPENDENCY ====================
 
@@ -254,7 +503,7 @@ class PortfolioHoldingCreate(BaseModel):
     quantity: int
     purchase_price: float
     purchase_date: str
-    asset_type: str = "STOCK"
+    asset_type: Optional[str] = "STOCK" # Changed to Optional with default
 
 class HoldingTransaction(BaseModel):
     quantity: int
@@ -386,7 +635,7 @@ from typing import Optional
 class WatchlistItemCreate(BaseModel):
     symbol: str
     name: str
-    asset_type: str
+    asset_type: Optional[str] = "STOCK" # Changed to optional with default
     
     # Optional fields for Mutual Funds if your client sends them during creation
     scheme_code: Optional[str] = None
@@ -485,7 +734,7 @@ class DividendRecordCreate(BaseModel):
 async def debug_stock_info(symbol: str):
     """Temporary endpoint to debug get_stock_info for a specific symbol."""
     logger.info(f"Debugging stock info for symbol: {symbol}")
-    stock_data = get_stock_info(symbol)
+    stock_data = get_cached_stock_info(symbol)
     if not stock_data:
         raise HTTPException(status_code=404, detail=f"No stock data found for {symbol}")
     return stock_data
@@ -502,8 +751,10 @@ async def root():
 async def register_options():
     """Handle CORS preflight for register"""
     return Response(status_code=200)
+
 @api_router.post("/auth/register", response_model=Token)
-async def register(user_data: UserRegister, response: Response):
+@limiter.limit("5/minute")
+async def register(user_data: UserRegister, response: Response, request: Request):
     """Register new user with email/password"""
     # Validate disclaimer acceptance
     if not user_data.disclaimer_accepted:
@@ -557,18 +808,13 @@ async def register(user_data: UserRegister, response: Response):
         user=UserPublic(**user.model_dump())
     )
 
-@api_router.options("/auth/register")
-async def register_options():
-    """Handle CORS preflight for register"""
-    return Response(status_code=200)
-
-
-
 @api_router.options("/auth/login")
 async def login_options():
-    return Response(status_code=200)    
+    return Response(status_code=200)
+
 @api_router.post("/auth/login", response_model=Token)
-async def login(user_data: UserLogin, response: Response):
+@limiter.limit("10/minute")
+async def login(user_data: UserLogin, response: Response, request: Request):
     """Login with email/password"""
     logger.info(f"Login attempt for email: {user_data.email}")
     # Find user
@@ -622,14 +868,24 @@ async def google_auth_callback(session_id: str = Query(...), response: Response 
     try:
         auth_response = requests.get(
             "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
-            headers={"X-Session-ID": session_id}
+            headers={"X-Session-ID": session_id},
+            timeout=10
         )
         auth_response.raise_for_status()
         session_data = auth_response.json()
         logger.info(f"Google OAuth successful for user: {session_data.get('email')}")
-    except Exception as e:
-        logger.error(f"Google OAuth failed: {str(e)}")
+    except requests.exceptions.Timeout:
+        logger.error("Google OAuth service timeout")
+        raise HTTPException(status_code=504, detail="Authentication service temporarily unavailable")
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Google OAuth HTTP error: {e.response.status_code}")
         raise HTTPException(status_code=400, detail="Invalid session ID")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Google OAuth connection failed: {str(e)}")
+        raise HTTPException(status_code=503, detail="Authentication service unavailable")
+    except (KeyError, ValueError) as e:
+        logger.error(f"Invalid OAuth response format: {str(e)}")
+        raise HTTPException(status_code=500, detail="Authentication error")
     
     # Check if user exists
     user_doc = await db.users.find_one({"email": session_data["email"]})
@@ -771,7 +1027,18 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
     except Exception as e:
         logger.warning(f"DB lookup error: {e}")
 
-    # 2️⃣ Try local static list for fuzzy matches
+    # 2️⃣ Try local CSV cache (nse_stocks_with_sectors.csv) for fuzzy matches
+    try:
+        csv_results = search_equities(q_raw, limit=10)
+        if csv_results:
+            if exchange:
+                csv_results = [s for s in csv_results if s.get("exchange", "").upper() == exchange.upper()]
+            if csv_results:
+                return [StockBasic(**s) for s in csv_results]
+    except Exception as e:
+        logger.warning(f"search_equities() error: {e}")
+
+    # 3️⃣ Try MongoDB fuzzy matches
     try:
         all_stocks = await get_all_stocks_from_db() or []
         q_lower = q_raw.lower()
@@ -786,7 +1053,7 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
     except Exception as e:
         logger.warning(f"get_all_stocks_from_db() error: {e}")
 
-    # 3️⃣ Live lookup from Yahoo Finance if not found
+    # 4️⃣ Live lookup from Yahoo Finance if not found
     yfinance_symbols_to_try = []
 
     # Prioritize exact symbol if exchange is specified
@@ -842,7 +1109,7 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
         except Exception as e:
             logger.warning(f"yfinance lookup failed for {sym}: {e}")
 
-    # 4️⃣ If nothing found
+    # 5️⃣ If nothing found
     return []
 # ---------- END DYNAMIC SEARCH ----------
 
@@ -876,7 +1143,7 @@ async def get_all_stocks():
 @api_router.get("/stocks/{symbol}", response_model=StockDetail)
 async def get_stock_detail(symbol: str):
     """Get detailed stock information with real-time data"""
-    stock_data = get_stock_info(symbol)
+    stock_data = get_cached_stock_info(symbol)
     if not stock_data or symbol not in stock_data:
         raise HTTPException(status_code=404, detail="Stock not found")
     return StockDetail(**stock_data[symbol])
@@ -894,7 +1161,7 @@ async def get_mutual_fund_detail(scheme_code: str):
     """Get mutual fund details by scheme code"""
     try:
         # Get mutual fund NAV data
-        mf_data = get_mutual_fund_nav(scheme_code)
+        mf_data = get_cached_mutual_fund_nav(scheme_code)
         
         if mf_data and mf_data.get('current_nav'):
             return {
@@ -948,10 +1215,16 @@ async def screen_stocks(
     results = []
     for stock_basic in all_stocks:
         # Get detailed real-time info
-        stock_data = get_stock_info(stock_basic["symbol"])
-        if not stock_data:
+        stock_data_dict = get_cached_stock_info(stock_basic["symbol"])
+        if not stock_data_dict:
             continue
-        
+
+        # Extract the inner dict (get_cached_stock_info returns {symbol: {data}})
+        symbol = stock_basic["symbol"]
+        if symbol not in stock_data_dict:
+            continue
+        stock_data = stock_data_dict[symbol]
+
         # Apply filters
         if min_pe and (not stock_data.get("pe_ratio") or stock_data["pe_ratio"] < min_pe):
             continue
@@ -959,7 +1232,7 @@ async def screen_stocks(
             continue
         if min_roe and (not stock_data.get("roe") or stock_data["roe"] < min_roe):
             continue
-        
+
         results.append(StockDetail(**stock_data))
     
     return results
@@ -979,13 +1252,13 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}
     if mf_scheme_codes:
         for code in mf_scheme_codes:
-            nav_data = get_mutual_fund_nav(code)
+            nav_data = get_cached_mutual_fund_nav(code)
             if nav_data:
                 mf_data[code] = nav_data
 
@@ -1021,12 +1294,15 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
     
     # Get real-time current price
     current_price = 0
-    if holding.asset_type == "STOCK":
-        stock_info = get_stock_info(holding.symbol)
-        if stock_info:
-            current_price = stock_info.get('current_price', 0)
-    elif holding.asset_type == "MUTUAL_FUND":
-        mf_info = get_mutual_fund_nav(holding.scheme_code)
+    # Handle optional asset_type - default to STOCK if None
+    asset_type = holding.asset_type or "STOCK"
+    
+    if asset_type == "STOCK":
+        stock_info = get_cached_stock_info(holding.symbol)
+        if stock_info and holding.symbol in stock_info:
+            current_price = stock_info[holding.symbol].get('current_price', 0)
+    elif asset_type == "MUTUAL_FUND":
+        mf_info = get_cached_mutual_fund_nav(holding.scheme_code)
         if mf_info:
             current_price = mf_info.get('current_nav', 0)
 
@@ -1180,14 +1456,14 @@ async def get_watchlist(current_user: User = Depends(require_auth)):
     stock_data = {}
     if stock_symbols:
         logger.info(f"Fetching stock info for symbols: {stock_symbols}")
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         logger.info(f"Received stock data: {stock_data}")
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}
     if mf_scheme_codes:
         for code in mf_scheme_codes:
-            nav_data = get_mutual_fund_nav(code)
+            nav_data = get_cached_mutual_fund_nav(code)
             if nav_data:
                 mf_data[code] = nav_data
 
@@ -1289,11 +1565,11 @@ async def delete_strategy(strategy_id: str, current_user: User = Depends(require
 async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
     """Get comprehensive portfolio analytics"""
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
-    
+
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     # Update current prices in holdings
@@ -1303,7 +1579,7 @@ async def get_portfolio_analytics(current_user: User = Depends(require_auth)):
             if symbol in stock_data:
                 holding["current_price"] = stock_data[symbol].get("current_price", 0)
         else:
-            mf_info = get_mutual_fund_nav(holding.get("scheme_code"))
+            mf_info = get_cached_mutual_fund_nav(holding.get("scheme_code"))
             if mf_info:
                 holding["current_price"] = mf_info.get('current_nav', 0)
 
@@ -1317,11 +1593,11 @@ async def get_rebalancing_suggestions(
 ):
     """Get portfolio rebalancing suggestions"""
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
-    
+
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_cached_stock_info(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     # Update current prices in holdings
@@ -1331,7 +1607,7 @@ async def get_rebalancing_suggestions(
             if symbol in stock_data:
                 holding["current_price"] = stock_data[symbol].get("current_price", 0)
         else:
-            mf_info = get_mutual_fund_nav(holding.get("scheme_code"))
+            mf_info = get_cached_mutual_fund_nav(holding.get("scheme_code"))
             if mf_info:
                 holding["current_price"] = mf_info.get('current_nav', 0)
 
@@ -1361,40 +1637,20 @@ async def get_stock_recommendations(
     # Get all stocks with full data
     all_stocks_basic = await get_all_stocks_from_db()
     all_stocks_detailed = []
-    
+
     for stock_basic in all_stocks_basic[:30]:  # Limit to avoid timeout
-        stock_detail = get_stock_info(stock_basic["symbol"])
-        if stock_detail:
-            all_stocks_detailed.append(stock_detail)
+        stock_detail_dict = get_cached_stock_info(stock_basic["symbol"])
+        if stock_detail_dict:
+            # Extract the inner dict (get_cached_stock_info returns {symbol: {data}})
+            symbol = stock_basic["symbol"]
+            if symbol in stock_detail_dict:
+                all_stocks_detailed.append(stock_detail_dict[symbol])
     
     recommendations = generate_stock_recommendations(
         criteria, all_stocks_detailed, existing_symbols, limit=10
     )
     
     return {"recommendations": recommendations, "criteria": criteria}
-
-
-
-# Enable CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",  # Vite default
-        "http://127.0.0.1:5173",
-    ],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 # ==================== TRANSACTION ROUTES ====================
 
@@ -1447,8 +1703,210 @@ async def delete_transaction(
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    
+
     return {"message": "Transaction deleted"}
+
+@api_router.get("/transactions/summary")
+async def get_transactions_summary(current_user: User = Depends(require_auth)):
+    """Get comprehensive transaction summary with current portfolio value"""
+    logger.info("🔥 NEW TRANSACTION SUMMARY ENDPOINT CALLED - FIXED CODE RUNNING!")
+    # Get all transactions
+    transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+
+    total_bought = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "buy")
+    total_sold = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "sell")
+    net_invested = total_bought - total_sold
+
+    # Get current portfolio value
+    holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+
+    current_value = 0
+    portfolio_cost_basis = 0
+
+    for holding in holdings:
+        quantity = holding.get("quantity", 0)
+        purchase_price = holding.get("purchase_price", 0)
+        portfolio_cost_basis += quantity * purchase_price
+
+        # Get current price
+        current_price = 0
+        if holding.get("asset_type") == "MUTUAL_FUND":
+            mf_data = get_cached_mutual_fund_nav(holding.get("scheme_code"))
+            if mf_data:
+                current_price = mf_data.get("current_nav", 0)
+        else:
+            symbol = holding.get("symbol")
+            if symbol:
+                stock_data_dict = get_cached_stock_info(symbol)
+                if stock_data_dict and symbol in stock_data_dict:
+                    current_price = stock_data_dict[symbol].get("current_price", 0)
+
+        current_value += quantity * current_price
+
+    # Calculate P&L
+    total_gain_loss = current_value - net_invested
+    total_gain_loss_percent = (total_gain_loss / net_invested * 100) if net_invested > 0 else 0
+
+    # Check for mismatch
+    mismatch = portfolio_cost_basis - net_invested
+    has_mismatch = abs(mismatch) > 1  # Allow ₹1 rounding difference
+
+    return {
+        "total_bought": round(total_bought, 2),
+        "total_sold": round(total_sold, 2),
+        "net_invested": round(net_invested, 2),
+        "current_value": round(current_value, 2),
+        "total_gain_loss": round(total_gain_loss, 2),
+        "total_gain_loss_percent": round(total_gain_loss_percent, 2),
+        "portfolio_cost_basis": round(portfolio_cost_basis, 2),
+        "mismatch": round(mismatch, 2),
+        "has_mismatch": has_mismatch,
+        "num_holdings": len(holdings),
+        "num_transactions": len(transactions)
+    }
+
+@api_router.get("/transactions/diagnostic")
+async def diagnose_transaction_mismatch(current_user: User = Depends(require_auth)):
+    """Diagnose mismatches between portfolio and transactions"""
+    # Get portfolio holdings
+    holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+
+    # Get all transactions
+    transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+
+    # Calculate portfolio cost basis
+    portfolio_items = []
+    total_portfolio_cost = 0
+
+    for holding in holdings:
+        quantity = holding.get("quantity", 0)
+        purchase_price = holding.get("purchase_price", 0)
+        cost = quantity * purchase_price
+        total_portfolio_cost += cost
+
+        symbol = holding.get("symbol") or holding.get("scheme_code")
+        name = holding.get("name") or holding.get("scheme_name")
+
+        portfolio_items.append({
+            "symbol": symbol,
+            "name": name,
+            "quantity": quantity,
+            "purchase_price": purchase_price,
+            "total_cost": round(cost, 2),
+            "asset_type": holding.get("asset_type", "STOCK")
+        })
+
+    # Calculate transaction totals
+    total_bought = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "buy")
+    total_sold = sum(t["total_amount"] for t in transactions if t["transaction_type"] == "sell")
+    net_from_transactions = total_bought - total_sold
+
+    # Find mismatch
+    mismatch = total_portfolio_cost - net_from_transactions
+
+    # Group transactions by symbol
+    transaction_summary = {}
+    for txn in transactions:
+        symbol = txn["symbol"]
+        if symbol not in transaction_summary:
+            transaction_summary[symbol] = {"bought": 0, "sold": 0, "net": 0}
+
+        if txn["transaction_type"] == "buy":
+            transaction_summary[symbol]["bought"] += txn["total_amount"]
+            transaction_summary[symbol]["net"] += txn["total_amount"]
+        else:
+            transaction_summary[symbol]["sold"] += txn["total_amount"]
+            transaction_summary[symbol]["net"] -= txn["total_amount"]
+
+    # Find holdings without transactions
+    missing_transactions = []
+    for item in portfolio_items:
+        if item["symbol"] not in transaction_summary:
+            missing_transactions.append({
+                "symbol": item["symbol"],
+                "name": item["name"],
+                "quantity": item["quantity"],
+                "purchase_price": item["purchase_price"],
+                "missing_amount": item["total_cost"],
+                "reason": "No buy transaction found for this holding"
+            })
+
+    return {
+        "summary": {
+            "total_portfolio_cost_basis": round(total_portfolio_cost, 2),
+            "total_bought_from_transactions": round(total_bought, 2),
+            "total_sold_from_transactions": round(total_sold, 2),
+            "net_from_transactions": round(net_from_transactions, 2),
+            "mismatch": round(mismatch, 2),
+            "has_mismatch": abs(mismatch) > 1
+        },
+        "portfolio_items": portfolio_items,
+        "transaction_summary": transaction_summary,
+        "missing_transactions": missing_transactions,
+        "diagnosis": "Data is in sync" if abs(mismatch) <= 1 else f"Mismatch of ₹{abs(mismatch):.2f} detected. {len(missing_transactions)} holdings have no corresponding transactions."
+    }
+
+@api_router.post("/transactions/sync")
+async def sync_transactions_with_portfolio(current_user: User = Depends(require_auth)):
+    """Auto-sync: Create missing transactions for portfolio holdings"""
+    logger.info(f"Sync requested by user {current_user.id}")
+
+    # Get portfolio holdings
+    holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(1000)
+    logger.info(f"Found {len(holdings)} portfolio holdings")
+
+    # Get existing transactions
+    transactions = await db.transactions.find({"user_id": current_user.id}).to_list(length=None)
+    logger.info(f"Found {len(transactions)} existing transactions")
+
+    # Find symbols with transactions
+    symbols_with_transactions = set(t["symbol"] for t in transactions)
+    logger.info(f"Symbols with existing transactions: {symbols_with_transactions}")
+
+    # Create missing transactions
+    created_transactions = []
+
+    for holding in holdings:
+        symbol = holding.get("symbol") or holding.get("scheme_code")
+        name = holding.get("name") or holding.get("scheme_name")
+
+        logger.info(f"Checking holding: {symbol} ({name})")
+
+        if symbol not in symbols_with_transactions:
+            # Create a buy transaction for this holding
+            transaction_doc = {
+                "id": str(uuid.uuid4()),
+                "user_id": current_user.id,
+                "symbol": symbol,
+                "name": name,
+                "transaction_type": "buy",
+                "quantity": holding.get("quantity", 0),
+                "price": holding.get("purchase_price", 0),
+                "total_amount": holding.get("quantity", 0) * holding.get("purchase_price", 0),
+                "transaction_date": holding.get("purchase_date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "note": "Auto-synced from portfolio"
+            }
+
+            await db.transactions.insert_one(transaction_doc)
+            created_transactions.append({
+                "symbol": symbol,
+                "name": name,
+                "amount": transaction_doc["total_amount"]
+            })
+
+            logger.info(f"✓ Auto-created transaction for {symbol}: qty={transaction_doc['quantity']}, price={transaction_doc['price']}, total=₹{transaction_doc['total_amount']}")
+        else:
+            logger.info(f"✗ Skipping {symbol} - already has transactions")
+
+    logger.info(f"Sync complete: Created {len(created_transactions)} transactions totaling ₹{sum(t['amount'] for t in created_transactions)}")
+
+    return {
+        "message": "Sync completed successfully",
+        "created_count": len(created_transactions),
+        "created_transactions": created_transactions,
+        "total_synced_amount": round(sum(t["amount"] for t in created_transactions), 2)
+    }
 
 @api_router.get("/tax-report")
 async def get_tax_report(
@@ -1545,13 +2003,14 @@ async def get_tax_report(
         try:
             current_price = 0
             if holding.get("asset_type") == "MUTUAL_FUND":
-                mf_data = get_mutual_fund_nav(holding.get("scheme_code"))
+                mf_data = get_cached_mutual_fund_nav(holding.get("scheme_code"))
                 if mf_data:
                     current_price = mf_data.get('current_nav', 0)
             else:
-                stock_data = get_stock_info(holding.get("symbol"))
-                if stock_data:
-                    current_price = stock_data.get("current_price", 0)
+                symbol = holding.get("symbol")
+                stock_data = get_cached_stock_info(symbol)
+                if stock_data and symbol in stock_data:
+                    current_price = stock_data[symbol].get("current_price", 0)
             
             # Calculate average cost from transactions
             buy_transactions = [t for t in transactions 
@@ -1687,8 +2146,11 @@ async def check_alerts(
     
     for alert in alerts:
         try:
-            stock_data = await get_stock_info(alert["symbol"])
-            current_price = stock_data.get("current_price", 0)
+            symbol = alert["symbol"]
+            stock_data = get_cached_stock_info(symbol)
+            current_price = 0
+            if stock_data and symbol in stock_data:
+                current_price = stock_data[symbol].get("current_price", 0)
             
             should_trigger = False
             
@@ -1799,6 +2261,9 @@ async def get_performance_report(
     current_user: User = Depends(require_auth)
 ):
     """Generate advanced performance report"""
+    logger.info("=" * 80)
+    logger.info("🔥 NEW PERFORMANCE REPORT CODE IS RUNNING - CACHE CLEARED SUCCESSFULLY!")
+    logger.info("=" * 80)
     try:
         # Get transactions
         transactions = await db.transactions.find({
@@ -1814,21 +2279,52 @@ async def get_performance_report(
         # Calculate current portfolio value
         current_value = 0
         holdings_with_prices = []
-        
+
+        logger.info(f"Performance report: Processing {len(holdings)} holdings")
+
         for holding in holdings:
             try:
-                stock_data = get_stock_info(holding["symbol"])
-                current_price = stock_data.get("current_price", 0) if stock_data else 0
+                current_price = 0
+                symbol_or_code = holding.get("symbol") or holding.get("scheme_code")
+
+                if holding.get("asset_type") == "MUTUAL_FUND":
+                    # For mutual funds, use scheme_code
+                    scheme_code = holding.get("scheme_code")
+                    logger.info(f"🔥 Fetching MF price for {scheme_code} (cached)")
+                    mf_data = get_cached_mutual_fund_nav(scheme_code)
+                    if mf_data:
+                        current_price = mf_data.get("current_nav", 0)
+                        logger.info(f"MF {scheme_code}: NAV={current_price}")
+                    else:
+                        logger.warning(f"No MF data returned for {scheme_code}")
+                else:
+                    # For stocks
+                    symbol = holding.get("symbol")
+                    if symbol:
+                        logger.info(f"🔥 Fetching stock price for {symbol} (cached)")
+                        stock_data_dict = get_cached_stock_info(symbol)
+                        logger.info(f"get_cached_stock_info returned: {stock_data_dict is not None}, keys: {list(stock_data_dict.keys()) if stock_data_dict else 'None'}")
+
+                        if stock_data_dict and symbol in stock_data_dict:
+                            current_price = stock_data_dict[symbol].get("current_price", 0)
+                            logger.info(f"Stock {symbol}: price={current_price}")
+                        else:
+                            logger.warning(f"No stock data for {symbol} in response")
+                    else:
+                        logger.warning(f"Holding has no symbol: {holding}")
+
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
-                
+
+                logger.info(f"{symbol_or_code}: qty={holding['quantity']}, price={current_price}, value={holding_value}, running_total={current_value}")
+
                 holdings_with_prices.append({
                     **holding,
                     "current_price": current_price,
                     "current_value": holding_value
                 })
             except Exception as e:
-                logger.error(f"Error fetching price for {holding['symbol']}: {e}")
+                logger.error(f"Error fetching price for {holding.get('symbol') or holding.get('scheme_code')}: {e}", exc_info=True)
                 # Use existing price if fetch fails
                 current_price = holding.get("current_price", holding.get("purchase_price", 0))
                 holding_value = holding["quantity"] * current_price
@@ -1838,6 +2334,8 @@ async def get_performance_report(
                     "current_price": current_price,
                     "current_value": holding_value
                 })
+
+        logger.info(f"Performance report: Total current value calculated = {current_value}")
         
         # Generate performance summary
         performance_data = generate_performance_summary(
@@ -1981,6 +2479,8 @@ async def get_ai_portfolio_optimization(
 ):
     """Generate AI-powered portfolio optimization suggestions"""
     try:
+        from ai_insights import generate_portfolio_optimization
+
         logger.info(f"AI optimization requested by user: {current_user.id}")
         
         # Get user profile for risk assessment
@@ -2000,14 +2500,16 @@ async def get_ai_portfolio_optimization(
         
         for holding in holdings:
             try:
-                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
+                symbol = holding["symbol"]
+                stock_data_dict = get_cached_stock_info(symbol)  # This is synchronous and cached
+                stock_info = stock_data_dict.get(symbol, {}) if stock_data_dict else {}
                 holdings_with_prices.append({
                     **holding,
                     "current_price": stock_info.get("current_price", 0),
                     "current_value": holding["quantity"] * stock_info.get("current_price", 0),
                     "sector": stock_info.get("sector", "Other")
                 })
-                all_stock_data[holding["symbol"]] = stock_info
+                all_stock_data[symbol] = stock_info
             except Exception as e:
                 logger.error(f"Error fetching price for {holding['symbol']}: {e}")
         
@@ -2037,6 +2539,8 @@ async def get_ai_predictive_insights(
 ):
     """Generate AI-powered predictive insights for portfolio"""
     try:
+        from ai_insights import generate_predictive_insights
+
         # Get portfolio
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
         
@@ -2047,7 +2551,9 @@ async def get_ai_predictive_insights(
         holdings_with_prices = []
         for holding in holdings:
             try:
-                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
+                symbol = holding["symbol"]
+                stock_data_dict = get_cached_stock_info(symbol)  # This is synchronous and cached
+                stock_info = stock_data_dict.get(symbol, {}) if stock_data_dict else {}
                 holdings_with_prices.append({
                     **holding,
                     "current_price": stock_info.get("current_price", 0),
@@ -2078,8 +2584,11 @@ async def get_ai_stock_analysis(
 ):
     """Generate AI-powered analysis for a specific stock"""
     try:
+        from ai_insights import generate_stock_analysis
+
         # Get stock data
-        stock_data = await get_stock_info(symbol)
+        stock_data_dict = get_cached_stock_info(symbol)
+        stock_data = stock_data_dict.get(symbol, {}) if stock_data_dict else {}
         
         # Generate AI analysis
         analysis = await generate_stock_analysis(symbol, stock_data)
@@ -2093,7 +2602,64 @@ async def get_ai_stock_analysis(
         logger.error(f"Error generating stock analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/stocks/debug")
+async def debug_stocks():
+    """Get debug info about loaded stocks"""
+    try:
+        from market_data import get_equity_debug_info
+        return get_equity_debug_info()
+    except Exception as e:
+        return {"error": str(e)}
+
+# ==================== PORTFOLIO & WATCHLIST ENDPOINTS ====================
+
+class HoldingCreate(BaseModel):
+    symbol: str
+    quantity: int
+    buy_price: float
+    purchase_date: Optional[str] = None
+
+@api_router.post("/portfolio/holdings")
+async def add_holding(holding: HoldingCreate, current_user: User = Depends(require_auth)):
+    try:
+        holding_dict = holding.dict()
+        holding_dict["user_id"] = current_user.email  # Simple user association
+        holding_dict["created_at"] = datetime.now(timezone.utc).isoformat()
+
+        if db is not None:
+             await db.holdings.insert_one(holding_dict)
+
+        # Remove MongoDB ObjectId before returning (not JSON serializable)
+        holding_dict.pop("_id", None)
+
+        return {"message": "Holding added successfully", "data": holding_dict}
+    except Exception as e:
+        logger.error(f"Error adding holding: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add holding")
+
+@api_router.get("/portfolio/holdings")
+async def get_holdings(current_user: User = Depends(require_auth)):
+    try:
+        if db is None:
+            return []
+        
+        cursor = db.holdings.find({"user_id": current_user.email})
+        holdings = await cursor.to_list(length=100)
+        
+        # Convert ObjectId to string for JSON serialization
+        results = []
+        for h in holdings:
+            h["id"] = str(h["_id"])
+            del h["_id"]
+            results.append(h)
+            
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching holdings: {e}")
+        return []
+
 app.include_router(api_router)
+app.include_router(create_auth_recovery_router(lambda: db, logger))
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
@@ -2125,12 +2691,40 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     finally:
         manager.disconnect(user_id)
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    client.close()
+async def simulate_ticker_updates():
+    """Background task to simulate real-time market data updates"""
+    BASE_PRICES = {
+        'NIFTY 50': 24350.50, 'SENSEX': 81687.00, 'BANK NIFTY': 52400.00,
+        'RELIANCE': 3200.00, 'TCS': 4150.00, 'INFY': 1850.00,
+        'HDFCBANK': 1600.00, 'ICICIBANK': 1150.00, 'SBIN': 850.00,
+        'TATAMOTORS': 980.00, 'BAJFINANCE': 6900.00, 'WIPRO': 480.00
+    }
+    
+    while True:
+        try:
+            updates = []
+            for symbol, base_price in BASE_PRICES.items():
+                # Simulate randomness
+                fluctuation = random.uniform(-0.005, 0.005) # +/- 0.5%
+                current_price = base_price * (1 + fluctuation)
+                change_pct = f"{'+' if fluctuation >= 0 else ''}{fluctuation*100:.2f}%"
+                
+                updates.append({
+                    "symbol": symbol,
+                    "price": f"{current_price:,.2f}",
+                    "change": change_pct
+                })
+            
+            # Broadcast to all connected clients
+            await manager.broadcast(updates)
+            
+            # Update every 2 seconds
+            await asyncio.sleep(2)
+        except Exception as e:
+            logger.error(f"Ticker simulation error: {e}")
+            await asyncio.sleep(5)
+
 # --- Temporary Google OAuth Fix ---
-from fastapi.responses import JSONResponse
-from fastapi import Request
 
 @app.get("/api/auth/google")
 async def google_auth_placeholder(request: Request):
@@ -2153,329 +2747,3 @@ async def local_login(request: Request):
         content={"message": f"Welcome, {username}! (local mode)", "token": "fake-token"},
         status_code=200
     )
-
-
-# ============================================================================
-# PASSWORD RESET HELPER FUNCTIONS
-# ============================================================================
-
-import bcrypt
-from bson import ObjectId
-
-def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    salt = bcrypt.gensalt(rounds=10)
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
-
-def create_password_reset_record(db, user_id, email: str) -> str:
-    """Create a password reset token record in database"""
-    import uuid
-    from datetime import datetime, timezone, timedelta
-    
-    reset_token = str(uuid.uuid4())
-    
-    # Store reset token in database (expires in 24 hours)
-    db["password_resets"].insert_one({
-        "user_id": user_id,
-        "email": email,
-        "token": reset_token,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-        "used": False
-    })
-    
-    return reset_token
-
-def validate_reset_token(db, token: str):
-    """Validate reset token - check if it exists and is not expired"""
-    from datetime import datetime, timezone
-    
-    reset_record = db["password_resets"].find_one({"token": token})
-    
-    if not reset_record:
-        return None
-    
-    # Check if expired
-    expires_at = datetime.fromisoformat(reset_record["expires_at"])
-    if datetime.now(timezone.utc) > expires_at:
-        return None
-    
-    # Check if already used
-    if reset_record.get("used"):
-        return None
-    
-    return reset_record
-
-def mark_reset_token_as_used(db, token: str):
-    """Mark reset token as used"""
-    db["password_resets"].update_one(
-        {"token": token},
-        {"$set": {"used": True}}
-    )
-
-def mask_email(email: str) -> str:
-    """Mask email for security - jayamurli1954@gmail.com -> jaya***@gmail.com"""
-    parts = email.split("@")
-    if len(parts) != 2:
-        return email
-    
-    local = parts[0]
-    domain = parts[1]
-    
-    # Show first 4 chars + *** + rest
-    if len(local) > 4:
-        masked_local = local[:4] + "***"
-    else:
-        masked_local = "***"
-    
-    return f"{masked_local}@{domain}"
-
-def find_user_by_name(db, full_name: str):
-    """Find user by full name (case-insensitive)"""
-    user = db.users.find_one({
-        "name": {"$regex": f"^{full_name}$", "$options": "i"}
-    })
-    return user
-
-# ============================================================================
-# PASSWORD RESET ENDPOINTS
-# ============================================================================
-
-@app.post("/api/auth/forgot-password")
-async def forgot_password(request_data: dict):
-    """
-    Request password reset - sends email with reset link
-    Body: {"email": "user@example.com"}
-    """
-    from email_utils import send_password_reset_email
-    
-    try:
-        email = request_data.get("email")
-        
-        if not email:
-            return JSONResponse(
-                content={"error": "Email is required"},
-                status_code=400
-            )
-        
-        # Find user by email
-        user = await db.users.find_one({"email": {"$regex": f"^{email.strip().lower()}$", "$options": "i"}})
-        
-        if not user:
-            # Don't reveal if email exists (security)
-            return JSONResponse(
-                content={"message": "If email exists, reset link has been sent"},
-                status_code=200
-            )
-        
-        # Create reset token
-        reset_token = create_password_reset_record(db, user["_id"], email)
-        
-        # Send email
-        email_sent = send_password_reset_email(
-            user_email=email,
-            reset_token=reset_token,
-            user_name=user.get("full_name", "User")
-        )
-        
-        if email_sent:
-            return JSONResponse(
-                content={"message": "Password reset email has been sent"},
-                status_code=200
-            )
-        else:
-            return JSONResponse(
-                content={"error": "Failed to send email"},
-                status_code=500
-            )
-    
-    except Exception as e:
-        logger.exception(f"Error in forgot_password: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred"},
-            status_code=500
-        )
-
-
-@app.post("/api/auth/reset-password")
-async def reset_password(request_data: dict):
-    """
-    Reset password with token
-    """
-    logger.debug(f"Password reset attempt - request received")
-
-    try:
-        token = request_data.get("token", "").strip()
-        new_password = request_data.get("new_password")
-        confirm_password = request_data.get("confirm_password")
-
-        # If token contains full URL, extract just the token part
-        if token and "token=" in token:
-            token = token.split("token=")[-1].strip()
-            logger.debug("Extracted token from URL parameter")
-
-        logger.debug(f"Password reset validation - token present: {bool(token)}, passwords provided: {bool(new_password and confirm_password)}")
-
-        # Validate input
-        if not token or not new_password or not confirm_password:
-            error_msg = f"Missing fields: token={bool(token)}, new_password={bool(new_password)}, confirm_password={bool(confirm_password)}"
-            logger.warning(f"Password reset failed - {error_msg}")
-            return JSONResponse(
-                content={"error": error_msg},
-                status_code=400
-            )
-
-        # Check passwords match
-        if new_password != confirm_password:
-            logger.warning("Password reset failed - passwords don't match")
-            return JSONResponse(
-                content={"error": "Passwords do not match"},
-                status_code=400
-            )
-
-        # Validate password length
-        if len(new_password) < 8:
-            logger.warning(f"Password reset failed - password too short: {len(new_password)} characters")
-            return JSONResponse(
-                content={"error": "Password must be at least 8 characters long"},
-                status_code=400
-            )
-
-        logger.debug("Password reset validation passed, verifying token in database")
-
-        # Validate token from database (ASYNC)
-        from datetime import datetime, timezone
-        reset_record = await db["password_resets"].find_one({"token": token})
-
-        logger.debug(f"Password reset token lookup - record found: {reset_record is not None}")
-
-        if not reset_record:
-            logger.warning("Password reset failed - token not found in database")
-            return JSONResponse(
-                content={"error": "Invalid or expired reset token"},
-                status_code=400
-            )
-
-        # Check if expired
-        expires_at = datetime.fromisoformat(reset_record["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            logger.warning("Password reset failed - token expired")
-            return JSONResponse(
-                content={"error": "Reset token has expired"},
-                status_code=400
-            )
-
-        # Check if already used
-        if reset_record.get("used"):
-            logger.warning("Password reset failed - token already used")
-            return JSONResponse(
-                content={"error": "This reset token has already been used"},
-                status_code=400
-            )
-
-        logger.debug("Password reset token validated, updating password")
-
-        # Update user password
-        user_id = reset_record["user_id"]
-        hashed_password = get_password_hash(new_password)
-
-        await db.users.update_one(
-            {"_id": user_id},
-            {"$set": {"password_hash": hashed_password}}
-        )
-
-        logger.debug("Password updated successfully")
-
-        # Mark token as used
-        await db["password_resets"].update_one(
-            {"token": token},
-            {"$set": {"used": True}}
-        )
-
-        logger.info(f"Password reset completed successfully for user: {user_id}")
-        
-        return JSONResponse(
-            content={"message": "Password has been reset successfully", "success": True},
-            status_code=200
-        )
-    
-    except Exception as e:
-        logger.exception(f"Error in reset_password: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred: " + str(e)},
-            status_code=500
-        )
-
-
-@app.post("/api/auth/recover-email")
-async def recover_email(request_data: dict):
-    """
-    Recover email address by full name
-    Body: {"full_name": "John Doe"}
-    """
-    try:
-        full_name = request_data.get("full_name")
-        
-        if not full_name:
-            return JSONResponse(
-                content={"error": "Full name is required"},
-                status_code=400
-            )
-        
-        # Find user by name
-        user = find_user_by_name(db, full_name)
-        
-        if not user:
-            return JSONResponse(
-                content={"error": "No account found with that name"},
-                status_code=404
-            )
-        
-        # Mask the email
-        masked_email = mask_email(user["email"])
-        
-        return JSONResponse(
-            content={
-                "message": f"Account found",
-                "masked_email": masked_email
-            },
-            status_code=200
-        )
-    
-    except Exception as e:
-        logger.exception(f"Error in recover_email: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred"},
-            status_code=500
-        )
-
-
-@app.post("/api/auth/verify-email")
-async def verify_email(request_data: dict):
-    """
-    Verify email with token (for future use)
-    Body: {"token": "verification_token"}
-    """
-    try:
-        token = request_data.get("token")
-        
-        if not token:
-            return JSONResponse(
-                content={"error": "Token is required"},
-                status_code=400
-            )
-        
-        # For now, just return success
-        # In future, validate token and mark email as verified
-        
-        return JSONResponse(
-            content={"message": "Email verified successfully"},
-            status_code=200
-        )
-    
-    except Exception as e:
-        logger.exception(f"Error in verify_email: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred"},
-            status_code=500
-        )
