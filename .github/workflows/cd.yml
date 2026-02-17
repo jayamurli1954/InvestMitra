@@ -15,19 +15,28 @@ jobs:
     name: Trigger Render and Vercel hooks
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+      VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
     steps:
-      - name: Trigger Render deploy hook
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' }}
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: curl --fail --show-error --silent -X POST "$RENDER_DEPLOY_HOOK_URL"
+      - name: Trigger deploy hooks
+        run: |
+          set -euo pipefail
 
-      - name: Trigger Vercel deploy hook
-        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL != '' }}
-        env:
-          VERCEL_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL }}
-        run: curl --fail --show-error --silent -X POST "$VERCEL_DEPLOY_HOOK_URL"
+          triggered=0
 
-      - name: Warn when no deploy hooks are configured
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL == '' && secrets.VERCEL_DEPLOY_HOOK_URL == '' }}
-        run: echo "::warning::No deploy hooks configured. Set RENDER_DEPLOY_HOOK_URL and/or VERCEL_DEPLOY_HOOK_URL in repository secrets."
+          if [ -n "${RENDER_DEPLOY_HOOK_URL:-}" ]; then
+            echo "Triggering Render deploy hook..."
+            curl --fail --show-error --silent -X POST "$RENDER_DEPLOY_HOOK_URL"
+            triggered=1
+          fi
+
+          if [ -n "${VERCEL_DEPLOY_HOOK_URL:-}" ]; then
+            echo "Triggering Vercel deploy hook..."
+            curl --fail --show-error --silent -X POST "$VERCEL_DEPLOY_HOOK_URL"
+            triggered=1
+          fi
+
+          if [ "$triggered" -eq 0 ]; then
+            echo "::warning::No deploy hooks configured. Set RENDER_DEPLOY_HOOK_URL and/or VERCEL_DEPLOY_HOOK_URL in repository secrets."
+          fi
