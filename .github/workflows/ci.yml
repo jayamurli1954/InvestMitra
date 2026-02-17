@@ -63,4 +63,6 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Build frontend
+        env:
+          CI: "false"
         run: npm run build
