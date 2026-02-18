@@ -24,6 +24,7 @@ import ProfileSettings from "@/pages/ProfileSettings";
 import Disclaimer from "@/pages/Disclaimer";
 import AboutUs from "@/pages/AboutUs";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsAndConditions from "@/pages/TermsAndConditions";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 import Marquee from "@/components/Marquee";
@@ -85,6 +86,7 @@ function AppRoutes() {
                   <Route path="/profile-settings" element={<ProfileSettings />} />
                   <Route path="/about-us" element={<AboutUs />} />
                   <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                  <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

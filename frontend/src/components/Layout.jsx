@@ -233,7 +233,7 @@ const Layout = ({ children }) => {
           {children}
         </div>
 
-        {/* Footer */}
+                {/* Footer */}
         <footer className="border-t border-white/10 bg-slate-900/60 px-4 md:px-8 py-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -250,15 +250,22 @@ const Layout = ({ children }) => {
                 Privacy Policy
               </Link>
               <Link
+                to="/terms-and-conditions"
+                className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:bg-white/5 text-sm"
+              >
+                Terms & Conditions
+              </Link>
+              <Link
                 to="/disclaimer"
                 className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:bg-white/5 text-sm"
               >
-                Disclaimer
+                Legal Disclaimer
               </Link>
             </div>
-            <p className="text-xs text-slate-400">
-              © {new Date().getFullYear()} InvestMitra. All rights reserved.
-            </p>
+            <div className="text-xs text-slate-400 space-y-1">
+              <p>(c) {new Date().getFullYear()} InvestMitra. All rights reserved.</p>
+              <p>For educational purposes only. Not investment advice.</p>
+            </div>
           </div>
         </footer>
       </main>
@@ -267,3 +274,4 @@ const Layout = ({ children }) => {
 };
 
 export default Layout;
+
