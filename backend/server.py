@@ -16,6 +16,7 @@ from datetime import datetime, timezone, timedelta
 import random
 import requests
 import io
+from urllib.parse import urlparse
 from fastapi.responses import StreamingResponse
 from decimal import Decimal, ROUND_HALF_UP
 from auth_utils import (
@@ -97,14 +98,24 @@ async def close_db():
 # CORS configuration
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '').strip()
 if _cors_origins_env:
-    CORS_ORIGINS = [origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()]
+    raw_origins = [origin.strip().strip('"').strip("'") for origin in _cors_origins_env.split(',') if origin.strip()]
+    CORS_ORIGINS = []
+    for origin in raw_origins:
+        parsed = urlparse(origin)
+        if parsed.scheme:
+            CORS_ORIGINS.append(origin)
+            continue
+        # Allow env values without scheme, e.g. invest-mitra.vercel.app
+        CORS_ORIGINS.append(f"https://{origin}")
 else:
     CORS_ORIGINS = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://invest-mitra.vercel.app",
     ]
+CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX", r"^https://.*\.vercel\.app$")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -1698,6 +1709,7 @@ async def get_stock_recommendations(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -2131,8 +2143,23 @@ async def get_performance_report(
         
         for holding in holdings:
             try:
-                stock_data = get_stock_info(holding["symbol"])
-                current_price = stock_data.get("current_price", 0) if stock_data else 0
+                current_price = 0.0
+                if holding.get("asset_type") == "MUTUAL_FUND":
+                    scheme_code = holding.get("scheme_code")
+                    if scheme_code:
+                        mf_data = get_mutual_fund_nav(scheme_code)
+                        if mf_data:
+                            current_price = float(mf_data.get("current_nav", 0) or 0)
+                else:
+                    symbol = holding.get("symbol")
+                    if symbol:
+                        stock_data = get_stock_info(symbol)
+                        if stock_data and symbol in stock_data:
+                            current_price = float(stock_data[symbol].get("current_price", 0) or 0)
+
+                if current_price <= 0:
+                    current_price = float(holding.get("current_price", holding.get("purchase_price", 0)) or 0)
+
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
                 
@@ -2142,7 +2169,8 @@ async def get_performance_report(
                     "current_value": holding_value
                 })
             except Exception as e:
-                logger.error(f"Error fetching price for {holding['symbol']}: {e}")
+                holding_key = holding.get('symbol') or holding.get('scheme_code') or 'unknown'
+                logger.error(f"Error fetching price for {holding_key}: {e}")
                 # Use existing price if fetch fails
                 current_price = holding.get("current_price", holding.get("purchase_price", 0))
                 holding_value = holding["quantity"] * current_price
