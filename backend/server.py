@@ -30,8 +30,8 @@ from market_data import (
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection - will be initialized on app startup
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+# MongoDB connection - trim accidental quotes/spaces from env copy-paste
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017').strip().strip('"').strip("'")
 client = None
 db = None
 
@@ -41,7 +41,7 @@ async def init_db():
     try:
         from motor.motor_asyncio import AsyncIOMotorClient
         client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
-        db = client[os.environ['DB_NAME']]
+        db = client[os.environ.get('DB_NAME', 'investment_framework')]
         # Test connection
         await db.command('ping')
         logging.info("✓ MongoDB connected successfully")
@@ -2147,7 +2147,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    await close_db()
 # --- Temporary Google OAuth Fix ---
 from fastapi.responses import JSONResponse
 from fastapi import Request
