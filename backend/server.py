@@ -743,7 +743,7 @@ from datetime import datetime
 
 async def get_all_stocks_from_db(database=None):
     """Helper to get all stocks from the database."""
-    active_db = database or db
+    active_db = database if database is not None else db
     if active_db is None:
         raise HTTPException(
             status_code=503,
@@ -2167,9 +2167,6 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
     finally:
         manager.disconnect(user_id)
 
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    await close_db()
 # --- Temporary Google OAuth Fix ---
 from fastapi.responses import JSONResponse
 from fastapi import Request
