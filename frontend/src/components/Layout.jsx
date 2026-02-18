@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import InstallAppButton from "@/components/InstallAppButton";
 
 const Layout = ({ children }) => {
   const location = useLocation();
@@ -190,37 +191,40 @@ const Layout = ({ children }) => {
             >
               <Menu className="w-6 h-6" />
             </button>
-            {user && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <div className="flex items-center space-x-3 glass-card px-4 py-2 cursor-pointer">
-                    {user.picture ? (
-                      <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
-                    ) : (
-                      <div className="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                        <UserIcon className="w-4 h-4 text-emerald-400" />
+            <div className="ml-auto flex items-center gap-2">
+              <InstallAppButton />
+              {user && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <div className="flex items-center space-x-3 glass-card px-3 md:px-4 py-2 cursor-pointer">
+                      {user.picture ? (
+                        <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full" />
+                      ) : (
+                        <div className="w-8 h-8 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                          <UserIcon className="w-4 h-4 text-emerald-400" />
+                        </div>
+                      )}
+                      <div className="hidden sm:block">
+                        <p className="text-sm font-medium text-white">{user.name}</p>
+                        <p className="text-xs text-slate-400">{user.email}</p>
                       </div>
-                    )}
-                    <div>
-                      <p className="text-sm font-medium text-white">{user.name}</p>
-                      <p className="text-xs text-slate-400">{user.email}</p>
                     </div>
-                  </div>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56">
-                  <DropdownMenuItem asChild>
-                    <Link to="/profile-settings" className="cursor-pointer">
-                      <Settings className="w-4 h-4 mr-2" />
-                      Profile Settings
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Logout
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56">
+                    <DropdownMenuItem asChild>
+                      <Link to="/profile-settings" className="cursor-pointer">
+                        <Settings className="w-4 h-4 mr-2" />
+                        Profile Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
         </div>
 
