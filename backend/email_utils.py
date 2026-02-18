@@ -15,7 +15,7 @@ SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
 SMTP_EMAIL = os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-SENDER_NAME = os.getenv("SENDER_NAME", "Investment Framework")
+SENDER_NAME = os.getenv("SENDER_NAME", "InvestMitra")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 
@@ -36,7 +36,7 @@ def send_password_reset_email(user_email: str, reset_token: str, user_name: str)
         reset_link = f"{FRONTEND_URL}/forgot-password?token={reset_token}"
         
         # Email content
-        subject = "Reset Your Password - Investment Framework"
+        subject = "Reset Your Password - InvestMitra"
         
         # HTML version
         html_body = f"""
@@ -64,7 +64,7 @@ def send_password_reset_email(user_email: str, reset_token: str, user_name: str)
                         <li>Never share this link with anyone</li>
                     </ul>
                     
-                    <p>Best regards,<br>Investment Framework Team</p>
+                    <p>Best regards,<br>InvestMitra Team</p>
                     
                     <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
                     <p style="color: #666; font-size: 12px;">
@@ -90,7 +90,7 @@ This link expires in 24 hours.
 If you didn't request this, please ignore this email.
 
 Best regards,
-Investment Framework Team
+InvestMitra Team
         """
         
         # Send email
@@ -118,7 +118,7 @@ def send_verification_email(user_email: str, verification_token: str, user_name:
         verify_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
         
         # Email content
-        subject = "Verify Your Email - Investment Framework"
+        subject = "Verify Your Email - InvestMitra"
         
         # HTML version
         html_body = f"""
@@ -129,7 +129,7 @@ def send_verification_email(user_email: str, verification_token: str, user_name:
                     
                     <p>Hi {user_name},</p>
                     
-                    <p>Welcome to Investment Framework! Please verify your email address by clicking the link below:</p>
+                    <p>Welcome to InvestMitra! Please verify your email address by clicking the link below:</p>
                     
                     <div style="margin: 30px 0;">
                         <a href="{verify_link}" style="background-color: #27ae60; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block;">
@@ -145,7 +145,7 @@ def send_verification_email(user_email: str, verification_token: str, user_name:
                         <li>If you didn't create this account, please ignore this email</li>
                     </ul>
                     
-                    <p>Best regards,<br>Investment Framework Team</p>
+                    <p>Best regards,<br>InvestMitra Team</p>
                     
                     <hr style="border: none; border-top: 1px solid #ddd; margin: 30px 0;">
                     <p style="color: #666; font-size: 12px;">
@@ -162,7 +162,7 @@ Email Verification
 
 Hi {user_name},
 
-Welcome to Investment Framework! Please verify your email by visiting this link:
+Welcome to InvestMitra! Please verify your email by visiting this link:
 
 {verify_link}
 
@@ -171,7 +171,7 @@ This link expires in 24 hours.
 If you didn't create this account, please ignore this email.
 
 Best regards,
-Investment Framework Team
+InvestMitra Team
         """
         
         # Send email

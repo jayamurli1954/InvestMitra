@@ -1,7 +1,7 @@
 {
-  "name": "InvestPro - Indian Markets",
-  "short_name": "InvestPro",
-  "description": "Advanced Investment Framework for Indian Stock Market",
+  "name": "InvestMitra - Indian Markets",
+  "short_name": "InvestMitra",
+  "description": "Advanced investment insights for Indian stock market",
   "start_url": ".",
   "scope": "/",
   "display": "standalone",

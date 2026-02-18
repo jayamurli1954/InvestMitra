@@ -4,7 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { TrendingUp, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import DisclaimerModal from '@/components/DisclaimerModal';
 
@@ -94,10 +94,15 @@ const Auth = () => {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
-            <TrendingUp className="w-8 h-8 text-emerald-500" />
+            <img
+              src="/icon-192.png"
+              alt="InvestMitra logo"
+              className="w-10 h-10 rounded-lg object-cover"
+              loading="eager"
+            />
           </div>
-          <h1 className="text-3xl font-bold text-white">InvestPro</h1>
-          <p className="text-slate-400 mt-2">Investment Framework</p>
+          <h1 className="text-3xl font-bold text-white">InvestMitra</h1>
+          <p className="text-slate-400 mt-2">Indian Markets</p>
         </div>
 
         <div className="bg-slate-900 rounded-lg border border-slate-800 p-8">

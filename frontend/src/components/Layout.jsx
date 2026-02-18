@@ -22,7 +22,6 @@ import {
   Settings
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const Layout = ({ children }) => {
@@ -101,11 +100,14 @@ const Layout = ({ children }) => {
     <div className="p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-xl flex items-center justify-center">
-            <TrendingUp className="w-6 h-6 text-white" />
-          </div>
+          <img
+            src="/icon-192.png"
+            alt="InvestMitra logo"
+            className="w-10 h-10 rounded-xl object-cover"
+            loading="eager"
+          />
           <div>
-            <h1 className="text-xl font-bold text-white" data-testid="app-title">InvestPro</h1>
+            <h1 className="text-xl font-bold text-white" data-testid="app-title">InvestMitra</h1>
             <p className="text-xs text-slate-400">Indian Markets</p>
           </div>
         </div>

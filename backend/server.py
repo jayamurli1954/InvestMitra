@@ -567,7 +567,7 @@ async def debug_stock_info(symbol: str):
 
 @api_router.get("/")
 async def root():
-    return {"message": "Investment Framework API"}
+    return {"message": "InvestMitra API"}
 
 # ==================== AUTH ENDPOINTS ====================
 
