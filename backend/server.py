@@ -512,7 +512,7 @@ async def register_options():
     """Handle CORS preflight for register"""
     return Response(status_code=200)
 @api_router.post("/auth/register", response_model=Token)
-async def register(user_data: UserRegister, response: Response):
+async def register(user_data: UserRegister, response: Response, database=Depends(get_db)):
     """Register new user with email/password"""
     # Validate disclaimer acceptance
     if not user_data.disclaimer_accepted:
@@ -522,7 +522,7 @@ async def register(user_data: UserRegister, response: Response):
         )
 
     # Check if user exists
-    existing_user = await db.users.find_one({"email": user_data.email})
+    existing_user = await database.users.find_one({"email": user_data.email})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -538,7 +538,7 @@ async def register(user_data: UserRegister, response: Response):
     )
     
     user_dict = user.model_dump(by_alias=True)
-    await db.users.insert_one(user_dict)
+    await database.users.insert_one(user_dict)
     
     # Create session
     session_token = str(uuid.uuid4())
@@ -547,7 +547,7 @@ async def register(user_data: UserRegister, response: Response):
         session_token=session_token,
         expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
     )
-    await db.user_sessions.insert_one(session.model_dump())
+    await database.user_sessions.insert_one(session.model_dump())
     
     # Set cookie
     response.set_cookie(
@@ -577,11 +577,11 @@ async def register_options():
 async def login_options():
     return Response(status_code=200)    
 @api_router.post("/auth/login", response_model=Token)
-async def login(user_data: UserLogin, response: Response):
+async def login(user_data: UserLogin, response: Response, database=Depends(get_db)):
     """Login with email/password"""
     logger.info(f"Login attempt for email: {user_data.email}")
     # Find user
-    user_doc = await db.users.find_one({"email": user_data.email})
+    user_doc = await database.users.find_one({"email": user_data.email})
     if not user_doc:
         logger.warning(f"Login failed: User not found for email: {user_data.email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -603,7 +603,7 @@ async def login(user_data: UserLogin, response: Response):
         session_token=session_token,
         expires_at=(datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
     )
-    await db.user_sessions.insert_one(session.model_dump())
+    await database.user_sessions.insert_one(session.model_dump())
     
     # Set cookie
     response.set_cookie(
@@ -741,9 +741,18 @@ import asyncio
 import yfinance as yf
 from datetime import datetime
 
-async def get_all_stocks_from_db():
+async def get_all_stocks_from_db(database=None):
     """Helper to get all stocks from the database."""
-    stocks = await db.stocks.find({}, {"_id": 0, "symbol": 1, "name": 1, "exchange": 1, "sector": 1}).to_list(10000)
+    active_db = database or db
+    if active_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection unavailable. Please check MongoDB configuration."
+        )
+    stocks = await active_db.stocks.find(
+        {},
+        {"_id": 0, "symbol": 1, "name": 1, "exchange": 1, "sector": 1}
+    ).to_list(10000)
     return stocks
 
 @api_router.get("/stocks/search")
@@ -877,9 +886,9 @@ async def search_mutualfunds_api(q: str = Query(..., min_length=1)):
         return {"results": []}   
 
 @api_router.get("/stocks/all")
-async def get_all_stocks():
+async def get_all_stocks(database=Depends(get_db)):
     """Get all available stocks"""
-    all_stocks = await get_all_stocks_from_db()
+    all_stocks = await get_all_stocks_from_db(database)
     return [StockBasic(**stock) for stock in all_stocks]
 
 @api_router.get("/stocks/{symbol}", response_model=StockDetail)
@@ -2098,6 +2107,13 @@ async def get_ai_stock_analysis(
         raise HTTPException(status_code=500, detail=str(e))
 
 app.include_router(api_router)
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "ok",
+        "database": "connected" if db is not None else "disconnected"
+    }
 
 @app.websocket("/ws/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, user_id: str):
