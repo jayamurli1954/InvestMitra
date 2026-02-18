@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
+  Menu,
+  X,
   LayoutDashboard, 
   Briefcase, 
   Eye,
@@ -28,6 +30,7 @@ const Layout = ({ children }) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [marketStatus, setMarketStatus] = useState({ isOpen: false, text: 'Checking...' });
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -73,6 +76,10 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
   const navItems = [
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
@@ -90,64 +97,97 @@ const Layout = ({ children }) => {
     { path: '/market', icon: BarChart3, label: 'Market' },
   ];
 
-  return (
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="w-64 border-r border-white/10 bg-black/20 backdrop-blur-xl fixed h-screen">
-        <div className="p-6 h-full flex flex-col">
-          <div className="flex items-center space-x-3 mb-8">
-            <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-xl flex items-center justify-center">
-              <TrendingUp className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-white" data-testid="app-title">InvestPro</h1>
-              <p className="text-xs text-slate-400">Indian Markets</p>
-            </div>
+  const sidebarContent = (
+    <div className="p-6 h-full flex flex-col">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-gradient-to-br from-emerald-400 to-blue-500 rounded-xl flex items-center justify-center">
+            <TrendingUp className="w-6 h-6 text-white" />
           </div>
-
-          <nav className="space-y-2 flex-1 overflow-y-auto pr-2" style={{ maxHeight: 'calc(100vh - 300px)' }}>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = location.pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  data-testid={`nav-${item.label.toLowerCase()}`}
-                  className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-                    isActive
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                  }`}
-                >
-                  <Icon className="w-6 h-6" />
-                  <span className="font-semibold text-lg">{item.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {/* Market Status - Bottom of sidebar */}
-          <div className="mt-auto">
-            <div className="glass-card p-4">
-              <p className="text-xs text-slate-400 mb-2">NSE/BSE Market Status</p>
-              <div className="flex items-center space-x-2">
-                <div className={`w-2 h-2 rounded-full ${marketStatus.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
-                <span className={`text-sm font-medium ${marketStatus.isOpen ? 'text-emerald-400' : 'text-slate-400'}`}>
-                  {marketStatus.text}
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 mt-1">9:15 AM - 3:30 PM IST</p>
-            </div>
+          <div>
+            <h1 className="text-xl font-bold text-white" data-testid="app-title">InvestPro</h1>
+            <p className="text-xs text-slate-400">Indian Markets</p>
           </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(false)}
+          className="md:hidden text-slate-300 hover:text-white"
+          aria-label="Close menu"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      <nav className="space-y-2 flex-1 overflow-y-auto pr-2" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = location.pathname === item.path;
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              data-testid={`nav-${item.label.toLowerCase()}`}
+              className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
+                isActive
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Icon className="w-6 h-6" />
+              <span className="font-semibold text-lg">{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto">
+        <div className="glass-card p-4">
+          <p className="text-xs text-slate-400 mb-2">NSE/BSE Market Status</p>
+          <div className="flex items-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${marketStatus.isOpen ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`}></div>
+            <span className={`text-sm font-medium ${marketStatus.isOpen ? 'text-emerald-400' : 'text-slate-400'}`}>
+              {marketStatus.text}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">9:15 AM - 3:30 PM IST</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex min-h-screen">
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Sidebar Drawer */}
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 border-r border-white/10 bg-black/30 backdrop-blur-xl transform transition-transform duration-200 md:hidden ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:block w-64 border-r border-white/10 bg-black/20 backdrop-blur-xl fixed h-screen">
+        {sidebarContent}
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 h-screen overflow-y-auto">
+      <main className="flex-1 md:ml-64 h-screen overflow-y-auto">
         {/* Top Bar with User Profile */}
         <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-white/10">
-          <div className="px-8 py-4 flex items-center justify-end">
+          <div className="px-4 md:px-8 py-4 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="md:hidden text-slate-300 hover:text-white"
+              aria-label="Open menu"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
             {user && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -183,7 +223,7 @@ const Layout = ({ children }) => {
         </div>
 
         {/* Page Content */}
-        <div className="p-8 min-h-full">
+        <div className="p-4 md:p-8 min-h-full">
           {children}
         </div>
       </main>
