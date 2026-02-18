@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -262,6 +262,25 @@ const Portfolio = () => {
     }
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await axios.get(`${API}/portfolio/template`, {
+        responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'portfolio_upload_template.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('CSV template downloaded');
+    } catch (error) {
+      console.error('Error downloading template:', error);
+      toast.error('Failed to download template');
+    }
+  };
+
   const resetForm = () => {
     const today = getTodayDateString();
     setSearchQuery('');
@@ -291,6 +310,10 @@ const Portfolio = () => {
           <p className="text-slate-400">Manage your investment holdings</p>
         </div>
         <div className="flex gap-2">
+          <Button onClick={handleDownloadTemplate} className="bg-slate-600 hover:bg-slate-700 text-white">
+            <FileDown className="w-4 h-4 mr-2" />
+            CSV Template
+          </Button>
           <Button onClick={handleDownload} className="bg-blue-600 hover:bg-blue-700 text-white">
             <Download className="w-4 h-4 mr-2" />
             Download
@@ -308,6 +331,14 @@ const Portfolio = () => {
               </DialogHeader>
               <div className="space-y-4">
                 <p className="text-slate-400">Upload a CSV file with your portfolio holdings. The file can have any name, but must have a .csv extension.</p>
+                <Button
+                  type="button"
+                  onClick={handleDownloadTemplate}
+                  className="bg-slate-700 hover:bg-slate-600 text-white"
+                >
+                  <FileDown className="w-4 h-4 mr-2" />
+                  Download CSV Template
+                </Button>
                 <p className="text-slate-400">The file should have: symbol, name, quantity, purchase_price, purchase_date, asset_type, scheme_code, scheme_name.</p>
                 <p className="text-slate-400">Optional tax columns supported: sell_date, sell_qty, sell_price.</p>
                 <ul className="text-slate-400 list-disc list-inside">

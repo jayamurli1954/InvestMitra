@@ -642,6 +642,74 @@ async def download_portfolio(current_user: User = Depends(require_auth)):
     return response
 
 
+@api_router.get("/portfolio/template")
+async def download_portfolio_template(current_user: User = Depends(require_auth)):
+    """Download a CSV template for bulk portfolio upload."""
+    columns = [
+        "symbol",
+        "name",
+        "quantity",
+        "purchase_price",
+        "purchase_date",
+        "sell_date",
+        "sell_qty",
+        "sell_price",
+        "asset_type",
+        "scheme_code",
+        "scheme_name",
+    ]
+
+    sample_rows = [
+        {
+            "symbol": "RELIANCE.NS",
+            "name": "Reliance Industries Ltd",
+            "quantity": 10,
+            "purchase_price": 2500.00,
+            "purchase_date": "2025-04-15",
+            "sell_date": "",
+            "sell_qty": "",
+            "sell_price": "",
+            "asset_type": "STOCK",
+            "scheme_code": "",
+            "scheme_name": "",
+        },
+        {
+            "symbol": "",
+            "name": "",
+            "quantity": 100,
+            "purchase_price": 45.67,
+            "purchase_date": "2025-03-10",
+            "sell_date": "",
+            "sell_qty": "",
+            "sell_price": "",
+            "asset_type": "MUTUAL_FUND",
+            "scheme_code": "119551",
+            "scheme_name": "Axis Bluechip Fund Direct Growth",
+        },
+        {
+            "symbol": "INFY.NS",
+            "name": "Infosys Ltd",
+            "quantity": 20,
+            "purchase_price": 1500.00,
+            "purchase_date": "2024-01-10",
+            "sell_date": "2025-01-12",
+            "sell_qty": 5,
+            "sell_price": 1900.00,
+            "asset_type": "STOCK",
+            "scheme_code": "",
+            "scheme_name": "",
+        },
+    ]
+
+    df = pd.DataFrame(sample_rows, columns=columns)
+    stream = io.StringIO()
+    df.to_csv(stream, index=False)
+
+    response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+    response.headers["Content-Disposition"] = "attachment; filename=portfolio_upload_template.csv"
+    return response
+
+
 # === PATCH START: REPLACE LINES 207-218 WITH THIS CODE ===
 class WatchlistItem(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
