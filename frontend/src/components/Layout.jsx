@@ -174,12 +174,12 @@ const Layout = ({ children }) => {
       </aside>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:block w-64 border-r border-white/10 bg-black/20 backdrop-blur-xl fixed h-screen">
+      <aside className="hidden md:block w-64 border-r border-white/10 bg-black/20 backdrop-blur-xl sticky top-0 self-start h-screen">
         {sidebarContent}
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 md:ml-64 h-screen overflow-y-auto">
+      <main className="flex-1 min-h-screen">
         {/* Top Bar with User Profile */}
         <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-white/10">
           <div className="px-4 md:px-8 py-4 flex items-center justify-between">
@@ -229,7 +229,7 @@ const Layout = ({ children }) => {
         </div>
 
         {/* Page Content */}
-        <div className="p-4 md:p-8 min-h-full">
+        <div className="p-4 md:p-8 pb-24 md:pb-12 min-h-full">
           {children}
         </div>
       </main>
