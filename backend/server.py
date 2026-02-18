@@ -974,18 +974,38 @@ class UserUpdate(BaseModel):
     default_currency: Optional[str] = None
 
 
+def _build_user_identity_filter(user_id: str, email: Optional[str] = None) -> Dict[str, Any]:
+    """Build a resilient user filter supporting both string and ObjectId _id values."""
+    identity_clauses: List[Dict[str, Any]] = [{"_id": user_id}]
+
+    if ObjectId.is_valid(user_id):
+        identity_clauses.append({"_id": ObjectId(user_id)})
+
+    if email:
+        identity_clauses.append({"email": email})
+
+    return {"$or": identity_clauses}
+
+
 @api_router.put("/users/me", response_model=UserPublic)
 async def update_me(user_update: UserUpdate, current_user: User = Depends(require_auth)):
-    """Update current user's name and mobile"""
+    """Update current user's profile fields."""
     logger.info(f"Updating user: {current_user.id}")
     update_data = user_update.model_dump(exclude_unset=True)
-    
+
+    user_filter = _build_user_identity_filter(current_user.id, current_user.email)
+
     if update_data:
-        await db.users.update_one({"_id": current_user.id}, {"$set": update_data})
-    
-    updated_user_doc = await db.users.find_one({"_id": current_user.id})
-    updated_user_doc["id"] = updated_user_doc.pop("_id")
-    
+        result = await db.users.update_one(user_filter, {"$set": update_data})
+        if result.matched_count == 0:
+            raise HTTPException(status_code=404, detail="User record not found for update")
+
+    updated_user_doc = await db.users.find_one(user_filter)
+    if not updated_user_doc:
+        raise HTTPException(status_code=404, detail="Updated user record not found")
+
+    updated_user_doc["id"] = str(updated_user_doc.pop("_id"))
+
     return UserPublic(**updated_user_doc)
 
 class PasswordChange(BaseModel):
@@ -995,10 +1015,10 @@ class PasswordChange(BaseModel):
 async def change_password(password_change: PasswordChange, current_user: User = Depends(require_auth)):
     """Change current user's password"""
     new_password_hash = get_password_hash(password_change.password)
-    await db.users.update_one(
-        {"_id": current_user.id},
-        {"$set": {"password_hash": new_password_hash}}
-    )
+    user_filter = _build_user_identity_filter(current_user.id, current_user.email)
+    result = await db.users.update_one(user_filter, {"$set": {"password_hash": new_password_hash}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User record not found for password update")
     return {"message": "Password changed successfully"}
 
 # ---------- DYNAMIC / AUTO-POPULATING STOCK SEARCH ----------

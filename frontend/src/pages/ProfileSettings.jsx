@@ -32,19 +32,24 @@ const ProfileSettings = () => {
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.put(`${API}/users/me`, { 
-        name, 
-        mobile, 
-        country_code: countryCode, 
-        country, 
-        date_of_birth: dateOfBirth, 
-        default_currency: defaultCurrency 
-      });
+      const response = await axios.put(
+        `${API}/users/me`,
+        {
+          name,
+          mobile,
+          country_code: countryCode,
+          country,
+          date_of_birth: dateOfBirth,
+          default_currency: defaultCurrency
+        },
+        { withCredentials: true }
+      );
       setUser(response.data);
       toast.success('Profile updated successfully');
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+      const message = error.response?.data?.detail || error.message || 'Failed to update profile';
+      toast.error(message);
     }
   };
 
@@ -55,13 +60,14 @@ const ProfileSettings = () => {
       return;
     }
     try {
-      await axios.post(`${API}/users/me/change-password`, { password });
+      await axios.post(`${API}/users/me/change-password`, { password }, { withCredentials: true });
       toast.success('Password changed successfully');
       setPassword('');
       setConfirmPassword('');
     } catch (error) {
       console.error('Error changing password:', error);
-      toast.error('Failed to change password');
+      const message = error.response?.data?.detail || error.message || 'Failed to change password';
+      toast.error(message);
     }
   };
 
