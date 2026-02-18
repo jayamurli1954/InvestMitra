@@ -109,6 +109,32 @@ class Cache:
 
 cache_instance = Cache(ttl=60) # Cache for 60 seconds
 
+MARKET_OVERVIEW_FALLBACK = [
+    {"name": "NIFTY 50", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"name": "SENSEX", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"name": "NIFTY Bank", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"name": "Dow Jones", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"name": "NASDAQ", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"name": "FTSE 100", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"name": "STI", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+]
+
+MAJOR_STOCKS_FALLBACK = [
+    {"symbol": "RELIANCE.NS", "name": "Reliance", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "TCS.NS", "name": "TCS", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "HDFCBANK.NS", "name": "HDFC Bank", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "INFY.NS", "name": "Infosys", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "AAPL", "name": "Apple", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "GOOGL", "name": "Google", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "MSFT", "name": "Microsoft", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "AMZN", "name": "Amazon", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "TSLA", "name": "Tesla", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "HSBC", "name": "HSBC", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "VOD", "name": "Vodafone", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "TM", "name": "Toyota", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+    {"symbol": "SONY", "name": "Sony", "value": 0.0, "change": 0.0, "change_percent": 0.0},
+]
+
 def cached(key_prefix: str):
     def decorator(func):
         @wraps(func)
@@ -804,6 +830,10 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
     except Exception as e:
         logger.warning(f"get_all_stocks_from_db() error: {e}")
 
+    # Avoid upstream rate-limit bursts from per-keystroke queries.
+    if len(q_raw) < 3:
+        return []
+
     # 3️⃣ Live lookup from Yahoo Finance if not found
     yfinance_symbols_to_try = []
 
@@ -962,6 +992,9 @@ async def get_mutual_fund_detail(scheme_code: str):
 async def get_major_stocks():
     """Get real-time data for major world stocks."""
     stocks_data = get_major_world_stocks()
+    if not stocks_data:
+        logger.warning("Market data empty for major stocks, using fallback payload")
+        return MAJOR_STOCKS_FALLBACK
     return stocks_data
 
 @api_router.get("/market/overview")
@@ -969,6 +1002,9 @@ async def get_major_stocks():
 async def get_market_overview():
     """Get real-time market indices overview"""
     indices_data = get_market_indices()
+    if not indices_data:
+        logger.warning("Market data empty for indices, using fallback payload")
+        indices_data = MARKET_OVERVIEW_FALLBACK
     return [MarketIndex(**index) for index in indices_data]
 
 @api_router.get("/screener")
