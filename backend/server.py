@@ -889,7 +889,29 @@ async def search_mutualfunds_api(q: str = Query(..., min_length=1)):
 async def get_all_stocks(database=Depends(get_db)):
     """Get all available stocks"""
     all_stocks = await get_all_stocks_from_db(database)
-    return [StockBasic(**stock) for stock in all_stocks]
+    valid_stocks = []
+    skipped = 0
+
+    for stock in all_stocks:
+        try:
+            # Be tolerant of legacy/incomplete records in DB.
+            normalized = {
+                "symbol": stock.get("symbol", ""),
+                "name": stock.get("name", ""),
+                "exchange": stock.get("exchange", "N/A"),
+                "sector": stock.get("sector", "Other"),
+            }
+            if not normalized["symbol"] or not normalized["name"]:
+                skipped += 1
+                continue
+            valid_stocks.append(StockBasic(**normalized))
+        except Exception:
+            skipped += 1
+
+    if skipped:
+        logger.warning(f"/stocks/all skipped {skipped} malformed stock record(s)")
+
+    return valid_stocks
 
 @api_router.get("/stocks/{symbol}", response_model=StockDetail)
 async def get_stock_detail(symbol: str):
