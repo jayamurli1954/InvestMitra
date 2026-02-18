@@ -34,6 +34,43 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017').strip().strip('"').strip("'")
 client = None
 db = None
+LOCAL_STOCKS: List[Dict[str, str]] = []
+
+def load_local_stocks_cache():
+    """Load local NSE stock list for search fallback when external APIs are rate-limited."""
+    global LOCAL_STOCKS
+    csv_path = ROOT_DIR / "nse_stocks_with_sectors.csv"
+    try:
+        if not csv_path.exists():
+            logging.warning(f"Local stocks CSV not found: {csv_path}")
+            LOCAL_STOCKS = []
+            return
+
+        df = pd.read_csv(csv_path)
+        required_cols = {"symbol", "name", "exchange", "sector"}
+        if not required_cols.issubset(set(df.columns)):
+            logging.warning("Local stocks CSV missing required columns. Fallback search disabled.")
+            LOCAL_STOCKS = []
+            return
+
+        cleaned = []
+        for _, row in df.iterrows():
+            symbol = str(row.get("symbol", "")).strip()
+            name = str(row.get("name", "")).strip()
+            exchange = str(row.get("exchange", "NSE")).strip() or "NSE"
+            sector = str(row.get("sector", "Other")).strip() or "Other"
+            if symbol and name:
+                cleaned.append({
+                    "symbol": symbol,
+                    "name": name,
+                    "exchange": exchange,
+                    "sector": sector
+                })
+        LOCAL_STOCKS = cleaned
+        logging.info(f"Loaded {len(LOCAL_STOCKS)} local stock records for fallback search")
+    except Exception as e:
+        logging.error(f"Failed to load local stocks cache: {e}")
+        LOCAL_STOCKS = []
 
 async def init_db():
     """Initialize MongoDB connection on startup"""
@@ -80,6 +117,7 @@ app = FastAPI()
 # Register startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
+    load_local_stocks_cache()
     await init_db()
 
 @app.on_event("shutdown")
@@ -829,6 +867,21 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
             return fuzzy[:10]
     except Exception as e:
         logger.warning(f"get_all_stocks_from_db() error: {e}")
+
+    # 2b. Fall back to local static NSE list bundled in the repo.
+    try:
+        if LOCAL_STOCKS:
+            q_lower = q_raw.lower()
+            local_matches = [
+                StockBasic(**stock)
+                for stock in LOCAL_STOCKS
+                if (q_lower in stock.get("symbol", "").lower() or q_lower in stock.get("name", "").lower())
+                and (not exchange or stock.get("exchange", "").upper() == exchange.upper())
+            ]
+            if local_matches:
+                return local_matches[:20]
+    except Exception as e:
+        logger.warning(f"LOCAL_STOCKS fallback error: {e}")
 
     # Avoid upstream rate-limit bursts from per-keystroke queries.
     if len(q_raw) < 3:
