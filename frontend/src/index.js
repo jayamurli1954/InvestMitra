@@ -12,4 +12,8 @@ root.render(
 );
 
 // Register service worker for PWA
-serviceWorkerRegistration.unregister();
+if (process.env.NODE_ENV === "production") {
+  serviceWorkerRegistration.register();
+} else {
+  serviceWorkerRegistration.unregister();
+}
