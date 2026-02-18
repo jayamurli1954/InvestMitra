@@ -342,26 +342,137 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
     """Upload a portfolio from a CSV file"""
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV.")
+    if db is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Database connection unavailable. Please check MongoDB configuration."
+        )
 
     content = await file.read()
-    stream = io.StringIO(content.decode("utf-8"))
-    df = pd.read_csv(stream)
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded CSV file is empty.")
+
+    df = None
+    decode_error = None
+    for encoding in ("utf-8-sig", "utf-8", "utf-16", "latin-1"):
+        try:
+            decoded = content.decode(encoding)
+            stream = io.StringIO(decoded)
+            # Auto-detect comma/semicolon/tab separators from broker exports.
+            df = pd.read_csv(stream, sep=None, engine="python")
+            break
+        except Exception as exc:
+            decode_error = exc
+
+    if df is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not parse CSV file. Please save as UTF-8 CSV. Error: {decode_error}"
+        )
+    if df.empty:
+        return {
+            "message": "Portfolio upload processed.",
+            "added": 0,
+            "updated": 0,
+            "skipped": 0,
+            "failed": 0
+        }
+
+    normalized_columns = {}
+    for col in df.columns:
+        normalized = str(col).strip().lower().replace("-", "_").replace(" ", "_")
+        normalized = "_".join([part for part in normalized.split("_") if part])
+        normalized_columns[col] = normalized
+    df = df.rename(columns=normalized_columns)
+
+    # Common broker/Excel aliases
+    column_aliases = {
+        "schemecode": "scheme_code",
+        "schemename": "scheme_name",
+        "assettype": "asset_type",
+        "buy_qty": "quantity",
+        "buy_quantity": "quantity",
+        "buy_price": "purchase_price",
+        "buy_date": "purchase_date",
+        "sell_quantity": "sell_qty",
+    }
+    df = df.rename(columns={k: v for k, v in column_aliases.items() if k in df.columns})
 
     added_count = 0
+    updated_count = 0
     skipped_count = 0
     failed_count = 0
 
+    def _is_blank(value: Any) -> bool:
+        return pd.isna(value) or str(value).strip() == ""
+
+    def _to_int(value: Any, field_name: str) -> int:
+        if _is_blank(value):
+            return 0
+        try:
+            cleaned = str(value).replace(",", "").strip()
+            return int(float(cleaned))
+        except Exception as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
+
+    def _to_float(value: Any, field_name: str) -> float:
+        if _is_blank(value):
+            return 0.0
+        try:
+            cleaned = str(value).replace(",", "").replace("?", "").replace("₹", "").strip()
+            return float(cleaned)
+        except Exception as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
+
+    def _normalize_date(value: Any, field_name: str) -> str:
+        if _is_blank(value):
+            raise ValueError(f"{field_name} is required")
+        parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
+        if pd.isna(parsed):
+            raise ValueError(f"Invalid {field_name}: {value}")
+        return parsed.strftime("%Y-%m-%d")
+
     for _, row in df.iterrows():
         try:
-            symbol = row.get('symbol')
-            scheme_code = row.get('scheme_code')
-            asset_symbol = symbol if pd.notna(symbol) else scheme_code
+            symbol = row.get("symbol")
+            scheme_code = row.get("scheme_code")
+            symbol = None if _is_blank(symbol) else str(symbol).strip().upper()
+            scheme_code = None if _is_blank(scheme_code) else str(scheme_code).strip()
 
-            if pd.isna(asset_symbol):
+            asset_symbol = symbol or scheme_code
+            if not asset_symbol:
                 failed_count += 1
                 continue
 
-            # Check if holding already exists
+            raw_asset_type = row.get("asset_type")
+            asset_type = None
+            if not _is_blank(raw_asset_type):
+                parsed_asset_type = str(raw_asset_type).strip().upper()
+                if parsed_asset_type in {"STOCK", "MUTUAL_FUND"}:
+                    asset_type = parsed_asset_type
+
+            # Buy leg (legacy CSV fields)
+            buy_qty = _to_int(row.get("quantity"), "quantity")
+            buy_price = _to_float(row.get("purchase_price"), "purchase_price")
+            buy_date = None
+            if buy_qty > 0:
+                if buy_price <= 0:
+                    raise ValueError("purchase_price must be greater than 0 when quantity is provided")
+                buy_date = _normalize_date(row.get("purchase_date"), "purchase_date")
+
+            # Optional sell leg (new CSV fields)
+            sell_qty = _to_int(row.get("sell_qty"), "sell_qty")
+            sell_price = _to_float(row.get("sell_price"), "sell_price")
+            sell_date = None
+            if sell_qty > 0:
+                if sell_price <= 0:
+                    raise ValueError("sell_price must be greater than 0 when sell_qty is provided")
+                sell_date = _normalize_date(row.get("sell_date"), "sell_date")
+
+            if buy_qty <= 0 and sell_qty <= 0:
+                skipped_count += 1
+                continue
+
             existing_holding = await db.portfolio.find_one({
                 "user_id": current_user.id,
                 "$or": [
@@ -370,40 +481,104 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
                 ]
             })
 
+            display_name = (
+                (str(row.get("name")).strip() if not _is_blank(row.get("name")) else None)
+                or (str(row.get("scheme_name")).strip() if not _is_blank(row.get("scheme_name")) else None)
+                or (existing_holding.get("name") if existing_holding else None)
+                or asset_symbol
+            )
+            display_scheme_name = (
+                str(row.get("scheme_name")).strip()
+                if not _is_blank(row.get("scheme_name"))
+                else (existing_holding.get("scheme_name") if existing_holding else None)
+            )
+
             if existing_holding:
-                skipped_count += 1
+                current_qty = int(existing_holding.get("quantity", 0))
+                current_avg_price = float(existing_holding.get("purchase_price", 0.0))
+                current_purchase_date = existing_holding.get("purchase_date")
+            else:
+                current_qty = 0
+                current_avg_price = 0.0
+                current_purchase_date = buy_date
+
+            # Apply buy leg to holding
+            if buy_qty > 0:
+                new_qty_after_buy = current_qty + buy_qty
+                if new_qty_after_buy <= 0:
+                    raise ValueError("Invalid resulting quantity after buy")
+                weighted_cost = (current_qty * current_avg_price) + (buy_qty * buy_price)
+                current_avg_price = weighted_cost / new_qty_after_buy
+                current_qty = new_qty_after_buy
+                if not current_purchase_date:
+                    current_purchase_date = buy_date
+
+                buy_transaction = {
+                    "id": str(uuid.uuid4()),
+                    "user_id": current_user.id,
+                    "symbol": asset_symbol,
+                    "name": display_name,
+                    "transaction_type": "buy",
+                    "quantity": buy_qty,
+                    "price": buy_price,
+                    "total_amount": buy_qty * buy_price,
+                    "transaction_date": buy_date,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.transactions.insert_one(buy_transaction)
+
+            # Apply sell leg to holding
+            if sell_qty > 0:
+                if sell_qty > current_qty:
+                    raise ValueError(
+                        f"sell_qty {sell_qty} exceeds available quantity {current_qty} for {asset_symbol}"
+                    )
+                current_qty -= sell_qty
+                sell_transaction = {
+                    "id": str(uuid.uuid4()),
+                    "user_id": current_user.id,
+                    "symbol": asset_symbol,
+                    "name": display_name,
+                    "transaction_type": "sell",
+                    "quantity": sell_qty,
+                    "price": sell_price,
+                    "total_amount": sell_qty * sell_price,
+                    "transaction_date": sell_date,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.transactions.insert_one(sell_transaction)
+
+            if current_qty <= 0:
+                if existing_holding:
+                    await db.portfolio.delete_one({"id": existing_holding["id"], "user_id": current_user.id})
+                    updated_count += 1
+                else:
+                    skipped_count += 1
                 continue
 
-            # Create new holding
-            holding_data = {
-                "id": str(uuid.uuid4()),
-                "user_id": current_user.id,
-                "symbol": symbol if pd.notna(symbol) else None,
-                "name": row.get('name') if pd.notna(row.get('name')) else asset_symbol,
-                "quantity": int(row.get('quantity')),
-                "purchase_price": float(row.get('purchase_price')),
-                "purchase_date": row.get('purchase_date'),
-                "asset_type": row.get('asset_type', 'STOCK'),
-                "scheme_code": scheme_code if pd.notna(scheme_code) else None,
-                "scheme_name": row.get('scheme_name') if pd.notna(row.get('scheme_name')) else None,
+            holding_payload = {
+                "symbol": symbol if symbol is not None else (existing_holding.get("symbol") if existing_holding else None),
+                "name": display_name,
+                "quantity": current_qty,
+                "purchase_price": float(round(current_avg_price, 4)),
+                "purchase_date": current_purchase_date,
+                "asset_type": asset_type if asset_type else (existing_holding.get("asset_type") if existing_holding else "STOCK"),
+                "scheme_code": scheme_code if scheme_code is not None else (existing_holding.get("scheme_code") if existing_holding else None),
+                "scheme_name": display_scheme_name,
             }
-            await db.portfolio.insert_one(holding_data)
 
-            # Create corresponding buy transaction
-            transaction_doc = {
-                "id": str(uuid.uuid4()),
-                "user_id": current_user.id,
-                "symbol": asset_symbol,
-                "name": holding_data['name'],
-                "transaction_type": "buy",
-                "quantity": holding_data['quantity'],
-                "price": holding_data['purchase_price'],
-                "total_amount": holding_data['quantity'] * holding_data['purchase_price'],
-                "transaction_date": holding_data['purchase_date'],
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db.transactions.insert_one(transaction_doc)
-            added_count += 1
+            if existing_holding:
+                await db.portfolio.update_one(
+                    {"id": existing_holding["id"], "user_id": current_user.id},
+                    {"$set": holding_payload}
+                )
+                updated_count += 1
+            else:
+                holding_payload["id"] = str(uuid.uuid4())
+                holding_payload["user_id"] = current_user.id
+                holding_payload["current_price"] = 0.0
+                await db.portfolio.insert_one(holding_payload)
+                added_count += 1
 
         except Exception as e:
             failed_count += 1
@@ -412,10 +587,10 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
     return {
         "message": "Portfolio upload processed.",
         "added": added_count,
+        "updated": updated_count,
         "skipped": skipped_count,
         "failed": failed_count
     }
-
 @api_router.get("/portfolio/download")
 async def download_portfolio(current_user: User = Depends(require_auth)):
     """Download user's portfolio as a CSV file"""
@@ -425,7 +600,22 @@ async def download_portfolio(current_user: User = Depends(require_auth)):
 
     df = pd.DataFrame(holdings)
     # Select and reorder columns for the CSV
-    columns = ['symbol', 'name', 'quantity', 'purchase_price', 'purchase_date', 'asset_type', 'scheme_code', 'scheme_name']
+    columns = [
+        'symbol',
+        'name',
+        'quantity',
+        'purchase_price',
+        'purchase_date',
+        'sell_date',
+        'sell_qty',
+        'sell_price',
+        'asset_type',
+        'scheme_code',
+        'scheme_name'
+    ]
+    for optional_col in ['sell_date', 'sell_qty', 'sell_price']:
+        if optional_col not in df.columns:
+            df[optional_col] = ''
     df = df[[col for col in columns if col in df.columns]]
 
     stream = io.StringIO()
@@ -2607,3 +2797,4 @@ async def verify_email(request_data: dict):
             content={"error": "An error occurred"},
             status_code=500
         )
+

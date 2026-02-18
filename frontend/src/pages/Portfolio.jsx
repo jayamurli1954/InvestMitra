@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, Trash2, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,6 +9,20 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import TransactionDialog from '../components/TransactionDialog'; // Import the new component
 import { useAuth } from '../context/AuthContext';
+
+const getTodayDateString = () => new Date().toISOString().split('T')[0];
+
+const getDateParts = (dateStr) => {
+  const [year, month, day] = String(dateStr || getTodayDateString()).split('-').map(Number);
+  const now = new Date();
+  return {
+    year: year || now.getFullYear(),
+    month: month || (now.getMonth() + 1),
+    day: day || now.getDate(),
+  };
+};
+
+const getDaysInMonth = (year, month) => new Date(year, month, 0).getDate();
 
 const Portfolio = () => {
   const { isAuthenticated, user } = useAuth();
@@ -30,11 +44,17 @@ const Portfolio = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
   const [assetType, setAssetType] = useState("STOCK");
+  const initialPurchaseDate = getTodayDateString();
   const [formData, setFormData] = useState({
     quantity: '',
     purchase_price: '',
-    purchase_date: new Date().toISOString().split('T')[0]
+    purchase_date: initialPurchaseDate
   });
+  const [purchaseDateParts, setPurchaseDateParts] = useState(() => getDateParts(initialPurchaseDate));
+  const [isAddingHolding, setIsAddingHolding] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [addHoldingStatus, setAddHoldingStatus] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState(null);
 
   // State for the transaction dialog
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
@@ -60,6 +80,29 @@ const Portfolio = () => {
 
     return () => clearTimeout(timer);
   }, [searchQuery, assetType, isAuthenticated]);
+
+  useEffect(() => {
+    if (!dialogOpen) {
+      setAddHoldingStatus(null);
+      setIsAddingHolding(false);
+    }
+  }, [dialogOpen]);
+
+  useEffect(() => {
+    if (!uploadDialogOpen) {
+      setUploadStatus(null);
+      setIsUploadingFile(false);
+    }
+  }, [uploadDialogOpen]);
+
+  const updatePurchaseDate = (nextParts) => {
+    const maxDay = getDaysInMonth(nextParts.year, nextParts.month);
+    const safeDay = Math.min(nextParts.day, maxDay);
+    const normalized = { ...nextParts, day: safeDay };
+    const dateString = `${normalized.year}-${String(normalized.month).padStart(2, '0')}-${String(normalized.day).padStart(2, '0')}`;
+    setPurchaseDateParts(normalized);
+    setFormData((prev) => ({ ...prev, purchase_date: dateString }));
+  };
 
   const fetchPortfolio = async () => {
     try {
@@ -100,14 +143,30 @@ const Portfolio = () => {
 
   const handleAddHolding = async () => {
     if (!selectedStock || !formData.quantity || !formData.purchase_price) {
+      setAddHoldingStatus({ type: 'error', text: 'Please fill all required fields before adding.' });
       toast.error('Please fill all fields');
       return;
     }
 
+    const quantity = parseInt(formData.quantity, 10);
+    const purchasePrice = parseFloat(formData.purchase_price);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setAddHoldingStatus({ type: 'error', text: 'Quantity must be greater than 0.' });
+      toast.error('Quantity must be greater than 0');
+      return;
+    }
+    if (!Number.isFinite(purchasePrice) || purchasePrice <= 0) {
+      setAddHoldingStatus({ type: 'error', text: 'Purchase price must be greater than 0.' });
+      toast.error('Purchase price must be greater than 0');
+      return;
+    }
+
+    setIsAddingHolding(true);
+    setAddHoldingStatus(null);
     try {
       const payload = {
-        quantity: parseInt(formData.quantity),
-        purchase_price: parseFloat(formData.purchase_price),
+        quantity,
+        purchase_price: purchasePrice,
         purchase_date: formData.purchase_date,
         asset_type: assetType
       };
@@ -122,13 +181,17 @@ const Portfolio = () => {
       }
 
       await axios.post(`${API}/portfolio`, payload);
+      setAddHoldingStatus({ type: 'success', text: 'Holding added successfully.' });
       toast.success('Holding added successfully');
-      setDialogOpen(false);
       resetForm();
       fetchPortfolio();
     } catch (error) {
       console.error('Error adding holding:', error);
-      toast.error('Failed to add holding');
+      const detail = error.response?.data?.detail || 'Failed to add holding';
+      setAddHoldingStatus({ type: 'error', text: detail });
+      toast.error(detail);
+    } finally {
+      setIsAddingHolding(false);
     }
   };
 
@@ -163,30 +226,53 @@ const Portfolio = () => {
     const formData = new FormData();
     formData.append('file', file);
 
+    setIsUploadingFile(true);
+    setUploadStatus(null);
     try {
       const response = await axios.post(`${API}/portfolio/upload`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      toast.success(response.data.message);
-      setUploadDialogOpen(false);
+      const added = response.data?.added ?? 0;
+      const updated = response.data?.updated ?? 0;
+      const skipped = response.data?.skipped ?? 0;
+      const failed = response.data?.failed ?? 0;
+      const summary = `Upload complete: Added ${added}, Updated ${updated}, Skipped ${skipped}, Failed ${failed}`;
+      const hasSuccess = added + updated > 0;
+      if (hasSuccess) {
+        toast.success(summary);
+        setUploadStatus({ type: 'success', text: summary });
+      } else if (failed > 0) {
+        toast.error(summary);
+        setUploadStatus({ type: 'error', text: summary });
+      } else {
+        toast.info(summary);
+        setUploadStatus({ type: 'info', text: summary });
+      }
       fetchPortfolio();
     } catch (error) {
       console.error('Error uploading portfolio:', error);
-      toast.error(error.response?.data?.detail || 'Failed to upload portfolio');
+      const detail = error.response?.data?.detail || 'Failed to upload portfolio';
+      toast.error(detail);
+      setUploadStatus({ type: 'error', text: detail });
+    } finally {
+      setIsUploadingFile(false);
+      event.target.value = '';
     }
   };
 
   const resetForm = () => {
+    const today = getTodayDateString();
     setSearchQuery('');
     setSearchResults([]);
     setSelectedStock(null);
     setFormData({
       quantity: '',
       purchase_price: '',
-      purchase_date: new Date().toISOString().split('T')[0]
+      purchase_date: today
     });
+    setPurchaseDateParts(getDateParts(today));
   };
 
   if (loading) {
@@ -222,13 +308,30 @@ const Portfolio = () => {
               </DialogHeader>
               <div className="space-y-4">
                 <p className="text-slate-400">Upload a CSV file with your portfolio holdings. The file can have any name, but must have a .csv extension.</p>
-                <p className="text-slate-400">The file should have the following columns: symbol, name, quantity, purchase_price, purchase_date, asset_type, scheme_code, scheme_name.</p>
+                <p className="text-slate-400">The file should have: symbol, name, quantity, purchase_price, purchase_date, asset_type, scheme_code, scheme_name.</p>
+                <p className="text-slate-400">Optional tax columns supported: sell_date, sell_qty, sell_price.</p>
                 <ul className="text-slate-400 list-disc list-inside">
                   <li>For stocks, `symbol` is required.</li>
                   <li>For mutual funds, `scheme_code` is required.</li>
                   <li>The `asset_type` column must contain either "STOCK" or "MUTUAL_FUND".</li>
+                  <li>If `sell_qty` is provided, `sell_date` and `sell_price` are required.</li>
+                  <li>Dates in broker format are accepted and normalized internally.</li>
                 </ul>
                 <Input type="file" accept=".csv" onChange={handleUpload} className="bg-slate-800 border-slate-700 text-white" />
+                {isUploadingFile && (
+                  <p className="text-sm text-blue-300">Uploading and validating file...</p>
+                )}
+                {uploadStatus && (
+                  <p className={`text-sm ${
+                    uploadStatus.type === 'success'
+                      ? 'text-emerald-300'
+                      : uploadStatus.type === 'error'
+                        ? 'text-rose-300'
+                        : 'text-slate-300'
+                  }`}>
+                    {uploadStatus.text}
+                  </p>
+                )}
               </div>
             </DialogContent>
           </Dialog>
@@ -253,6 +356,7 @@ const Portfolio = () => {
                       setSearchQuery('');
                       setSearchResults([]);
                       setSelectedStock(null);
+                      setAddHoldingStatus(null);
                     }}
                     className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
                   >
@@ -327,19 +431,51 @@ const Portfolio = () => {
                     </div>
                     <div>
                       <Label className="text-slate-300">Purchase Date</Label>
-                      <Input
-                        type="date"
-                        value={formData.purchase_date}
-                        onChange={(e) => setFormData({ ...formData, purchase_date: e.target.value })}
-                        className="bg-slate-800 border-slate-700 text-white"
-                      />
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        <select
+                          value={purchaseDateParts.day}
+                          onChange={(e) => updatePurchaseDate({ ...purchaseDateParts, day: parseInt(e.target.value, 10) })}
+                          className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+                        >
+                          {Array.from({ length: getDaysInMonth(purchaseDateParts.year, purchaseDateParts.month) }, (_, i) => i + 1).map((day) => (
+                            <option key={day} value={day}>{day}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={purchaseDateParts.month}
+                          onChange={(e) => updatePurchaseDate({ ...purchaseDateParts, month: parseInt(e.target.value, 10) })}
+                          className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+                        >
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => (
+                            <option key={month} value={month}>{month}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={purchaseDateParts.year}
+                          onChange={(e) => updatePurchaseDate({ ...purchaseDateParts, year: parseInt(e.target.value, 10) })}
+                          className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white"
+                        >
+                          {Array.from({ length: 51 }, (_, i) => new Date().getFullYear() - i).map((year) => (
+                            <option key={year} value={year}>{year}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">Selected: {formData.purchase_date}</p>
                     </div>
                     <Button
                       onClick={handleAddHolding}
+                      disabled={isAddingHolding}
                       className="w-full bg-emerald-500 hover:bg-emerald-600 text-white"
                     >
-                      Add to Portfolio
+                      {isAddingHolding ? 'Adding...' : 'Add to Portfolio'}
                     </Button>
+                    {addHoldingStatus && (
+                      <p className={`text-sm ${
+                        addHoldingStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'
+                      }`}>
+                        {addHoldingStatus.text}
+                      </p>
+                    )}
                   </>
                 )}
               </div>
