@@ -48,11 +48,17 @@ const Portfolio = () => {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (isAuthenticated && searchQuery.length >= 2) {
-      handleAssetSearch(searchQuery);
-    } else {
+    const minLen = assetType === "STOCK" ? 3 : 2;
+    if (!isAuthenticated || searchQuery.length < minLen) {
       setSearchResults([]);
+      return;
     }
+
+    const timer = setTimeout(() => {
+      handleAssetSearch(searchQuery);
+    }, 300);
+
+    return () => clearTimeout(timer);
   }, [searchQuery, assetType, isAuthenticated]);
 
   const fetchPortfolio = async () => {
