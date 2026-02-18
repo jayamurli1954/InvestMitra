@@ -27,6 +27,11 @@ from market_data import (
     get_stock_info, get_historical_data, get_market_indices, 
     get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
 )
+from analytics import (
+    calculate_portfolio_analytics,
+    calculate_rebalancing_suggestions,
+    generate_stock_recommendations,
+)
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1696,7 +1701,7 @@ async def get_stock_recommendations(
     """Get AI-powered stock recommendations"""
     # Get existing holdings
     holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
-    existing_symbols = [h["symbol"] for h in holdings]
+    existing_symbols = [h.get("symbol") for h in holdings if h.get("symbol")]
     
     # Get strategy criteria
     if strategy_id:
@@ -1713,9 +1718,12 @@ async def get_stock_recommendations(
     all_stocks_detailed = []
     
     for stock_basic in all_stocks_basic[:30]:  # Limit to avoid timeout
-        stock_detail = get_stock_info(stock_basic["symbol"])
-        if stock_detail:
-            all_stocks_detailed.append(stock_detail)
+        symbol = stock_basic.get("symbol")
+        if not symbol:
+            continue
+        stock_detail_map = get_stock_info(symbol)
+        if stock_detail_map and symbol in stock_detail_map:
+            all_stocks_detailed.append(stock_detail_map[symbol])
     
     recommendations = generate_stock_recommendations(
         criteria, all_stocks_detailed, existing_symbols, limit=10

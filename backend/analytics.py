@@ -8,12 +8,25 @@ import numpy as np
 import pandas as pd
 from market_data import get_historical_data
 
+def _to_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return float(default)
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
 def _get_portfolio_historical_returns(holdings: List[Dict], days: int = 252) -> np.ndarray:
     """Fetch historical data for all holdings and calculate weighted portfolio returns."""
     portfolio_returns = []
     
     # Get total portfolio value
-    total_value = sum(h['quantity'] * h.get('current_price', h['purchase_price']) for h in holdings)
+    total_value = 0.0
+    for h in holdings:
+        quantity = _to_float(h.get("quantity"), 0.0)
+        purchase_price = _to_float(h.get("purchase_price"), 0.0)
+        current_price = _to_float(h.get("current_price"), purchase_price)
+        total_value += quantity * current_price
     if total_value == 0:
         return np.array([])
 
@@ -45,7 +58,10 @@ def _get_portfolio_historical_returns(holdings: List[Dict], days: int = 252) -> 
     for holding in holdings:
         symbol = holding.get('symbol') or holding.get('scheme_code')
         if symbol and symbol in all_historical_data:
-            weight = (holding['quantity'] * holding.get('current_price', holding['purchase_price'])) / total_value
+            quantity = _to_float(holding.get("quantity"), 0.0)
+            purchase_price = _to_float(holding.get("purchase_price"), 0.0)
+            current_price = _to_float(holding.get("current_price"), purchase_price)
+            weight = (quantity * current_price) / total_value if total_value else 0
             
             hist_data = {d['date']: d['close'] for d in all_historical_data[symbol]}
             
@@ -106,9 +122,9 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
     # Calculate sector allocation and identify performers
     for holding in holdings:
         symbol = holding.get("symbol") or holding.get("scheme_code")
-        quantity = holding["quantity"]
-        purchase_price = holding["purchase_price"]
-        current_price = holding.get("current_price", purchase_price)
+        quantity = _to_float(holding.get("quantity"), 0.0)
+        purchase_price = _to_float(holding.get("purchase_price"), 0.0)
+        current_price = _to_float(holding.get("current_price"), purchase_price)
         
         invested = quantity * purchase_price
         current = quantity * current_price
@@ -164,7 +180,7 @@ def calculate_portfolio_analytics(holdings: List[Dict], stock_data: Dict[str, Di
 
     # --- New Advanced Metrics ---
     portfolio_returns = _get_portfolio_historical_returns(holdings)
-    volatility = np.std(portfolio_returns) * np.sqrt(252) * 100 # Annualized percentage
+    volatility = (np.std(portfolio_returns) * np.sqrt(252) * 100) if len(portfolio_returns) else 0.0
     sharpe_ratio = calculate_sharpe_ratio(portfolio_returns)
     max_drawdown = calculate_max_drawdown(portfolio_returns)
 
@@ -206,9 +222,10 @@ def calculate_rebalancing_suggestions(
     sector_values = {}
     
     for holding in holdings:
-        symbol = holding["symbol"]
-        quantity = holding["quantity"]
-        current_price = holding.get("current_price", holding["purchase_price"])
+        symbol = holding.get("symbol") or holding.get("scheme_code") or holding.get("name", "UNKNOWN")
+        quantity = _to_float(holding.get("quantity"), 0.0)
+        purchase_price = _to_float(holding.get("purchase_price"), 0.0)
+        current_price = _to_float(holding.get("current_price"), purchase_price)
         current_value = quantity * current_price
         total_value += current_value
         
