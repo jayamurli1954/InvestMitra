@@ -22,6 +22,8 @@ import Auth from "@/pages/Auth";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ProfileSettings from "@/pages/ProfileSettings";
 import Disclaimer from "@/pages/Disclaimer";
+import AboutUs from "@/pages/AboutUs";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 import Marquee from "@/components/Marquee";
@@ -81,6 +83,8 @@ function AppRoutes() {
                   <Route path="/analytics" element={<Analytics />} />
                   <Route path="/market" element={<MarketOverview />} />
                   <Route path="/profile-settings" element={<ProfileSettings />} />
+                  <Route path="/about-us" element={<AboutUs />} />
+                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
                 </Routes>
               </Layout>
             </ProtectedRoute>

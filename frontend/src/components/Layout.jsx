@@ -232,6 +232,35 @@ const Layout = ({ children }) => {
         <div className="p-4 md:p-8 pb-24 md:pb-12 min-h-full">
           {children}
         </div>
+
+        {/* Footer */}
+        <footer className="border-t border-white/10 bg-slate-900/60 px-4 md:px-8 py-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/about-us"
+                className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:bg-white/5 text-sm"
+              >
+                About Us
+              </Link>
+              <Link
+                to="/privacy-policy"
+                className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:bg-white/5 text-sm"
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                to="/disclaimer"
+                className="px-3 py-1.5 rounded-lg border border-white/15 text-slate-200 hover:bg-white/5 text-sm"
+              >
+                Disclaimer
+              </Link>
+            </div>
+            <p className="text-xs text-slate-400">
+              © {new Date().getFullYear()} InvestMitra. All rights reserved.
+            </p>
+          </div>
+        </footer>
       </main>
     </div>
   );
