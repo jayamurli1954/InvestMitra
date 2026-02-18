@@ -3,11 +3,16 @@ import pandas as pd
 from datetime import datetime, timedelta
 import logging
 import asyncio
+import os
+import time
 from typing import Optional, Dict, List
 from websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
+MARKET_CACHE_TTL_SECONDS = int(os.environ.get("MARKET_CACHE_TTL_SECONDS", "300"))
+_INDICES_CACHE = {"data": [], "ts": 0.0}
+_MAJOR_STOCKS_CACHE = {"data": [], "ts": 0.0}
 
 
 def get_stock_info(symbols: any) -> Dict[str, Dict]:
@@ -100,8 +105,56 @@ MARKET_INDICES = {
     "^STI": "STI"
 }
 
+def _is_cache_fresh(cache_obj: Dict[str, any]) -> bool:
+    return bool(cache_obj["data"]) and (time.time() - cache_obj["ts"] < MARKET_CACHE_TTL_SECONDS)
+
+def _extract_close_prices(hist_df: pd.DataFrame, symbol: str):
+    """
+    Extract current and previous close from yfinance download result.
+    Supports both single-symbol and multi-symbol dataframe layouts.
+    """
+    if hist_df is None or hist_df.empty:
+        return None, None
+
+    try:
+        if isinstance(hist_df.columns, pd.MultiIndex):
+            if symbol not in hist_df.columns.get_level_values(0):
+                return None, None
+            symbol_df = hist_df[symbol]
+        else:
+            symbol_df = hist_df
+
+        if "Close" not in symbol_df.columns:
+            return None, None
+
+        closes = symbol_df["Close"].dropna()
+        if closes.empty:
+            return None, None
+
+        current_price = float(closes.iloc[-1])
+        prev_close = float(closes.iloc[-2]) if len(closes) > 1 else current_price
+        return current_price, prev_close
+    except Exception:
+        return None, None
+
+def _build_market_point(name: str, current_price: float, prev_close: float, symbol: Optional[str] = None) -> Dict:
+    change = current_price - prev_close
+    change_percent = (change / prev_close) * 100 if prev_close else 0
+    payload = {
+        "name": name,
+        "value": float(current_price),
+        "change": float(change),
+        "change_percent": float(change_percent),
+    }
+    if symbol:
+        payload["symbol"] = symbol
+    return payload
+
 def get_major_world_stocks() -> List[Dict]:
     """Fetch data for major world stocks."""
+    if _is_cache_fresh(_MAJOR_STOCKS_CACHE):
+        return _MAJOR_STOCKS_CACHE["data"]
+
     major_stocks = {
         "RELIANCE.NS": "Reliance",
         "TCS.NS": "TCS",
@@ -119,54 +172,94 @@ def get_major_world_stocks() -> List[Dict]:
     }
 
     stocks_data = []
-    for symbol, name in major_stocks.items():
-        try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="1d")
-            
-            if not hist.empty:
-                current_price = hist['Close'].iloc[-1]
-                prev_close = ticker.info.get('previousClose', current_price)
-                change = current_price - prev_close
-                change_percent = (change / prev_close) * 100 if prev_close else 0
-                
-                stocks_data.append({
-                    "symbol": symbol,
-                    "name": name,
-                    "value": float(current_price),
-                    "change": float(change),
-                    "change_percent": float(change_percent)
-                })
-        except Exception as e:
-            logger.error(f"Error fetching {name}: {str(e)}")
-    
-    return stocks_data
+    symbols = list(major_stocks.keys())
+    try:
+        hist = yf.download(
+            tickers=" ".join(symbols),
+            period="5d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=False,
+        )
+        for symbol, name in major_stocks.items():
+            current_price, prev_close = _extract_close_prices(hist, symbol)
+            if current_price is None:
+                continue
+            stocks_data.append(
+                _build_market_point(name=name, current_price=current_price, prev_close=prev_close, symbol=symbol)
+            )
+    except Exception as e:
+        logger.error(f"Error fetching major stocks batch: {str(e)}")
+
+    if stocks_data:
+        _MAJOR_STOCKS_CACHE["data"] = stocks_data
+        _MAJOR_STOCKS_CACHE["ts"] = time.time()
+        return stocks_data
+
+    if _MAJOR_STOCKS_CACHE["data"]:
+        logger.warning("Using stale major stocks cache due to upstream rate limit")
+        return _MAJOR_STOCKS_CACHE["data"]
+
+    # Initial fallback if no prior successful sample is available.
+    return [
+        {
+            "symbol": symbol,
+            "name": name,
+            "value": 0.0,
+            "change": 0.0,
+            "change_percent": 0.0,
+        }
+        for symbol, name in major_stocks.items()
+    ]
 
 def get_market_indices() -> List[Dict]:
     """Fetch market indices data"""
+    if _is_cache_fresh(_INDICES_CACHE):
+        return _INDICES_CACHE["data"]
+
     indices_data = []
-    
-    for symbol, name in MARKET_INDICES.items():
-        try:
-            ticker = yf.Ticker(symbol)
-            hist = ticker.history(period="1d")
-            
-            if not hist.empty:
-                current_price = hist['Close'].iloc[-1]
-                prev_close = ticker.info.get('previousClose', current_price)
-                change = current_price - prev_close
-                change_percent = (change / prev_close) * 100 if prev_close else 0
-                
-                indices_data.append({
-                    "name": name,
-                    "value": float(current_price),
-                    "change": float(change),
-                    "change_percent": float(change_percent)
-                })
-        except Exception as e:
-            logger.error(f"Error fetching {name}: {str(e)}")
-    
-    return indices_data
+    symbols = list(MARKET_INDICES.keys())
+    try:
+        hist = yf.download(
+            tickers=" ".join(symbols),
+            period="5d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=False,
+        )
+        for symbol, name in MARKET_INDICES.items():
+            current_price, prev_close = _extract_close_prices(hist, symbol)
+            if current_price is None:
+                continue
+            indices_data.append(
+                _build_market_point(name=name, current_price=current_price, prev_close=prev_close)
+            )
+    except Exception as e:
+        logger.error(f"Error fetching market indices batch: {str(e)}")
+
+    if indices_data:
+        _INDICES_CACHE["data"] = indices_data
+        _INDICES_CACHE["ts"] = time.time()
+        return indices_data
+
+    if _INDICES_CACHE["data"]:
+        logger.warning("Using stale market indices cache due to upstream rate limit")
+        return _INDICES_CACHE["data"]
+
+    # Initial fallback if no prior successful sample is available.
+    return [
+        {
+            "name": name,
+            "value": 0.0,
+            "change": 0.0,
+            "change_percent": 0.0,
+        }
+        for _, name in MARKET_INDICES.items()
+    ]
 
 
 
