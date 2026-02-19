@@ -339,13 +339,13 @@ const Portfolio = () => {
                   <FileDown className="w-4 h-4 mr-2" />
                   Download CSV Template
                 </Button>
-                <p className="text-slate-400">The file should have: symbol, name, quantity, purchase_price, purchase_date, asset_type, scheme_code, scheme_name.</p>
-                <p className="text-slate-400">Optional tax columns supported: sell_date, sell_qty, sell_price.</p>
+                <p className="text-slate-400">Preferred compact format: symbol, name, type, quantity, price, date, asset_type, scheme_code, scheme_name.</p>
+                <p className="text-slate-400">`type` accepts BUY or SELL. Legacy format with purchase/sell columns is still supported.</p>
                 <ul className="text-slate-400 list-disc list-inside">
                   <li>For stocks, `symbol` is required.</li>
                   <li>For mutual funds, `scheme_code` is required.</li>
                   <li>The `asset_type` column must contain either "STOCK" or "MUTUAL_FUND".</li>
-                  <li>If `sell_qty` is provided, `sell_date` and `sell_price` are required.</li>
+                  <li>When using `type`, provide `quantity`, `price`, and `date`.</li>
                   <li>Dates in broker format are accepted and normalized internally.</li>
                 </ul>
                 <Input type="file" accept=".csv" onChange={handleUpload} className="bg-slate-800 border-slate-700 text-white" />

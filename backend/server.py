@@ -411,6 +411,13 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         "buy_price": "purchase_price",
         "buy_date": "purchase_date",
         "sell_quantity": "sell_qty",
+        "transaction_type": "type",
+        "txn_type": "type",
+        "trade_type": "type",
+        "buy_sell": "type",
+        "transaction_date": "date",
+        "trade_date": "date",
+        "nav_price": "price",
     }
     df = df.rename(columns={k: v for k, v in column_aliases.items() if k in df.columns})
 
@@ -467,23 +474,52 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
                 if parsed_asset_type in {"STOCK", "MUTUAL_FUND"}:
                     asset_type = parsed_asset_type
 
-            # Buy leg (legacy CSV fields)
-            buy_qty = _to_int(row.get("quantity"), "quantity")
-            buy_price = _to_float(row.get("purchase_price"), "purchase_price")
-            buy_date = None
-            if buy_qty > 0:
-                if buy_price <= 0:
-                    raise ValueError("purchase_price must be greater than 0 when quantity is provided")
-                buy_date = _normalize_date(row.get("purchase_date"), "purchase_date")
+            # Preferred compact transaction format:
+            # type(BUY/SELL), quantity, price, date
+            # Legacy format is still supported below.
+            raw_type = row.get("type")
+            transaction_type = None if _is_blank(raw_type) else str(raw_type).strip().upper()
 
-            # Optional sell leg (new CSV fields)
-            sell_qty = _to_int(row.get("sell_qty"), "sell_qty")
-            sell_price = _to_float(row.get("sell_price"), "sell_price")
+            buy_qty = 0
+            buy_price = 0.0
+            buy_date = None
+            sell_qty = 0
+            sell_price = 0.0
             sell_date = None
-            if sell_qty > 0:
-                if sell_price <= 0:
-                    raise ValueError("sell_price must be greater than 0 when sell_qty is provided")
-                sell_date = _normalize_date(row.get("sell_date"), "sell_date")
+
+            if transaction_type in {"BUY", "SELL"}:
+                txn_qty = _to_int(row.get("quantity"), "quantity")
+                txn_price = _to_float(row.get("price"), "price")
+                txn_date = _normalize_date(row.get("date"), "date")
+
+                if txn_qty <= 0:
+                    raise ValueError("quantity must be greater than 0 when type is BUY/SELL")
+                if txn_price <= 0:
+                    raise ValueError("price must be greater than 0 when type is BUY/SELL")
+
+                if transaction_type == "BUY":
+                    buy_qty = txn_qty
+                    buy_price = txn_price
+                    buy_date = txn_date
+                else:
+                    sell_qty = txn_qty
+                    sell_price = txn_price
+                    sell_date = txn_date
+            else:
+                # Legacy buy/sell columns support
+                buy_qty = _to_int(row.get("quantity"), "quantity")
+                buy_price = _to_float(row.get("purchase_price"), "purchase_price")
+                if buy_qty > 0:
+                    if buy_price <= 0:
+                        raise ValueError("purchase_price must be greater than 0 when quantity is provided")
+                    buy_date = _normalize_date(row.get("purchase_date"), "purchase_date")
+
+                sell_qty = _to_int(row.get("sell_qty"), "sell_qty")
+                sell_price = _to_float(row.get("sell_price"), "sell_price")
+                if sell_qty > 0:
+                    if sell_price <= 0:
+                        raise ValueError("sell_price must be greater than 0 when sell_qty is provided")
+                    sell_date = _normalize_date(row.get("sell_date"), "sell_date")
 
             if buy_qty <= 0 and sell_qty <= 0:
                 skipped_count += 1
@@ -648,12 +684,10 @@ async def download_portfolio_template(current_user: User = Depends(require_auth)
     columns = [
         "symbol",
         "name",
+        "type",
         "quantity",
-        "purchase_price",
-        "purchase_date",
-        "sell_date",
-        "sell_qty",
-        "sell_price",
+        "price",
+        "date",
         "asset_type",
         "scheme_code",
         "scheme_name",
@@ -663,12 +697,10 @@ async def download_portfolio_template(current_user: User = Depends(require_auth)
         {
             "symbol": "RELIANCE.NS",
             "name": "Reliance Industries Ltd",
+            "type": "BUY",
             "quantity": 10,
-            "purchase_price": 2500.00,
-            "purchase_date": "2025-04-15",
-            "sell_date": "",
-            "sell_qty": "",
-            "sell_price": "",
+            "price": 2500.00,
+            "date": "2025-04-15",
             "asset_type": "STOCK",
             "scheme_code": "",
             "scheme_name": "",
@@ -676,12 +708,10 @@ async def download_portfolio_template(current_user: User = Depends(require_auth)
         {
             "symbol": "",
             "name": "",
+            "type": "BUY",
             "quantity": 100,
-            "purchase_price": 45.67,
-            "purchase_date": "2025-03-10",
-            "sell_date": "",
-            "sell_qty": "",
-            "sell_price": "",
+            "price": 45.67,
+            "date": "2025-03-10",
             "asset_type": "MUTUAL_FUND",
             "scheme_code": "119551",
             "scheme_name": "Axis Bluechip Fund Direct Growth",
@@ -689,12 +719,10 @@ async def download_portfolio_template(current_user: User = Depends(require_auth)
         {
             "symbol": "INFY.NS",
             "name": "Infosys Ltd",
-            "quantity": 20,
-            "purchase_price": 1500.00,
-            "purchase_date": "2024-01-10",
-            "sell_date": "2025-01-12",
-            "sell_qty": 5,
-            "sell_price": 1900.00,
+            "type": "SELL",
+            "quantity": 5,
+            "price": 1900.00,
+            "date": "2025-01-12",
             "asset_type": "STOCK",
             "scheme_code": "",
             "scheme_name": "",
