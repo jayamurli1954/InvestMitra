@@ -10,7 +10,7 @@ from websocket_manager import manager
 
 logger = logging.getLogger(__name__)
 
-MARKET_CACHE_TTL_SECONDS = int(os.environ.get("MARKET_CACHE_TTL_SECONDS", "300"))
+MARKET_CACHE_TTL_SECONDS = int(os.environ.get("MARKET_CACHE_TTL_SECONDS", "600"))
 _INDICES_CACHE = {"data": [], "ts": 0.0}
 _MAJOR_STOCKS_CACHE = {"data": [], "ts": 0.0}
 

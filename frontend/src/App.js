@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import "@/App.css";
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
 import axios from "axios";
@@ -27,7 +26,6 @@ import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
-import Marquee from "@/components/Marquee";
 
 const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
 export const API = `${BACKEND_URL}/api`;
@@ -99,31 +97,9 @@ function AppRoutes() {
 }
 
 function App() {
-  const [indices, setIndices] = useState([]);
-  const [majorStocks, setMajorStocks] = useState([]);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [indicesRes, majorStocksRes] = await Promise.all([
-          axios.get(`${API}/market/overview`),
-          axios.get(`${API}/market/major-stocks`)
-        ]);
-        setIndices(indicesRes.data);
-        setMajorStocks(majorStocksRes.data);
-      } catch (error) {
-        console.error('Error fetching market data:', error);
-      }
-    };
-
-    fetchData();
-  }, []);
-
   return (
     <div className="App">
       <AuthProvider>
-        <Marquee items={indices} />
-        <Marquee items={majorStocks} />
         <AppRoutes />
       </AuthProvider>
     </div>
