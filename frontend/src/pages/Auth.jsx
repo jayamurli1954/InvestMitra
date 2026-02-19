@@ -90,8 +90,8 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-slate-950 flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
+      <div className="w-full max-w-md py-4 sm:py-8 max-h-[calc(100vh-2rem)] overflow-y-auto pr-1">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center mb-4">
             <img
@@ -105,7 +105,7 @@ const Auth = () => {
           <p className="text-slate-400 mt-2">Indian Markets</p>
         </div>
 
-        <div className="bg-slate-900 rounded-lg border border-slate-800 p-8">
+        <div className="bg-slate-900 rounded-lg border border-slate-800 p-6 sm:p-8">
           <h2 className="text-2xl font-bold text-white mb-6">
             {isLogin ? 'Welcome Back' : 'Create Account'}
           </h2>
