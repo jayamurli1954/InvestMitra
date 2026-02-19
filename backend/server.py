@@ -425,6 +425,7 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
     updated_count = 0
     skipped_count = 0
     failed_count = 0
+    row_errors: List[Dict[str, Any]] = []
     stock_name_cache: Dict[str, Optional[str]] = {}
     mf_name_cache: Dict[str, Optional[str]] = {}
 
@@ -502,7 +503,8 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         mf_name_cache[scheme_code_value] = resolved_name
         return resolved_name
 
-    for _, row in df.iterrows():
+    for idx, row in df.iterrows():
+        asset_symbol = None
         try:
             symbol = row.get("symbol")
             scheme_code = row.get("scheme_code")
@@ -692,14 +694,21 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
 
         except Exception as e:
             failed_count += 1
-            logger.error(f"Failed to process portfolio row. Error: {e}")
+            row_number = int(idx) + 2  # +1 for 0-index, +1 for header row
+            logger.error(f"Failed to process portfolio row {row_number}. Error: {e}")
+            row_errors.append({
+                "row": row_number,
+                "symbol": asset_symbol,
+                "error": str(e),
+            })
 
     return {
         "message": "Portfolio upload processed.",
         "added": added_count,
         "updated": updated_count,
         "skipped": skipped_count,
-        "failed": failed_count
+        "failed": failed_count,
+        "errors": row_errors[:20],
     }
 @api_router.get("/portfolio/download")
 async def download_portfolio(current_user: User = Depends(require_auth)):
@@ -2508,7 +2517,7 @@ async def get_ai_portfolio_optimization(
         logger.info(f"AI optimization requested by user: {current_user.id}")
         
         # Get user profile for risk assessment
-        user_profile = await db.users.find_one({"_id": current_user.id})
+        user_profile = await db.users.find_one({"_id": current_user.id}) or {}
 
         # Get portfolio
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
@@ -2524,7 +2533,8 @@ async def get_ai_portfolio_optimization(
         
         for holding in holdings:
             try:
-                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
+                stock_payload = get_stock_info(holding["symbol"])  # sync helper returns {symbol: info}
+                stock_info = stock_payload.get(holding["symbol"], {}) if isinstance(stock_payload, dict) else {}
                 holdings_with_prices.append({
                     **holding,
                     "current_price": stock_info.get("current_price", 0),
@@ -2544,7 +2554,20 @@ async def get_ai_portfolio_optimization(
         }
         
         logger.info("Calling AI optimization function...")
-        insights = await generate_portfolio_optimization(portfolio_data, analytics_data, user_profile)
+        try:
+            from ai_insights import generate_portfolio_optimization
+            insights = await generate_portfolio_optimization(portfolio_data, analytics_data, user_profile)
+        except Exception as ai_import_error:
+            logger.error(f"AI module unavailable for optimization: {ai_import_error}")
+            insights = {
+                "optimization_suggestions": {
+                    "rebalancing": ["AI module unavailable. Check GEMINI_API_KEY and AI dependencies on backend."],
+                    "diversification": ["Use at least 5-8 holdings across multiple sectors for basic diversification."],
+                    "risk_management": ["Set stop-loss levels and review sector concentration monthly."],
+                    "tactical_moves": []
+                },
+                "error": "ai_module_unavailable"
+            }
         
         logger.info("AI optimization successful")
         return insights
@@ -2571,7 +2594,8 @@ async def get_ai_predictive_insights(
         holdings_with_prices = []
         for holding in holdings:
             try:
-                stock_info = get_stock_info(holding["symbol"])  # This is synchronous
+                stock_payload = get_stock_info(holding["symbol"])  # sync helper returns {symbol: info}
+                stock_info = stock_payload.get(holding["symbol"], {}) if isinstance(stock_payload, dict) else {}
                 holdings_with_prices.append({
                     **holding,
                     "current_price": stock_info.get("current_price", 0),
@@ -2585,7 +2609,29 @@ async def get_ai_predictive_insights(
             "holdings": holdings_with_prices
         }
         
-        insights = await generate_predictive_insights(portfolio_data)
+        try:
+            from ai_insights import generate_predictive_insights
+            insights = await generate_predictive_insights(portfolio_data)
+        except Exception as ai_import_error:
+            logger.error(f"AI module unavailable for predictions: {ai_import_error}")
+            insights = {
+                "predictive_insights": {
+                    "outlook_3m": "AI prediction engine is currently unavailable on backend configuration.",
+                    "risks": [
+                        "Market volatility and global macro events may impact returns.",
+                        "Single-sector concentration can increase drawdown risk."
+                    ],
+                    "opportunities": [
+                        "Systematic accumulation in quality stocks can reduce timing risk.",
+                        "Diversification across sectors can improve stability."
+                    ],
+                    "action_items": [
+                        "Review allocation and rebalance monthly.",
+                        "Track earnings and major policy announcements."
+                    ]
+                },
+                "error": "ai_module_unavailable"
+            }
         
         return insights
         
@@ -2603,10 +2649,16 @@ async def get_ai_stock_analysis(
     """Generate AI-powered analysis for a specific stock"""
     try:
         # Get stock data
-        stock_data = await get_stock_info(symbol)
+        stock_payload = get_stock_info(symbol)
+        stock_data = stock_payload.get(symbol, {}) if isinstance(stock_payload, dict) else {}
         
         # Generate AI analysis
-        analysis = await generate_stock_analysis(symbol, stock_data)
+        try:
+            from ai_insights import generate_stock_analysis
+            analysis = await generate_stock_analysis(symbol, stock_data)
+        except Exception as ai_import_error:
+            logger.error(f"AI module unavailable for stock analysis: {ai_import_error}")
+            analysis = f"AI stock analysis unavailable for {symbol}. Please verify backend AI dependencies and GEMINI_API_KEY."
         
         return {
             "symbol": symbol,
