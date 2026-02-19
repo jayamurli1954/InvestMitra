@@ -2845,7 +2845,7 @@ async def forgot_password(request_data: dict):
         if not user:
             # Don't reveal if email exists (security)
             return JSONResponse(
-                content={"message": "If email exists, reset link has been sent"},
+                content={"message": "If email exists, reset link has been sent", "delivery": "requested"},
                 status_code=200
             )
         
@@ -2861,7 +2861,7 @@ async def forgot_password(request_data: dict):
         
         if email_sent:
             return JSONResponse(
-                content={"message": "Password reset email has been sent"},
+                content={"message": "Password reset email has been sent", "delivery": "email_sent"},
                 status_code=200
             )
         else:
@@ -2870,12 +2870,16 @@ async def forgot_password(request_data: dict):
                 return JSONResponse(
                     content={
                         "message": "Email sending failed. Dev mode enabled: use returned reset token.",
+                        "delivery": "dev_token",
                         "reset_token": reset_token
                     },
                     status_code=200
                 )
             return JSONResponse(
-                content={"message": "If email exists, reset link has been sent"},
+                content={
+                    "message": "Password reset requested, but email service is unavailable. Please try again later.",
+                    "delivery": "email_unavailable"
+                },
                 status_code=200
             )
     

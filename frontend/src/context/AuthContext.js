@@ -162,7 +162,9 @@ export const AuthProvider = ({ children }) => {
       );
       return {
         success: true,
-        message: response.data.message || 'Password reset email has been sent'
+        message: response.data.message || 'Password reset email has been sent',
+        reset_token: response.data.reset_token || null,
+        delivery: response.data.delivery || 'requested'
       };
     } catch (error) {
       const message = getErrorMessage(error);
