@@ -425,6 +425,8 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
     updated_count = 0
     skipped_count = 0
     failed_count = 0
+    stock_name_cache: Dict[str, Optional[str]] = {}
+    mf_name_cache: Dict[str, Optional[str]] = {}
 
     def _is_blank(value: Any) -> bool:
         return pd.isna(value) or str(value).strip() == ""
@@ -454,6 +456,51 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         if pd.isna(parsed):
             raise ValueError(f"Invalid {field_name}: {value}")
         return parsed.strftime("%Y-%m-%d")
+
+    async def _resolve_stock_name(symbol_value: Optional[str]) -> Optional[str]:
+        if not symbol_value:
+            return None
+        if symbol_value in stock_name_cache:
+            return stock_name_cache[symbol_value]
+
+        resolved_name = None
+
+        try:
+            stock_doc = await db.stocks.find_one({"symbol": symbol_value}, {"_id": 0, "name": 1})
+            if stock_doc and stock_doc.get("name"):
+                resolved_name = str(stock_doc["name"]).strip()
+        except Exception as exc:
+            logger.warning(f"Could not resolve stock name from DB for {symbol_value}: {exc}")
+
+        if not resolved_name:
+            try:
+                stock_info_map = get_stock_info(symbol_value) or {}
+                if symbol_value in stock_info_map:
+                    candidate = stock_info_map[symbol_value].get("name")
+                    if candidate:
+                        resolved_name = str(candidate).strip()
+            except Exception as exc:
+                logger.warning(f"Could not resolve stock name from market data for {symbol_value}: {exc}")
+
+        stock_name_cache[symbol_value] = resolved_name
+        return resolved_name
+
+    def _resolve_mutual_fund_name(scheme_code_value: Optional[str]) -> Optional[str]:
+        if not scheme_code_value:
+            return None
+        if scheme_code_value in mf_name_cache:
+            return mf_name_cache[scheme_code_value]
+
+        resolved_name = None
+        try:
+            mf_info = get_mutual_fund_nav(scheme_code_value)
+            if mf_info and mf_info.get("scheme_name"):
+                resolved_name = str(mf_info["scheme_name"]).strip()
+        except Exception as exc:
+            logger.warning(f"Could not resolve mutual fund name for {scheme_code_value}: {exc}")
+
+        mf_name_cache[scheme_code_value] = resolved_name
+        return resolved_name
 
     for _, row in df.iterrows():
         try:
@@ -533,16 +580,27 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
                 ]
             })
 
+            row_name = str(row.get("name")).strip() if not _is_blank(row.get("name")) else None
+            row_scheme_name = (
+                str(row.get("scheme_name")).strip()
+                if not _is_blank(row.get("scheme_name"))
+                else None
+            )
+
+            inferred_stock_name = None if row_name else await _resolve_stock_name(symbol)
+            inferred_scheme_name = row_scheme_name or _resolve_mutual_fund_name(scheme_code)
+
             display_name = (
-                (str(row.get("name")).strip() if not _is_blank(row.get("name")) else None)
-                or (str(row.get("scheme_name")).strip() if not _is_blank(row.get("scheme_name")) else None)
+                row_name
+                or row_scheme_name
+                or inferred_stock_name
+                or inferred_scheme_name
                 or (existing_holding.get("name") if existing_holding else None)
                 or asset_symbol
             )
             display_scheme_name = (
-                str(row.get("scheme_name")).strip()
-                if not _is_blank(row.get("scheme_name"))
-                else (existing_holding.get("scheme_name") if existing_holding else None)
+                inferred_scheme_name
+                or (existing_holding.get("scheme_name") if existing_holding else None)
             )
 
             if existing_holding:
@@ -696,7 +754,7 @@ async def download_portfolio_template(current_user: User = Depends(require_auth)
     sample_rows = [
         {
             "symbol": "RELIANCE.NS",
-            "name": "Reliance Industries Ltd",
+            "name": "",
             "type": "BUY",
             "quantity": 10,
             "price": 2500.00,
@@ -718,7 +776,7 @@ async def download_portfolio_template(current_user: User = Depends(require_auth)
         },
         {
             "symbol": "INFY.NS",
-            "name": "Infosys Ltd",
+            "name": "",
             "type": "SELL",
             "quantity": 5,
             "price": 1900.00,
