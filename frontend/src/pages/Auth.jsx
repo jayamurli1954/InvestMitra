@@ -229,9 +229,11 @@ const Auth = () => {
             </Button>
           </div>
 
-          <div className="mt-6 text-center text-slate-400 text-sm">
-            {isLogin ? "Don't have an account?" : 'Already have an account?'}{' '}
-            <button
+          <div className="mt-6">
+            <p className="text-center text-slate-300 text-sm mb-3">
+              {isLogin ? "Don't have an account yet?" : 'Already have an account?'}
+            </p>
+            <Button
               type="button"
               onClick={() => {
                 setIsLogin(!isLogin);
@@ -240,10 +242,10 @@ const Auth = () => {
                 setDisclaimerAccepted(false);
                 setFormData({ email: '', password: '', name: '' });
               }}
-              className="text-emerald-500 hover:text-emerald-400 font-medium"
+              className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-semibold"
             >
-              {isLogin ? 'Sign Up' : 'Sign In'}
-            </button>
+              {isLogin ? 'Create Account (Sign Up)' : 'Back to Sign In'}
+            </Button>
           </div>
         </div>
       </div>
