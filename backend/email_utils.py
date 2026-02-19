@@ -10,14 +10,24 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Normalize env values copied with quotes/spaces from dashboards
+def _clean_env(name: str, default=None):
+    value = os.getenv(name, default)
+    if value is None:
+        return None
+    return str(value).strip().strip('"').strip("'")
+
 # Email Configuration
-SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", 587))
-SMTP_EMAIL = os.getenv("SMTP_EMAIL")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
-SENDER_NAME = os.getenv("SENDER_NAME", "InvestMitra")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-FRONTEND_USE_HASH_ROUTER = os.getenv("FRONTEND_USE_HASH_ROUTER", "true").lower() == "true"
+SMTP_SERVER = _clean_env("SMTP_SERVER", "smtp.gmail.com")
+try:
+    SMTP_PORT = int(_clean_env("SMTP_PORT", "587"))
+except ValueError:
+    SMTP_PORT = 587
+SMTP_EMAIL = _clean_env("SMTP_EMAIL")
+SMTP_PASSWORD = _clean_env("SMTP_PASSWORD")
+SENDER_NAME = _clean_env("SENDER_NAME", "InvestMitra")
+FRONTEND_URL = _clean_env("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_USE_HASH_ROUTER = (_clean_env("FRONTEND_USE_HASH_ROUTER", "true").lower() == "true")
 
 
 def _build_frontend_token_link(path: str, token: str) -> str:

@@ -2828,6 +2828,7 @@ async def forgot_password(request_data: dict):
     Body: {"email": "user@example.com"}
     """
     from email_utils import send_password_reset_email
+    password_reset_dev_mode = os.getenv("PASSWORD_RESET_DEV_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
     
     try:
         email = request_data.get("email")
@@ -2864,9 +2865,18 @@ async def forgot_password(request_data: dict):
                 status_code=200
             )
         else:
+            logger.error("Password reset email sending failed (SMTP unavailable or invalid credentials)")
+            if password_reset_dev_mode:
+                return JSONResponse(
+                    content={
+                        "message": "Email sending failed. Dev mode enabled: use returned reset token.",
+                        "reset_token": reset_token
+                    },
+                    status_code=200
+                )
             return JSONResponse(
-                content={"error": "Failed to send email"},
-                status_code=500
+                content={"message": "If email exists, reset link has been sent"},
+                status_code=200
             )
     
     except Exception as e:
