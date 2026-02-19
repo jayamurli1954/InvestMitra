@@ -55,6 +55,7 @@ const Portfolio = () => {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [addHoldingStatus, setAddHoldingStatus] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+  const [selectedUploadFile, setSelectedUploadFile] = useState(null);
 
   // State for the transaction dialog
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
@@ -92,6 +93,7 @@ const Portfolio = () => {
     if (!uploadDialogOpen) {
       setUploadStatus(null);
       setIsUploadingFile(false);
+      setSelectedUploadFile(null);
     }
   }, [uploadDialogOpen]);
 
@@ -219,12 +221,19 @@ const Portfolio = () => {
     }
   };
 
-  const handleUpload = async (event) => {
+  const handleFileSelection = (event) => {
     const file = event.target.files[0];
-    if (!file) return;
+    setSelectedUploadFile(file || null);
+    setUploadStatus(null);
+  };
 
+  const handleUpload = async () => {
+    if (!selectedUploadFile) {
+      toast.error('Please choose a CSV file first');
+      return;
+    }
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', selectedUploadFile);
 
     setIsUploadingFile(true);
     setUploadStatus(null);
@@ -258,7 +267,7 @@ const Portfolio = () => {
       setUploadStatus({ type: 'error', text: detail });
     } finally {
       setIsUploadingFile(false);
-      event.target.value = '';
+      setSelectedUploadFile(null);
     }
   };
 
@@ -325,7 +334,7 @@ const Portfolio = () => {
                 Upload
               </Button>
             </DialogTrigger>
-            <DialogContent className="bg-slate-900 border-slate-700">
+            <DialogContent className="bg-slate-900 border-slate-700 max-h-[85vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className="text-white">Upload Portfolio</DialogTitle>
               </DialogHeader>
@@ -349,7 +358,23 @@ const Portfolio = () => {
                   <li>When using `type`, provide `quantity`, `price`, and `date`.</li>
                   <li>Dates in broker format are accepted and normalized internally.</li>
                 </ul>
-                <Input type="file" accept=".csv" onChange={handleUpload} className="bg-slate-800 border-slate-700 text-white" />
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelection}
+                  className="bg-slate-800 border-slate-700 text-white"
+                />
+                {selectedUploadFile && (
+                  <p className="text-sm text-slate-300">Selected: {selectedUploadFile.name}</p>
+                )}
+                <Button
+                  type="button"
+                  onClick={handleUpload}
+                  disabled={!selectedUploadFile || isUploadingFile}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                >
+                  {isUploadingFile ? 'Uploading...' : 'Upload File'}
+                </Button>
                 {isUploadingFile && (
                   <p className="text-sm text-blue-300">Uploading and validating file...</p>
                 )}
