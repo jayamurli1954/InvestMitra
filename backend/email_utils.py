@@ -17,6 +17,16 @@ SMTP_EMAIL = os.getenv("SMTP_EMAIL")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 SENDER_NAME = os.getenv("SENDER_NAME", "InvestMitra")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_USE_HASH_ROUTER = os.getenv("FRONTEND_USE_HASH_ROUTER", "true").lower() == "true"
+
+
+def _build_frontend_token_link(path: str, token: str) -> str:
+    """Build token link compatible with HashRouter (default) and BrowserRouter."""
+    base = FRONTEND_URL.rstrip("/")
+    clean_path = path.lstrip("/")
+    if FRONTEND_USE_HASH_ROUTER:
+        return f"{base}/#/{clean_path}?token={token}"
+    return f"{base}/{clean_path}?token={token}"
 
 
 def send_password_reset_email(user_email: str, reset_token: str, user_name: str) -> bool:
@@ -33,7 +43,7 @@ def send_password_reset_email(user_email: str, reset_token: str, user_name: str)
     """
     try:
         # Create reset link
-        reset_link = f"{FRONTEND_URL}/forgot-password?token={reset_token}"
+        reset_link = _build_frontend_token_link("forgot-password", reset_token)
         
         # Email content
         subject = "Reset Your Password - InvestMitra"
@@ -115,7 +125,7 @@ def send_verification_email(user_email: str, verification_token: str, user_name:
     """
     try:
         # Create verification link
-        verify_link = f"{FRONTEND_URL}/verify-email?token={verification_token}"
+        verify_link = _build_frontend_token_link("verify-email", verification_token)
         
         # Email content
         subject = "Verify Your Email - InvestMitra"
