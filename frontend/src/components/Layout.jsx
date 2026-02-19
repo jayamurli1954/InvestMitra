@@ -179,7 +179,7 @@ const Layout = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-h-screen">
+      <main className="flex-1 h-screen overflow-y-auto app-body-scroll">
         {/* Top Bar with User Profile */}
         <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-white/10">
           <div className="px-4 md:px-8 py-4 flex items-center justify-between">
