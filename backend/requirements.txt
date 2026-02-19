@@ -17,6 +17,7 @@ email-validator==2.3.0
 fastapi==0.110.1
 flake8==7.3.0
 frozendict==2.4.6
+google-genai
 h11==0.16.0
 idna==3.10
 iniconfig==2.1.0

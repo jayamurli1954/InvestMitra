@@ -15,9 +15,19 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 
 # --- GEMINI IMPORTS ---
-from google import genai
-from google.genai import types
-from google.genai.errors import APIError 
+GENAI_IMPORT_ERROR = None
+try:
+    from google import genai
+    from google.genai import types
+    try:
+        from google.genai.errors import APIError
+    except Exception:
+        APIError = Exception
+except Exception as import_error:
+    genai = None
+    types = None
+    APIError = Exception
+    GENAI_IMPORT_ERROR = str(import_error)
 # ----------------------
 
 load_dotenv()
@@ -26,28 +36,31 @@ logger = logging.getLogger(__name__)
 # --- GEMINI CLIENT INITIALIZATION ---
 client = None
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
+if GEMINI_API_KEY is None:
+    GEMINI_API_KEY = ""
 
 print("\n" + "="*70)
 print("🤖 INITIALIZING GEMINI AI")
 print("="*70)
 
 try:
-    if not GEMINI_API_KEY:
+    if GENAI_IMPORT_ERROR:
+        error_msg = f"❌ Gemini SDK import failed: {GENAI_IMPORT_ERROR}"
+        print(error_msg)
+        logger.error(error_msg)
+    elif not GEMINI_API_KEY:
         error_msg = "❌ GEMINI_API_KEY not found in environment variables"
         print(error_msg)
+        print("   Add GEMINI_API_KEY in Render Environment")
         logger.error(error_msg)
-    elif not GEMINI_API_KEY.startswith("AIzaSy"):
-        error_msg = f"❌ GEMINI_API_KEY has wrong format: starts with '{GEMINI_API_KEY[:10]}'"
-        print(error_msg)
-        print("   API key should start with 'AIzaSy'")
-        logger.error(error_msg)
-        logger.error("   API key should start with 'AIzaSy'")
+        logger.error("   Add GEMINI_API_KEY in Render Environment")
     else:
         # Initialize with explicit API key
         client = genai.Client(api_key=GEMINI_API_KEY)
         success_msg1 = "✅ Gemini client initialized successfully"
         success_msg2 = f"   Using API key: {GEMINI_API_KEY[:10]}...{GEMINI_API_KEY[-4:]}"
-        success_msg3 = "   Model: gemini-2.5-flash (latest & fastest)"
+        success_msg3 = f"   Model: {GEMINI_MODEL}"
         
         print(success_msg1)
         print(success_msg2)
@@ -259,7 +272,7 @@ Respond with ONLY the JSON object, nothing else.
         logger.info("🤖 Calling Gemini API for portfolio optimization...")
         
         response = client.models.generate_content(
-            model='models/gemini-2.5-flash',
+            model=GEMINI_MODEL,
             contents=full_prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
@@ -440,7 +453,7 @@ Generate ONLY the JSON object.
     
     try:
         response = client.models.generate_content(
-            model='models/gemini-2.5-flash',
+            model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(temperature=0.8)
         )
@@ -524,7 +537,7 @@ Keep it concise and actionable.
     
     try:
         response = client.models.generate_content(
-            model='models/gemini-2.5-flash',
+            model=GEMINI_MODEL,
             contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
