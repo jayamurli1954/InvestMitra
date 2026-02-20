@@ -553,8 +553,8 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
 
             if transaction_type in {"BUY", "SELL"}:
                 txn_qty = _to_int(row.get("quantity"), "quantity")
-                txn_price = _to_float(row.get("price"), "price")
-                txn_date = _normalize_date(row.get("date"), "date")
+                txn_price = _to_float(row.get("price") if not _is_blank(row.get("price")) else row.get("purchase_price"), "price")
+                txn_date = _normalize_date(row.get("date") if not _is_blank(row.get("date")) else row.get("purchase_date"), "date")
 
                 if txn_qty <= 0:
                     raise ValueError("quantity must be greater than 0 when type is BUY/SELL")
