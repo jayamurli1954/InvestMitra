@@ -400,15 +400,17 @@ const Portfolio = () => {
                   <FileDown className="w-4 h-4 mr-2" />
                   Download CSV Template
                 </Button>
-                <p className="text-slate-400">Preferred compact format: symbol, name(optional), type, quantity, price, date, asset_type, scheme_code, scheme_name.</p>
-                <p className="text-slate-400">`type` accepts BUY or SELL. Legacy format with purchase/sell columns is still supported.</p>
-                <ul className="text-slate-400 list-disc list-inside">
-                  <li>For stocks, `symbol` is required.</li>
-                  <li>For mutual funds, `scheme_code` is required.</li>
-                  <li>`name` is optional and will be auto-filled from symbol/scheme data when available.</li>
-                  <li>The `asset_type` column must contain either "STOCK" or "MUTUAL_FUND".</li>
-                  <li>When using `type`, provide `quantity`, `price`, and `date`.</li>
-                  <li>Dates in broker format are accepted and normalized internally.</li>
+                <p className="text-slate-400">Strict CSV Column Headers Required:</p>
+                <div className="bg-slate-800 p-3 rounded-md border border-slate-700 font-mono text-xs text-emerald-400 overflow-x-auto mb-2">
+                  symbol, quantity, avg.price, type, asset_type, scheme_code, scheme_name
+                </div>
+                <ul className="text-slate-400 list-disc list-inside text-sm">
+                  <li><strong>symbol</strong>: Required for stocks (e.g. AFCONS, SBI)</li>
+                  <li><strong>quantity</strong>: Number of shares/units</li>
+                  <li><strong>avg.price</strong>: Average purchase price</li>
+                  <li><strong>type</strong>: Must be exactly BUY or SELL</li>
+                  <li><strong>asset_type</strong>: Must be exactly STOCK or MUTUAL_FUND</li>
+                  <li><strong>scheme_code</strong> / <strong>scheme_name</strong>: Required ONLY if uploading Mutual Funds</li>
                 </ul>
                 <Input
                   type="file"
