@@ -2671,6 +2671,10 @@ async def get_ai_stock_analysis(
 
 app.include_router(api_router)
 
+@app.get("/")
+async def root():
+    return {"message": "InvestMitra Backend is Running. Go to /docs for API documentation."}
+
 @app.get("/health")
 async def health_check():
     return {

@@ -25,6 +25,8 @@ except ValueError:
     SMTP_PORT = 587
 SMTP_EMAIL = _clean_env("SMTP_EMAIL")
 SMTP_PASSWORD = _clean_env("SMTP_PASSWORD")
+if SMTP_PASSWORD:
+    SMTP_PASSWORD = SMTP_PASSWORD.replace(" ", "")
 SENDER_NAME = _clean_env("SENDER_NAME", "InvestMitra")
 FRONTEND_URL = _clean_env("FRONTEND_URL", "http://localhost:3000")
 FRONTEND_USE_HASH_ROUTER = (_clean_env("FRONTEND_USE_HASH_ROUTER", "true").lower() == "true")
@@ -234,10 +236,17 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
         message.attach(part2)
         
         # Send email
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()  # Secure connection
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, to_email, message.as_string())
+        if SMTP_PORT == 465:
+            # Use SSL for port 465
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
+                server.login(SMTP_EMAIL, SMTP_PASSWORD)
+                server.sendmail(SMTP_EMAIL, to_email, message.as_string())
+        else:
+            # Use TLS for port 587 (or others)
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+                server.starttls()  # Secure connection
+                server.login(SMTP_EMAIL, SMTP_PASSWORD)
+                server.sendmail(SMTP_EMAIL, to_email, message.as_string())
         
         print(f"✓ Email sent successfully to {to_email}")
         return True
