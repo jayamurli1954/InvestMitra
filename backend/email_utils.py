@@ -2,19 +2,9 @@
 Email utility functions for sending password reset and verification emails
 """
 
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import os
-import socket
+import requests
 from dotenv import load_dotenv
-
-# Force IPv4 for smtplib to avoid "Network is unreachable" IPv6 errors on Render
-old_getaddrinfo = socket.getaddrinfo
-def new_getaddrinfo(*args, **kwargs):
-    responses = old_getaddrinfo(*args, **kwargs)
-    return [res for res in responses if res[0] == socket.AF_INET]
-socket.getaddrinfo = new_getaddrinfo
 
 load_dotenv()
 
@@ -26,15 +16,8 @@ def _clean_env(name: str, default=None):
     return str(value).strip().strip('"').strip("'")
 
 # Email Configuration
-SMTP_SERVER = _clean_env("SMTP_SERVER", "smtp.gmail.com")
-try:
-    SMTP_PORT = int(_clean_env("SMTP_PORT", "587"))
-except ValueError:
-    SMTP_PORT = 587
-SMTP_EMAIL = _clean_env("SMTP_EMAIL")
-SMTP_PASSWORD = _clean_env("SMTP_PASSWORD")
-if SMTP_PASSWORD:
-    SMTP_PASSWORD = SMTP_PASSWORD.replace(" ", "")
+BREVO_API_KEY = _clean_env("BREVO_API_KEY", "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")
+SENDER_EMAIL = _clean_env("SMTP_EMAIL", "jayamurli1954@gmail.com") 
 SENDER_NAME = _clean_env("SENDER_NAME", "InvestMitra")
 FRONTEND_URL = _clean_env("FRONTEND_URL", "http://localhost:3000")
 FRONTEND_USE_HASH_ROUTER = (_clean_env("FRONTEND_USE_HASH_ROUTER", "true").lower() == "true")
@@ -214,7 +197,7 @@ InvestMitra Team
 
 def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> bool:
     """
-    Internal function to send email via SMTP
+    Internal function to send email via Brevo HTTP API
     
     Args:
         to_email: Recipient email address
@@ -226,45 +209,36 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
         bool: True if email sent successfully, False otherwise
     """
     try:
-        # Validate SMTP credentials
-        if not SMTP_EMAIL or not SMTP_PASSWORD:
-            print("Error: SMTP_EMAIL or SMTP_PASSWORD not configured in .env file")
-            return False
+        url = "https://api.brevo.com/v3/smtp/email"
+        headers = {
+            "accept": "application/json",
+            "api-key": BREVO_API_KEY,
+            "content-type": "application/json"
+        }
+        payload = {
+            "sender": {
+                "name": SENDER_NAME,
+                "email": SENDER_EMAIL
+            },
+            "to": [
+                {
+                    "email": to_email
+                }
+            ],
+            "subject": subject,
+            "htmlContent": html_body,
+            "textContent": text_body
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
         
-        # Create message
-        message = MIMEMultipart("alternative")
-        message["Subject"] = subject
-        message["From"] = f"{SENDER_NAME} <{SMTP_EMAIL}>"
-        message["To"] = to_email
-        
-        # Attach plain text and HTML parts
-        part1 = MIMEText(text_body, "plain")
-        part2 = MIMEText(html_body, "html")
-        message.attach(part1)
-        message.attach(part2)
-        
-        # Send email
-        if SMTP_PORT == 465:
-            # Use SSL for port 465
-            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as server:
-                server.login(SMTP_EMAIL, SMTP_PASSWORD)
-                server.sendmail(SMTP_EMAIL, to_email, message.as_string())
+        if response.status_code in [200, 201, 202]:
+            print(f"✓ Email sent successfully to {to_email} via Brevo HTTP API")
+            return True
         else:
-            # Use TLS for port 587 (or others)
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-                server.starttls()  # Secure connection
-                server.login(SMTP_EMAIL, SMTP_PASSWORD)
-                server.sendmail(SMTP_EMAIL, to_email, message.as_string())
-        
-        print(f"✓ Email sent successfully to {to_email}")
-        return True
-        
-    except smtplib.SMTPAuthenticationError:
-        print(f"Error: SMTP authentication failed. Check SMTP_EMAIL and SMTP_PASSWORD in .env")
-        return False
-    except smtplib.SMTPException as e:
-        print(f"Error: SMTP error occurred: {str(e)}")
-        return False
+            print(f"Error: Brevo API returned {response.status_code} - {response.text}")
+            return False
+
     except Exception as e:
-        print(f"Error: Failed to send email: {str(e)}")
+        print(f"Error: Failed to send email via Brevo: {str(e)}")
         return False
