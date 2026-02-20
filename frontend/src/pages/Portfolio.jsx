@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -61,6 +61,7 @@ const Portfolio = () => {
   const [transactionDialogOpen, setTransactionDialogOpen] = useState(false);
   const [selectedHoldingForTx, setSelectedHoldingForTx] = useState(null);
   const [transactionType, setTransactionType] = useState('buy');
+  const [selectedHoldings, setSelectedHoldings] = useState([]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -197,6 +198,40 @@ const Portfolio = () => {
     }
   };
 
+  const toggleHoldingSelection = (holdingId) => {
+    setSelectedHoldings(prev =>
+      prev.includes(holdingId) ? prev.filter(id => id !== holdingId) : [...prev, holdingId]
+    );
+  };
+
+  const handleDeleteHolding = async (holdingId) => {
+    if (!window.confirm("Are you sure you want to delete this holding?")) return;
+    try {
+      await axios.delete(`${API}/portfolio/${holdingId}`);
+      toast.success("Holding deleted successfully");
+      setSelectedHoldings(prev => prev.filter(id => id !== holdingId));
+      fetchPortfolio();
+    } catch (error) {
+      console.error("Error deleting holding:", error);
+      toast.error("Failed to delete holding");
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedHoldings.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedHoldings.length} holding(s)?`)) return;
+
+    try {
+      await Promise.all(selectedHoldings.map(id => axios.delete(`${API}/portfolio/${id}`)));
+      toast.success(`${selectedHoldings.length} holding(s) deleted successfully`);
+      setSelectedHoldings([]);
+      fetchPortfolio();
+    } catch (error) {
+      console.error("Error deleting holdings:", error);
+      toast.error("Failed to delete some holdings");
+    }
+  };
+
   const openTransactionDialog = (holding, type) => {
     setSelectedHoldingForTx(holding);
     setTransactionType(type);
@@ -319,6 +354,12 @@ const Portfolio = () => {
           <p className="text-slate-400">Manage your investment holdings</p>
         </div>
         <div className="flex gap-2">
+          {selectedHoldings.length > 0 && (
+            <Button onClick={handleDeleteSelected} className="bg-rose-600 hover:bg-rose-700 text-white">
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Selected ({selectedHoldings.length})
+            </Button>
+          )}
           <Button onClick={handleDownloadTemplate} className="bg-slate-600 hover:bg-slate-700 text-white">
             <FileDown className="w-4 h-4 mr-2" />
             CSV Template
@@ -379,13 +420,12 @@ const Portfolio = () => {
                   <p className="text-sm text-blue-300">Uploading and validating file...</p>
                 )}
                 {uploadStatus && (
-                  <p className={`text-sm ${
-                    uploadStatus.type === 'success'
-                      ? 'text-emerald-300'
-                      : uploadStatus.type === 'error'
-                        ? 'text-rose-300'
-                        : 'text-slate-300'
-                  }`}>
+                  <p className={`text-sm ${uploadStatus.type === 'success'
+                    ? 'text-emerald-300'
+                    : uploadStatus.type === 'error'
+                      ? 'text-rose-300'
+                      : 'text-slate-300'
+                    }`}>
                     {uploadStatus.text}
                   </p>
                 )}
@@ -527,9 +567,8 @@ const Portfolio = () => {
                       {isAddingHolding ? 'Adding...' : 'Add to Portfolio'}
                     </Button>
                     {addHoldingStatus && (
-                      <p className={`text-sm ${
-                        addHoldingStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'
-                      }`}>
+                      <p className={`text-sm ${addHoldingStatus.type === 'success' ? 'text-emerald-300' : 'text-rose-300'
+                        }`}>
                         {addHoldingStatus.text}
                       </p>
                     )}
@@ -542,122 +581,122 @@ const Portfolio = () => {
       </div>
 
       {performance && (
-  <div className="glass-card p-8">
-    <h2 className="text-2xl font-bold text-white mb-6">Performance Summary</h2>
-    
-    {/* STOCKS PERFORMANCE */}
-    {holdings.filter(h => h.asset_type === "STOCK").length > 0 && (
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-emerald-400 mb-4">📈 Stocks Performance</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
-          {(() => {
-            const stocksData = holdings.filter(h => h.asset_type === "STOCK");
-            const totalInvested = stocksData.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
-            const totalCurrent = stocksData.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_price || h.purchase_price)), 0);
-            const gain = totalCurrent - totalInvested;
-            const gainPercent = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
-            
-            return (
-              <>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Invested</p>
-                  <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Current Value</p>
-                  <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Gain/Loss</p>
-                  <p className={`text-2xl font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Returns</p>
-                  <div className={`flex items-center space-x-2 ${gainPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {gainPercent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-                    <p className="text-2xl font-bold">{gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%</p>
-                  </div>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    )}
+        <div className="glass-card p-8">
+          <h2 className="text-2xl font-bold text-white mb-6">Performance Summary</h2>
 
-    {/* MUTUAL FUNDS PERFORMANCE */}
-    {holdings.filter(h => h.asset_type === "MUTUAL_FUND").length > 0 && (
-      <div className="mb-8">
-        <h3 className="text-lg font-semibold text-blue-400 mb-4">💰 Mutual Funds Performance</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
-          {(() => {
-            const mfData = holdings.filter(h => h.asset_type === "MUTUAL_FUND");
-            const totalInvested = mfData.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
-            const totalCurrent = mfData.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_nav || h.purchase_price)), 0);
-            const gain = totalCurrent - totalInvested;
-            const gainPercent = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
-            
-            return (
-              <>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Invested</p>
-                  <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Current Value</p>
-                  <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Gain/Loss</p>
-                  <p className={`text-2xl font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-slate-400 mb-1">Returns</p>
-                  <div className={`flex items-center space-x-2 ${gainPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    {gainPercent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-                    <p className="text-2xl font-bold">{gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%</p>
-                  </div>
-                </div>
-              </>
-            );
-          })()}
-        </div>
-      </div>
-    )}
+          {/* STOCKS PERFORMANCE */}
+          {holdings.filter(h => h.asset_type === "STOCK").length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-emerald-400 mb-4">📈 Stocks Performance</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
+                {(() => {
+                  const stocksData = holdings.filter(h => h.asset_type === "STOCK");
+                  const totalInvested = stocksData.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
+                  const totalCurrent = stocksData.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_price || h.purchase_price)), 0);
+                  const gain = totalCurrent - totalInvested;
+                  const gainPercent = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
 
-    {/* TOTAL PERFORMANCE */}
-    <div>
-      <h3 className="text-lg font-semibold text-white mb-4">📊 Total Portfolio</h3>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-4 rounded-lg border border-emerald-500">
-        <div>
-          <p className="text-sm text-slate-400 mb-1">Total Invested</p>
-          <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_invested, user?.default_currency || 'INR', 'en-IN')}</p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-400 mb-1">Current Value</p>
-          <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_current, user?.default_currency || 'INR', 'en-IN')}</p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-400 mb-1">Total Gain/Loss</p>
-          <p className={`text-2xl font-bold ${performance.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {performance.total_gain >= 0 ? '+' : ''}{formatCurrency(performance.total_gain, user?.default_currency || 'INR', 'en-IN')}
-          </p>
-        </div>
-        <div>
-          <p className="text-sm text-slate-400 mb-1">Returns</p>
-          <div className={`flex items-center space-x-2 ${performance.total_gain_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {performance.total_gain_percent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-            <p className="text-2xl font-bold">{performance.total_gain_percent >= 0 ? '+' : ''}{performance.total_gain_percent.toFixed(2)}%</p>
+                  return (
+                    <>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Invested</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Current Value</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Gain/Loss</p>
+                        <p className={`text-2xl font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Returns</p>
+                        <div className={`flex items-center space-x-2 ${gainPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {gainPercent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+                          <p className="text-2xl font-bold">{gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%</p>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* MUTUAL FUNDS PERFORMANCE */}
+          {holdings.filter(h => h.asset_type === "MUTUAL_FUND").length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-blue-400 mb-4">💰 Mutual Funds Performance</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
+                {(() => {
+                  const mfData = holdings.filter(h => h.asset_type === "MUTUAL_FUND");
+                  const totalInvested = mfData.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
+                  const totalCurrent = mfData.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_nav || h.purchase_price)), 0);
+                  const gain = totalCurrent - totalInvested;
+                  const gainPercent = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+
+                  return (
+                    <>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Invested</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Current Value</p>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Gain/Loss</p>
+                        <p className={`text-2xl font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-400 mb-1">Returns</p>
+                        <div className={`flex items-center space-x-2 ${gainPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {gainPercent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+                          <p className="text-2xl font-bold">{gainPercent >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%</p>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+
+          {/* TOTAL PERFORMANCE */}
+          <div>
+            <h3 className="text-lg font-semibold text-white mb-4">📊 Total Portfolio</h3>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-4 rounded-lg border border-emerald-500">
+              <div>
+                <p className="text-sm text-slate-400 mb-1">Total Invested</p>
+                <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_invested, user?.default_currency || 'INR', 'en-IN')}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-400 mb-1">Current Value</p>
+                <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_current, user?.default_currency || 'INR', 'en-IN')}</p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-400 mb-1">Total Gain/Loss</p>
+                <p className={`text-2xl font-bold ${performance.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {performance.total_gain >= 0 ? '+' : ''}{formatCurrency(performance.total_gain, user?.default_currency || 'INR', 'en-IN')}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-slate-400 mb-1">Returns</p>
+                <div className={`flex items-center space-x-2 ${performance.total_gain_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {performance.total_gain_percent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+                  <p className="text-2xl font-bold">{performance.total_gain_percent >= 0 ? '+' : ''}{performance.total_gain_percent.toFixed(2)}%</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
-  </div>
-)}
+      )}
 
       <div className="glass-card p-6">
         <h2 className="text-2xl font-bold text-white mb-6">Your Holdings</h2>
@@ -683,9 +722,17 @@ const Portfolio = () => {
                     return (
                       <div key={holding.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="flex-1">
-                            <p className="font-medium text-white">{holding.symbol || 'Stock'}</p>
-                            <p className="text-sm text-slate-400">{holding.name}</p>
+                          <div className="flex flex-1 items-center gap-3">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                              checked={selectedHoldings.includes(holding.id)}
+                              onChange={() => toggleHoldingSelection(holding.id)}
+                            />
+                            <div>
+                              <p className="font-medium text-white">{holding.symbol || 'Stock'}</p>
+                              <p className="text-sm text-slate-400">{holding.name}</p>
+                            </div>
                           </div>
                           <div className="text-right">
                             <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -727,6 +774,9 @@ const Portfolio = () => {
                           <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
                             <ArrowDown className="w-4 h-4 mr-2" /> Sell
                           </Button>
+                          <Button onClick={() => handleDeleteHolding(holding.id)} size="sm" className="bg-slate-700 hover:bg-rose-600 text-white ml-2" title="Delete Holding">
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     );
@@ -751,9 +801,17 @@ const Portfolio = () => {
                     return (
                       <div key={holding.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="flex-1">
-                            <p className="font-medium text-white">{holding.scheme_name}</p>
-                            <p className="text-sm text-slate-400">Mutual Fund</p>
+                          <div className="flex flex-1 items-center gap-3">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                              checked={selectedHoldings.includes(holding.id)}
+                              onChange={() => toggleHoldingSelection(holding.id)}
+                            />
+                            <div>
+                              <p className="font-medium text-white">{holding.scheme_name}</p>
+                              <p className="text-sm text-slate-400">Mutual Fund</p>
+                            </div>
                           </div>
                           <div className="text-right">
                             <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
@@ -794,6 +852,9 @@ const Portfolio = () => {
                           </Button>
                           <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
                             <ArrowDown className="w-4 h-4 mr-2" /> Sell
+                          </Button>
+                          <Button onClick={() => handleDeleteHolding(holding.id)} size="sm" className="bg-slate-700 hover:bg-rose-600 text-white ml-2" title="Delete Holding">
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </div>
