@@ -2837,6 +2837,8 @@ async def forgot_password(request_data: dict):
     try:
         email = request_data.get("email")
         
+        logger.info(f"Forgot password request for email: {email}")
+        
         if not email:
             return JSONResponse(
                 content={"error": "Email is required"},
@@ -2845,6 +2847,8 @@ async def forgot_password(request_data: dict):
         
         # Find user by email
         user = await db.users.find_one({"email": {"$regex": f"^{email.strip().lower()}$", "$options": "i"}})
+        
+        logger.info(f"User search result for {email}: {'Found' if user else 'Not Found'}")
         
         if not user:
             # Don't reveal if email exists (security)
@@ -2855,6 +2859,7 @@ async def forgot_password(request_data: dict):
         
         # Create reset token
         reset_token = create_password_reset_record(db, user["_id"], email)
+        logger.info(f"Created reset token for user {user.get('_id')}")
         
         # Send email
         email_sent = send_password_reset_email(
@@ -2862,6 +2867,8 @@ async def forgot_password(request_data: dict):
             reset_token=reset_token,
             user_name=user.get("full_name", "User")
         )
+        
+        logger.info(f"Email sending result: {email_sent}")
         
         if email_sent:
             return JSONResponse(
