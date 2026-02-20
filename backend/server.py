@@ -418,6 +418,7 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         "transaction_date": "date",
         "trade_date": "date",
         "nav_price": "price",
+        "avgprice": "purchase_price",
         "avg_price": "purchase_price",
         "avg_cost": "purchase_price",
         "ltp": "price",
