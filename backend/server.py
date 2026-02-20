@@ -24,7 +24,7 @@ from auth_utils import (
     verify_password, get_password_hash, create_access_token, decode_access_token
 )
 from market_data import (
-    get_stock_info, get_historical_data, get_market_indices, 
+    get_stock_info, get_batch_stock_prices, get_historical_data, get_market_indices, 
     get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
 )
 from analytics import (
@@ -1509,7 +1509,7 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 
     stock_data = {}
     if stock_symbols:
-        stock_data = get_stock_info(stock_symbols)
+        stock_data = get_batch_stock_prices(stock_symbols)
         await broadcast_stock_prices(stock_data)
 
     mf_data = {}

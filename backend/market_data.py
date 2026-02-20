@@ -137,6 +137,29 @@ def _extract_close_prices(hist_df: pd.DataFrame, symbol: str):
     except Exception:
         return None, None
 
+def get_batch_stock_prices(symbols: List[str]) -> Dict[str, Dict]:
+    """Efficiently fetch just the current prices for a batch of symbols using yf.download."""
+    results = {}
+    if not symbols:
+        return results
+    try:
+        hist = yf.download(
+            tickers=" ".join(symbols),
+            period="5d",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=False,
+        )
+        for symbol in symbols:
+            current_price, prev_close = _extract_close_prices(hist, symbol)
+            if current_price is not None:
+                results[symbol] = {"current_price": float(current_price)}
+    except Exception as e:
+        logger.error(f"Error fetching batch prices for {symbols}: {e}")
+    return results
+
 def _build_market_point(name: str, current_price: float, prev_close: float, symbol: Optional[str] = None) -> Dict:
     change = current_price - prev_close
     change_percent = (change / prev_close) * 100 if prev_close else 0
