@@ -710,17 +710,25 @@ const Portfolio = () => {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-white">Your Holdings</h2>
           {holdings.length > 0 && (
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="selectAllHoldings"
-                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                checked={selectedHoldings.length === holdings.length && holdings.length > 0}
-                onChange={toggleAllHoldings}
-              />
-              <label htmlFor="selectAllHoldings" className="text-sm text-slate-300 font-medium cursor-pointer select-none">
-                Select All
-              </label>
+            <div className="flex items-center gap-4">
+              {selectedHoldings.length > 0 && (
+                <Button onClick={handleDeleteSelected} size="sm" className="bg-rose-600 hover:bg-rose-700 text-white">
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Selected ({selectedHoldings.length})
+                </Button>
+              )}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="selectAllHoldings"
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                  checked={selectedHoldings.length === holdings.length && holdings.length > 0}
+                  onChange={toggleAllHoldings}
+                />
+                <label htmlFor="selectAllHoldings" className="text-sm text-slate-300 font-medium cursor-pointer select-none">
+                  Select All
+                </label>
+              </div>
             </div>
           )}
         </div>

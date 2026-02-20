@@ -418,6 +418,11 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         "transaction_date": "date",
         "trade_date": "date",
         "nav_price": "price",
+        "avg_price": "purchase_price",
+        "avg_cost": "purchase_price",
+        "ltp": "price",
+        "qty": "quantity",
+        "inv_amt": "total_amount",
     }
     df = df.rename(columns={k: v for k, v in column_aliases.items() if k in df.columns})
 
