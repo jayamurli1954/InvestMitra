@@ -21,6 +21,7 @@ export default function Transactions() {
     transaction_date: new Date().toISOString().split('T')[0],
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null);
+  const [selectedTransactions, setSelectedTransactions] = useState([]);
 
   const fetchTransactions = async () => {
     setIsLoading(true);
@@ -102,11 +103,48 @@ export default function Transactions() {
       }
 
       setTransactions(transactions.filter(t => t.id !== id));
+      setSelectedTransactions(selectedTransactions.filter(txId => txId !== id));
       setShowDeleteConfirm(null);
       toast({ title: 'Success', description: 'Transaction deleted successfully.' });
     } catch (err) {
       setError(err.message);
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const toggleTransactionSelection = (id) => {
+    setSelectedTransactions(prev =>
+      prev.includes(id) ? prev.filter(txId => txId !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAllTransactions = () => {
+    if (selectedTransactions.length === transactions.length && transactions.length > 0) {
+      setSelectedTransactions([]);
+    } else {
+      setSelectedTransactions(transactions.map(t => t.id));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedTransactions.length === 0) return;
+    if (!window.confirm(`Are you sure you want to delete ${selectedTransactions.length} transaction(s)?`)) return;
+
+    try {
+      await Promise.all(
+        selectedTransactions.map((id) =>
+          fetch(`${API}/transactions/${id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          })
+        )
+      );
+      toast({ title: 'Success', description: `${selectedTransactions.length} transaction(s) deleted successfully.` });
+      setSelectedTransactions([]);
+      fetchTransactions();
+    } catch (err) {
+      setError(err.message);
+      toast({ title: 'Error', description: 'Failed to delete some transactions', variant: 'destructive' });
     }
   };
 
@@ -135,7 +173,18 @@ export default function Transactions() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-900">Transactions</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold text-gray-900">Transactions</h1>
+          {selectedTransactions.length > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Selected ({selectedTransactions.length})
+            </button>
+          )}
+        </div>
         <button
           onClick={() => setShowForm(!showForm)}
           className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
@@ -237,6 +286,15 @@ export default function Transactions() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
+              <th className="px-6 py-3 text-left w-12">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  checked={selectedTransactions.length === transactions.length && transactions.length > 0}
+                  onChange={toggleAllTransactions}
+                  title="Select All"
+                />
+              </th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Symbol</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Type</th>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Quantity</th>
@@ -249,11 +307,19 @@ export default function Transactions() {
           <tbody>
             {transactions.length === 0 ? (
               <tr>
-                <td colSpan="7" className="text-center py-12 text-gray-500">No transactions found.</td>
+                <td colSpan="8" className="text-center py-12 text-gray-500">No transactions found.</td>
               </tr>
             ) : (
               transactions.map((tx) => (
                 <tr key={tx.id} className="border-b hover:bg-gray-50">
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      checked={selectedTransactions.includes(tx.id)}
+                      onChange={() => toggleTransactionSelection(tx.id)}
+                    />
+                  </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">{tx.symbol}</td>
                   <td className="px-6 py-4 text-sm">
                     <span className={`flex items-center gap-1 ${tx.transaction_type === 'buy' ? 'text-green-600' : 'text-red-600'}`}>
