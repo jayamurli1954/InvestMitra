@@ -396,7 +396,7 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
 
     normalized_columns = {}
     for col in df.columns:
-        normalized = str(col).strip().lower().replace("-", "_").replace(" ", "_")
+        normalized = str(col).strip().lower().replace("-", "_").replace(" ", "_").replace(".", "").replace("’", "")
         normalized = "_".join([part for part in normalized.split("_") if part])
         normalized_columns[col] = normalized
     df = df.rename(columns=normalized_columns)
@@ -423,6 +423,7 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         "ltp": "price",
         "qty": "quantity",
         "inv_amt": "total_amount",
+        "name": "symbol",
     }
     df = df.rename(columns={k: v for k, v in column_aliases.items() if k in df.columns})
 
@@ -457,10 +458,10 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
 
     def _normalize_date(value: Any, field_name: str) -> str:
         if _is_blank(value):
-            raise ValueError(f"{field_name} is required")
+            return datetime.now(timezone.utc).strftime("%Y-%m-%d")
         parsed = pd.to_datetime(value, errors="coerce", dayfirst=True)
         if pd.isna(parsed):
-            raise ValueError(f"Invalid {field_name}: {value}")
+            return datetime.now(timezone.utc).strftime("%Y-%m-%d")
         return parsed.strftime("%Y-%m-%d")
 
     async def _resolve_stock_name(symbol_value: Optional[str]) -> Optional[str]:
