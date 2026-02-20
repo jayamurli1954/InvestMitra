@@ -204,6 +204,14 @@ const Portfolio = () => {
     );
   };
 
+  const toggleAllHoldings = () => {
+    if (selectedHoldings.length === holdings.length && holdings.length > 0) {
+      setSelectedHoldings([]);
+    } else {
+      setSelectedHoldings(holdings.map(h => h.id));
+    }
+  };
+
   const handleDeleteHolding = async (holdingId) => {
     if (!window.confirm("Are you sure you want to delete this holding?")) return;
     try {
@@ -699,7 +707,23 @@ const Portfolio = () => {
       )}
 
       <div className="glass-card p-6">
-        <h2 className="text-2xl font-bold text-white mb-6">Your Holdings</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white">Your Holdings</h2>
+          {holdings.length > 0 && (
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="selectAllHoldings"
+                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                checked={selectedHoldings.length === holdings.length && holdings.length > 0}
+                onChange={toggleAllHoldings}
+              />
+              <label htmlFor="selectAllHoldings" className="text-sm text-slate-300 font-medium cursor-pointer select-none">
+                Select All
+              </label>
+            </div>
+          )}
+        </div>
         {holdings.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-slate-400 mb-4">No holdings yet. Start building your portfolio!</p>
