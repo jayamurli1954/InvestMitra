@@ -14,6 +14,7 @@ const Auth = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showDisclaimerModal, setShowDisclaimerModal] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(false);
+  const [authStatus, setAuthStatus] = useState({ type: '', message: '' });
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -39,11 +40,15 @@ const Auth = () => {
 
   const handleQuickTestLogin = async () => {
     setLoading(true);
+    setAuthStatus({ type: '', message: '' });
     try {
       await login('test@example.com', 'Test123!@#');
+      setAuthStatus({ type: 'success', message: 'Quick login successful.' });
       toast.success('Quick login successful');
     } catch (error) {
       console.error('Quick login error:', error);
+      const errorMsg = error?.message || error?.response?.data?.detail || error?.response?.data?.message || error?.response?.data?.error || 'Quick login failed';
+      setAuthStatus({ type: 'error', message: errorMsg });
       toast.error('Quick login failed');
     } finally {
       setLoading(false);
@@ -55,22 +60,27 @@ const Auth = () => {
 
     if (!isLogin && !disclaimerAccepted) {
       setShowDisclaimerModal(true);
+      setAuthStatus({ type: 'error', message: 'Please accept the Investment Disclaimer to continue.' });
       toast.error('Please accept the Investment Disclaimer to continue');
       return;
     }
 
     setLoading(true);
+    setAuthStatus({ type: '', message: '' });
     try {
       if (isLogin) {
         await login(formData.email, formData.password);
+        setAuthStatus({ type: 'success', message: 'Logged in successfully.' });
         toast.success('Logged in successfully');
       } else {
         await register(formData.email, formData.password, formData.name, true);
+        setAuthStatus({ type: 'success', message: 'Account created successfully.' });
         toast.success('Account created successfully');
       }
     } catch (error) {
       console.error('Auth error:', error);
-      const errorMsg = error.response?.data?.detail || 'Authentication failed';
+      const errorMsg = error?.message || error?.response?.data?.detail || error?.response?.data?.message || error?.response?.data?.error || 'Authentication failed';
+      setAuthStatus({ type: 'error', message: errorMsg });
       toast.error(errorMsg);
     } finally {
       setLoading(false);
@@ -109,6 +119,18 @@ const Auth = () => {
           <h2 className="text-2xl font-bold text-white mb-6">
             {isLogin ? 'Welcome Back' : 'Create Account'}
           </h2>
+
+          {authStatus.message && (
+            <div
+              className={`mb-4 rounded border px-3 py-2 text-sm ${
+                authStatus.type === 'success'
+                  ? 'border-emerald-600/60 bg-emerald-900/30 text-emerald-300'
+                  : 'border-red-600/60 bg-red-900/30 text-red-300'
+              }`}
+            >
+              {authStatus.message}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {!isLogin && (
@@ -240,6 +262,7 @@ const Auth = () => {
                 setShowPassword(false);
                 setShowDisclaimerModal(false);
                 setDisclaimerAccepted(false);
+                setAuthStatus({ type: '', message: '' });
                 setFormData({ email: '', password: '', name: '' });
               }}
               className="w-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-semibold"
