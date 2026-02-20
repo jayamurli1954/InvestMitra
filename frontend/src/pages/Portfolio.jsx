@@ -290,14 +290,17 @@ const Portfolio = () => {
       const updated = response.data?.updated ?? 0;
       const skipped = response.data?.skipped ?? 0;
       const failed = response.data?.failed ?? 0;
+      const errors = response.data?.errors || [];
       const summary = `Upload complete: Added ${added}, Updated ${updated}, Skipped ${skipped}, Failed ${failed}`;
+
       const hasSuccess = added + updated > 0;
       if (hasSuccess) {
         toast.success(summary);
         setUploadStatus({ type: 'success', text: summary });
       } else if (failed > 0) {
-        toast.error(summary);
-        setUploadStatus({ type: 'error', text: summary });
+        const errorDetails = errors.length > 0 ? ': ' + errors.map(e => `${e.symbol || 'Row ' + e.row}: ${e.error}`).join('\n') : '';
+        toast.error(summary + errorDetails);
+        setUploadStatus({ type: 'error', text: summary + errorDetails });
       } else {
         toast.info(summary);
         setUploadStatus({ type: 'info', text: summary });
