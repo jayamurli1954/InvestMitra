@@ -402,12 +402,13 @@ const Portfolio = () => {
                 </Button>
                 <p className="text-slate-400">Strict CSV Column Headers Required:</p>
                 <div className="bg-slate-800 p-3 rounded-md border border-slate-700 font-mono text-xs text-emerald-400 overflow-x-auto mb-2">
-                  symbol, quantity, avg.price, type, asset_type, scheme_code, scheme_name
+                  symbol, quantity, avg.price, date, type, asset_type, scheme_code, scheme_name
                 </div>
                 <ul className="text-slate-400 list-disc list-inside text-sm">
                   <li><strong>symbol</strong>: Required for stocks (e.g. AFCONS, SBI)</li>
                   <li><strong>quantity</strong>: Number of shares/units</li>
                   <li><strong>avg.price</strong>: Average purchase price</li>
+                  <li><strong>date</strong>: Purchase date (YYYY-MM-DD or DD/MM/YYYY format)</li>
                   <li><strong>type</strong>: Must be exactly BUY or SELL</li>
                   <li><strong>asset_type</strong>: Must be exactly STOCK or MUTUAL_FUND</li>
                   <li><strong>scheme_code</strong> / <strong>scheme_name</strong>: Required ONLY if uploading Mutual Funds</li>
