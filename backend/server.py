@@ -517,6 +517,15 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
             symbol = None if _is_blank(symbol) else str(symbol).strip().upper()
             scheme_code = None if _is_blank(scheme_code) else str(scheme_code).strip()
 
+            # Smart normalization: if symbol is numerical, it's likely a mutual fund scheme code uploaded under 'Name'
+            if symbol and symbol.isdigit() and not scheme_code:
+                scheme_code = symbol
+                symbol = None
+            
+            # Automatically append .NS for Indian stocks if missing
+            if symbol and "." not in symbol:
+                symbol = f"{symbol}.NS"
+
             asset_symbol = symbol or scheme_code
             if not asset_symbol:
                 failed_count += 1
