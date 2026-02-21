@@ -32,7 +32,7 @@ def _safe_parse_date(date_str: Any) -> datetime:
             return datetime.now()
 
 
-def calculate_annualized_return(transactions: List[Dict], current_value: float) -> Dict[str, Any]:
+def calculate_annualized_return(transactions: List[Dict], current_value: float, holdings: List[Dict] = None) -> Dict[str, Any]:
     """Calculate annualized returns based on transaction history"""
     if not transactions:
         return {"cagr": 0, "years": 0, "total_return": 0}
@@ -44,9 +44,19 @@ def calculate_annualized_return(transactions: List[Dict], current_value: float) 
     years = max(0.01, years)
     
     # Calculate total invested
-    total_invested = sum(
-        t.get("total_amount", t.get("quantity", 0) * t.get("price", 0)) for t in transactions if t.get("transaction_type") == "buy"
-    )
+    if holdings is not None:
+        total_invested = sum(
+            h.get("quantity", 0) * h.get("purchase_price", 0) for h in holdings
+        )
+    else:
+        invested = 0
+        for t in transactions:
+            amt = t.get("total_amount", t.get("quantity", 0) * t.get("price", 0))
+            if t.get("transaction_type") == "buy":
+                invested += amt
+            elif t.get("transaction_type") == "sell":
+                invested -= amt
+        total_invested = max(0.0, float(invested))
     logger.info(f"Transactions in calculate_annualized_return: {transactions}")
     logger.info(f"Calculated total_invested in calculate_annualized_return: {total_invested}")
     
@@ -137,12 +147,9 @@ def calculate_sector_performance(holdings: List[Dict], transactions: List[Dict])
     for holding in holdings:
         sector = holding.get("sector", "Other")
         
-        # Calculate invested amount from transactions
-        buy_txns = [t for t in transactions 
-                   if t.get("symbol") == holding.get("symbol") and t.get("transaction_type") == "buy"]
-        
-        invested = sum(t.get("total_amount", t.get("quantity", 0) * t.get("price", 0)) for t in buy_txns)
-        current_value = holding["quantity"] * holding.get("current_price", 0)
+        # Calculate invested amount from actual current holding size
+        invested = holding.get("quantity", 0) * holding.get("purchase_price", 0)
+        current_value = holding.get("quantity", 0) * holding.get("current_price", 0)
         gain = current_value - invested
         
         if sector not in sector_data:
@@ -411,7 +418,7 @@ def generate_performance_summary(
         monthly_data = []
     else:
         # Original logic with transactions
-        annualized = calculate_annualized_return(transactions, current_portfolio_value)
+        annualized = calculate_annualized_return(transactions, current_portfolio_value, holdings)
         monthly_data = calculate_monthly_returns(transactions, current_portfolio_value)
         returns_list = [m["return"] for m in monthly_data] if monthly_data else []
         sharpe = calculate_sharpe_ratio(returns_list)
