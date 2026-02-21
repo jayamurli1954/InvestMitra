@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { 
+import {
   Menu,
   X,
-  LayoutDashboard, 
-  Briefcase, 
+  LayoutDashboard,
+  Briefcase,
   Eye,
   Receipt,
   FileText,
@@ -12,8 +12,8 @@ import {
   DollarSign,
   Activity,
   Sparkles,
-  Filter, 
-  TrendingUp, 
+  Filter,
+  TrendingUp,
   Target,
   BarChart3,
   PieChart,
@@ -41,23 +41,23 @@ const Layout = ({ children }) => {
   useEffect(() => {
     const checkMarketStatus = () => {
       const now = new Date();
-      
+
       // Convert to IST (UTC+5:30)
       const istOffset = 5.5 * 60 * 60 * 1000;
       const istTime = new Date(now.getTime() + istOffset);
-      
+
       const day = istTime.getUTCDay(); // 0 = Sunday, 6 = Saturday
       const hours = istTime.getUTCHours();
       const minutes = istTime.getUTCMinutes();
       const timeInMinutes = hours * 60 + minutes;
-      
+
       // Market hours: Monday-Friday, 9:15 AM - 3:30 PM IST
       const marketOpen = 9 * 60 + 15;  // 9:15 AM = 555 minutes
       const marketClose = 15 * 60 + 30; // 3:30 PM = 930 minutes
-      
+
       const isWeekday = day >= 1 && day <= 5; // Monday to Friday
       const isDuringMarketHours = timeInMinutes >= marketOpen && timeInMinutes <= marketClose;
-      
+
       if (isWeekday && isDuringMarketHours) {
         setMarketStatus({ isOpen: true, text: 'Markets Open' });
       } else if (isWeekday && timeInMinutes < marketOpen) {
@@ -72,7 +72,7 @@ const Layout = ({ children }) => {
     checkMarketStatus();
     // Update every minute
     const interval = setInterval(checkMarketStatus, 60000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -131,11 +131,10 @@ const Layout = ({ children }) => {
               key={item.path}
               to={item.path}
               data-testid={`nav-${item.label.toLowerCase()}`}
-              className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
-                isActive
+              className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${isActive
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                   : 'text-slate-400 hover:bg-white/5 hover:text-white'
-              }`}
+                }`}
             >
               <Icon className="w-6 h-6" />
               <span className="font-semibold text-lg">{item.label}</span>
@@ -233,7 +232,7 @@ const Layout = ({ children }) => {
           {children}
         </div>
 
-                {/* Footer */}
+        {/* Footer */}
         <footer className="border-t border-white/10 bg-slate-900/60 px-4 md:px-8 py-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex flex-wrap items-center gap-2">
@@ -265,6 +264,7 @@ const Layout = ({ children }) => {
             <div className="text-xs text-slate-400 space-y-1">
               <p>(c) {new Date().getFullYear()} InvestMitra. All rights reserved.</p>
               <p>For educational purposes only. Not investment advice.</p>
+              <p className="mt-2 text-[10px] text-slate-500/70">Version v1.0.0</p>
             </div>
           </div>
         </footer>
