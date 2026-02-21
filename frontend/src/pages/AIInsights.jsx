@@ -10,7 +10,7 @@ const renderContent = (data) => {
   if (typeof data === 'string') {
     return <p className="text-slate-300">{data}</p>;
   }
-  
+
   if (Array.isArray(data)) {
     return data.map((item, idx) => (
       <div key={idx} className="mb-2 last:mb-0">
@@ -22,7 +22,7 @@ const renderContent = (data) => {
       </div>
     ));
   }
-  
+
   if (typeof data === 'object' && data !== null) {
     return (
       <div className="space-y-2">
@@ -39,7 +39,7 @@ const renderContent = (data) => {
       </div>
     );
   }
-  
+
   return <p className="text-slate-300">{String(data)}</p>;
 };
 
@@ -383,11 +383,14 @@ const AIInsights = () => {
         <div className="flex items-start space-x-3">
           <Sparkles className="w-6 h-6 text-blue-400 flex-shrink-0 mt-1" />
           <div>
-            <h3 className="text-lg font-semibold text-white mb-2">About AI Insights</h3>
-            <p className="text-sm text-slate-400">
-              These insights are generated using advanced AI models trained on market data and investment principles. 
-              They provide personalized recommendations based on your current portfolio composition, sector allocation, 
+            <h3 className="text-lg font-semibold text-white mb-2">About AI Insights & Disclaimer</h3>
+            <p className="text-sm text-slate-400 mb-3">
+              These insights are generated using advanced AI models trained on market data and investment principles.
+              They provide personalized optimization suggestions based on your current portfolio composition, sector allocation,
               and market conditions. Use these as guidance along with your own research and risk tolerance.
+            </p>
+            <p className="text-sm font-semibold text-rose-400/80">
+              Disclaimer: This information is for educational purposes only. For actual investment decisions, please consult a qualified SEBI registered portfolio manager or financial adviser.
             </p>
           </div>
         </div>

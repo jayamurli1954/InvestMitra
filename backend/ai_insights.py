@@ -207,14 +207,15 @@ async def generate_portfolio_optimization(
     sector_table = format_sector_allocation(sector_allocation)
     
     system_prompt = (
-        "You are a portfolio analysis assistant providing educational information. "
-        "Analyze the given Indian stock portfolio based on the user's risk profile and advanced metrics. "
-        "Provide general observations in JSON format. This is for educational purposes only, not financial advice. "
+        "You are an expert Indian portfolio manager and financial analyst. "
+        "Analyze the given stock and mutual fund portfolio deeply based on the user's risk profile and advanced metrics. "
+        "Provide very specific, actionable, and pinpointed observations in JSON format. Do not use generic statements. "
+        "Explicitly name the specific assets (stocks/MFs) and sectors in your recommendations. "
         "Respond ONLY with a valid JSON object, no other text."
     )
     
     user_prompt = f"""
-Analyze this Indian stock portfolio and provide educational observations.
+Analyze this Indian stock portfolio and provide specific, actionable insights.
 
 **User Risk Profile:** {risk_profile}
 
@@ -226,37 +227,40 @@ Analyze this Indian stock portfolio and provide educational observations.
 **Holdings Summary:**
 {len(holdings)} stocks across {len(sector_allocation)} sectors
 
+**Detailed Holdings:**
+{holdings_table}
+
 **Sector Distribution:**
 {sector_table}
 
 **Task:**
-Provide general observations about this portfolio structure in JSON format, keeping the user's risk profile in mind.
+Provide pinpointed, actionable optimization suggestions for this portfolio in JSON format. 
 
 **IMPORTANT:** 
-- This is for educational purposes only
-- Provide general portfolio structure observations
-- Do NOT provide specific buy/sell recommendations
-- Tailor observations to the user's risk profile ({risk_profile})
+- Avoid generalized statements. Be highly specific.
+- Explicitly name which specific assets (symbols/companies) or sectors are dragging performance, causing concentration risk, or represent opportunities.
+- Suggest whether to hold, buy more, or sell specific positions based on the sector distribution and risk profile.
+- Tailor observations strictly to the user's risk profile ({risk_profile}).
 
 **Output Format (JSON ONLY):**
 ```json
 {{
     "optimization_suggestions": {{
         "rebalancing": [
-            "General observation about portfolio balance based on risk profile.",
-            "Observation about sector weights."
+            "Specific recommendation on which exact asset or sector to reduce/increase to balance the portfolio.",
+            "Specific observation about a current holding's weight."
         ],
         "diversification": [
-            "Observation about sector coverage.",
-            "Observation about diversification level."
+            "Specific advice on which sectors are over-represented and which missing sectors to add.",
+            "Names of specific holdings that contribute to concentration risk."
         ],
         "risk_management": [
-            "Observation on volatility and max drawdown relative to risk profile.",
-            "Comment on concentration risk."
+            "Pinpointed suggestion on managing downside risk for specific volatile holdings.",
+            "Actionable step to improve max drawdown metrics."
         ],
         "risk_adjusted_performance": [
-            "Observation on the Sharpe Ratio.",
-            "Comment on whether the returns justify the risk taken."
+            "Specific feedback on why the Sharpe Ratio is at its current level, naming the responsible assets.",
+            "Actionable step to improve risk-adjusted returns."
         ]
     }}
 }}
