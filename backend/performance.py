@@ -18,6 +18,19 @@ def calculate_cagr(beginning_value: float, ending_value: float, years: float) ->
         return 0.0
     return (pow(ending_value / beginning_value, 1 / years) - 1) * 100
 
+def _safe_parse_date(date_str: Any) -> datetime:
+    if not date_str:
+        return datetime.now()
+    if isinstance(date_str, datetime):
+        return date_str
+    try:
+        return datetime.fromisoformat(str(date_str).replace('Z', '+00:00'))
+    except Exception:
+        try:
+            return datetime.strptime(str(date_str), "%Y-%m-%d")
+        except Exception:
+            return datetime.now()
+
 
 def calculate_annualized_return(transactions: List[Dict], current_value: float) -> Dict[str, Any]:
     """Calculate annualized returns based on transaction history"""
@@ -25,14 +38,14 @@ def calculate_annualized_return(transactions: List[Dict], current_value: float) 
         return {"cagr": 0, "years": 0, "total_return": 0}
     
     # Get earliest transaction date
-    earliest_date = min(datetime.fromisoformat(t["transaction_date"]) for t in transactions)
+    earliest_date = min(_safe_parse_date(t.get("transaction_date")) for t in transactions)
     today = datetime.now()
     years = (today - earliest_date).days / 365.25
     years = max(0.01, years)
     
     # Calculate total invested
     total_invested = sum(
-        t["total_amount"] for t in transactions if t["transaction_type"] == "buy"
+        t.get("total_amount", t.get("quantity", 0) * t.get("price", 0)) for t in transactions if t.get("transaction_type") == "buy"
     )
     logger.info(f"Transactions in calculate_annualized_return: {transactions}")
     logger.info(f"Calculated total_invested in calculate_annualized_return: {total_invested}")
@@ -126,9 +139,9 @@ def calculate_sector_performance(holdings: List[Dict], transactions: List[Dict])
         
         # Calculate invested amount from transactions
         buy_txns = [t for t in transactions 
-                   if t["symbol"] == holding["symbol"] and t["transaction_type"] == "buy"]
+                   if t.get("symbol") == holding.get("symbol") and t.get("transaction_type") == "buy"]
         
-        invested = sum(t["total_amount"] for t in buy_txns)
+        invested = sum(t.get("total_amount", t.get("quantity", 0) * t.get("price", 0)) for t in buy_txns)
         current_value = holding["quantity"] * holding.get("current_price", 0)
         gain = current_value - invested
         
@@ -171,7 +184,7 @@ def calculate_monthly_returns(transactions: List[Dict], current_portfolio_value:
     monthly_data = {}
     
     for txn in transactions:
-        date = datetime.fromisoformat(txn["transaction_date"])
+        date = _safe_parse_date(txn.get("transaction_date"))
         month_key = date.strftime("%Y-%m")
         
         if month_key not in monthly_data:
@@ -181,10 +194,11 @@ def calculate_monthly_returns(transactions: List[Dict], current_portfolio_value:
                 "value": 0
             }
         
-        if txn["transaction_type"] == "buy":
-            monthly_data[month_key]["invested"] += txn["total_amount"]
-        elif txn["transaction_type"] == "sell":
-            monthly_data[month_key]["invested"] -= txn["total_amount"]
+        amt = txn.get("total_amount", txn.get("quantity", 0) * txn.get("price", 0))
+        if txn.get("transaction_type") == "buy":
+            monthly_data[month_key]["invested"] += amt
+        elif txn.get("transaction_type") == "sell":
+            monthly_data[month_key]["invested"] -= amt
     
     # Sort by date
     sorted_months = sorted(monthly_data.items())
@@ -234,7 +248,7 @@ def calculate_win_rate(transactions: List[Dict]) -> Dict[str, Any]:
     Calculate win rate from sell transactions by matching with buy transactions
     Uses FIFO (First In, First Out) method to match buy and sell lots
     """
-    sell_transactions = [t for t in transactions if t["transaction_type"] == "sell"]
+    sell_transactions = [t for t in transactions if t.get("transaction_type") == "sell"]
 
     if not sell_transactions:
         return {"win_rate": 0, "winning_trades": 0, "losing_trades": 0, "total_trades": 0}
@@ -242,7 +256,7 @@ def calculate_win_rate(transactions: List[Dict]) -> Dict[str, Any]:
     # Group buy transactions by symbol for efficient lookup
     buy_transactions_by_symbol = {}
     for t in transactions:
-        if t["transaction_type"] == "buy":
+        if t.get("transaction_type") == "buy":
             symbol = t.get("symbol", "")
             if symbol not in buy_transactions_by_symbol:
                 buy_transactions_by_symbol[symbol] = []

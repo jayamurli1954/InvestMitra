@@ -32,6 +32,7 @@ from analytics import (
     calculate_rebalancing_suggestions,
     generate_stock_recommendations,
 )
+from performance import generate_performance_summary
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -2344,6 +2345,12 @@ async def get_performance_report(
         current_value = 0
         holdings_with_prices = []
         
+        # Batch fetch all stock prices for efficiency
+        stock_symbols = list(set([h.get("symbol") for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]))
+        batch_stock_prices = {}
+        if stock_symbols:
+            batch_stock_prices = get_batch_stock_prices(stock_symbols)
+        
         for holding in holdings:
             try:
                 current_price = 0.0
@@ -2355,13 +2362,11 @@ async def get_performance_report(
                             current_price = float(mf_data.get("current_nav", 0) or 0)
                 else:
                     symbol = holding.get("symbol")
-                    if symbol:
-                        stock_data = get_stock_info(symbol)
-                        if stock_data and symbol in stock_data:
-                            current_price = float(stock_data[symbol].get("current_price", 0) or 0)
+                    if symbol and symbol in batch_stock_prices:
+                        current_price = float(batch_stock_prices[symbol].get("current_price", 0) or 0)
 
                 if current_price <= 0:
-                    current_price = float(holding.get("current_price", holding.get("purchase_price", 0)) or 0)
+                    current_price = float(holding.get("current_price") or holding.get("purchase_price", 0) or 0)
 
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
@@ -2375,7 +2380,7 @@ async def get_performance_report(
                 holding_key = holding.get('symbol') or holding.get('scheme_code') or 'unknown'
                 logger.error(f"Error fetching price for {holding_key}: {e}")
                 # Use existing price if fetch fails
-                current_price = holding.get("current_price", holding.get("purchase_price", 0))
+                current_price = float(holding.get("current_price") or holding.get("purchase_price", 0) or 0)
                 holding_value = holding["quantity"] * current_price
                 current_value += holding_value
                 holdings_with_prices.append({
