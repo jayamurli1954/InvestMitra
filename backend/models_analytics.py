@@ -6,7 +6,7 @@ COMPLETELY INDEPENDENT from main watchlist collection
 This ensures analytics features cannot break existing watchlist functionality.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from datetime import datetime
 import uuid

@@ -30,17 +30,10 @@ jobs:
       - name: Install backend dependencies
         run: pip install -r backend/requirements.txt
 
-      - name: Run backend tests (if present)
-        shell: bash
+      - name: Run backend tests
+        working-directory: backend
         run: |
-          set -euo pipefail
-          shopt -s nullglob
-          test_files=(tests/test_*.py tests/*_test.py backend/tests/test_*.py backend/tests/*_test.py)
-          if [ ${#test_files[@]} -eq 0 ]; then
-            echo "No backend tests found. Skipping pytest."
-            exit 0
-          fi
-          python -m pytest -q "${test_files[@]}"
+          python -m pytest
 
   frontend:
     name: Frontend build

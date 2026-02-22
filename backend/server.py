@@ -33,6 +33,7 @@ from analytics import (
     generate_stock_recommendations,
 )
 from performance import generate_performance_summary
+from backtesting import backtest_strategy, calculate_strategy_score, generate_backtest_recommendations
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -2689,7 +2690,7 @@ async def get_ai_stock_analysis(
 app.include_router(api_router)
 
 @app.get("/")
-async def root():
+async def app_root():
     return {"message": "InvestMitra Backend is Running. Go to /docs for API documentation."}
 
 @app.get("/health")
