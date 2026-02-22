@@ -22,7 +22,7 @@ load_dotenv(".env.local")
 load_dotenv(".env.example")
 
 # Clean any quotes off the URL
-fallback_url = "mongodb+srv://jayamurli1954:gs4MO878TN0HWFg0@cluster0.48as0iv.mongodb.net/investment_framework?retryWrites=true&w=majority&appName=Cluster0"
+fallback_url = "mongodb://localhost:27017"
 MONGO_URL = os.environ.get("MONGO_URL", fallback_url).strip('"').strip("'")
 DB_NAME = os.environ.get("DB_NAME", "investment_framework")
 
