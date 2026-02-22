@@ -46,7 +46,24 @@ const renderContent = (data) => {
 const AIInsights = () => {
   const [optimization, setOptimization] = useState(null);
   const [predictions, setPredictions] = useState(null);
-  const [loading, setLoading] = useState({ optimization: false, predictions: false });
+  const [mlData, setMlData] = useState([]);
+  const [loading, setLoading] = useState({ optimization: false, predictions: false, mlData: true });
+
+  useEffect(() => {
+    const fetchMlData = async () => {
+      try {
+        const response = await axios.get(`${API}/ai/ml-predictions`);
+        if (response.data && response.data.predictions) {
+          setMlData(response.data.predictions);
+        }
+      } catch (error) {
+        console.error('Error fetching ML predictions:', error);
+      } finally {
+        setLoading(prev => ({ ...prev, mlData: false }));
+      }
+    };
+    fetchMlData();
+  }, []);
 
   const fetchOptimization = async () => {
     setLoading({ ...loading, optimization: true });
@@ -87,6 +104,73 @@ const AIInsights = () => {
           </h1>
           <p className="text-slate-400">Get personalized recommendations powered by AI</p>
         </div>
+      </div>
+
+      {/* Quantitative ML Predictions */}
+      <div className="glass-card p-6">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
+          <Target className="w-6 h-6 mr-3 text-rose-400" />
+          Quantitative Portfolio Risk Intelligence
+        </h2>
+        {loading.mlData ? (
+          <div className="flex justify-center p-8">
+            <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
+          </div>
+        ) : mlData.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {mlData.map((item, idx) => (
+              <div key={idx} className="bg-slate-800/80 rounded-xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors">
+                <div className="flex justify-between items-start mb-3">
+                  <h3 className="text-xl font-bold text-white">{item.symbol}</h3>
+                  <span className={`px-2 py-1 rounded text-xs font-bold ${item.ai_rating >= 7 ? 'bg-emerald-500/20 text-emerald-400' :
+                      item.ai_rating >= 4 ? 'bg-amber-500/20 text-amber-400' :
+                        'bg-rose-500/20 text-rose-400'
+                    }`}>
+                    ★ {item.ai_rating}/10
+                  </span>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-400">Risk Score</span>
+                      <span className="font-medium text-slate-200">{item.risk_score}/10</span>
+                    </div>
+                    <div className="w-full bg-slate-700 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${item.risk_score > 7 ? 'bg-rose-500' :
+                          item.risk_score > 4 ? 'bg-amber-500' : 'bg-emerald-500'
+                        }`} style={{ width: `${item.risk_score * 10}%` }}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-400">Trend</span>
+                      <span className={`font-medium ${item.trend_signal === 'Bullish' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {item.trend_signal}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="bg-slate-900/50 rounded-lg p-3 text-sm">
+                    <p className="text-slate-400 mb-2 font-medium">30-Day Monte Carlo Risk</p>
+                    <div className="flex justify-between mb-1">
+                      <span className="text-slate-500">Exp. Return:</span>
+                      <span className={item.monte_carlo.expected_return >= 0 ? "text-emerald-400" : "text-rose-400"}>
+                        {(item.monte_carlo.expected_return * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">5% Worst Case:</span>
+                      <span className="text-rose-400 font-medium">
+                        {(item.monte_carlo.worst_case_5pct * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-slate-400">No quantitative predictions available for your portfolio yet.</p>
+        )}
       </div>
 
       {/* Action Cards */}

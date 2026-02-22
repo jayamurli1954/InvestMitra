@@ -2687,6 +2687,30 @@ async def get_ai_stock_analysis(
         logger.error(f"Error generating stock analysis: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/ai/ml-predictions")
+async def get_ml_predictions(current_user: User = Depends(require_auth)):
+    """Fetch all pre-calculated nightly ML predictions for the user's portfolio."""
+    try:
+        holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
+        symbols = [h.get("symbol") for h in holdings if h.get("symbol")]
+        
+        # If the user has no portfolio, show the default demo stocks
+        if not symbols:
+            symbols = ["TCS.NS", "INFY.NS", "HDFCBANK.NS", "RELIANCE.NS"]
+            
+        # MongoDB query to fetch the specific AI predictions for those stocks
+        # Discard the internal _id so it conforms to standard JSON
+        predictions = await db.ml_predictions.find(
+            {"symbol": {"$in": symbols}}, 
+            {"_id": 0}
+        ).to_list(length=None)
+        
+        return {"predictions": predictions}
+        
+    except Exception as e:
+        logger.error(f"Error fetching ML predictions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 app.include_router(api_router)
 
 @app.get("/")
