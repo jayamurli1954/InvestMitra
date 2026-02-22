@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket
+from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket, BackgroundTasks
 import pandas as pd
 from websocket_manager import manager
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -2688,7 +2688,7 @@ async def get_ai_stock_analysis(
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/ai/ml-predictions")
-async def get_ml_predictions(current_user: User = Depends(require_auth)):
+async def get_ml_predictions(background_tasks: BackgroundTasks, current_user: User = Depends(require_auth)):
     """Fetch all pre-calculated nightly ML predictions for the user's portfolio."""
     try:
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
@@ -2704,6 +2704,15 @@ async def get_ml_predictions(current_user: User = Depends(require_auth)):
             {"symbol": {"$in": symbols}}, 
             {"_id": 0}
         ).to_list(length=None)
+        
+        # Auto-trigger model population on empty
+        if not predictions:
+            try:
+                from train_models import run_training
+                background_tasks.add_task(run_training, False)
+                logger.info("Triggered ML predictions on-demand securely in background task.")
+            except Exception as ml_err:
+                logger.error(f"Failed to background train models: {ml_err}")
         
         return {"predictions": predictions}
         
