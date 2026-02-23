@@ -2688,7 +2688,7 @@ async def get_ai_stock_analysis(
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/ai/ml-predictions")
-async def get_ml_predictions(background_tasks: BackgroundTasks, current_user: User = Depends(require_auth)):
+async def get_ml_predictions(background_tasks: BackgroundTasks, refresh: bool = False, current_user: User = Depends(require_auth)):
     """Fetch all pre-calculated nightly ML predictions for the user's portfolio."""
     try:
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
@@ -2705,8 +2705,8 @@ async def get_ml_predictions(background_tasks: BackgroundTasks, current_user: Us
             {"_id": 0}
         ).to_list(length=None)
         
-        # Auto-trigger model population on empty
-        if not predictions:
+        # Auto-trigger model population on empty or manual refresh
+        if not predictions or refresh:
             try:
                 from train_models import run_training
                 background_tasks.add_task(run_training, False)

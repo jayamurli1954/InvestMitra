@@ -121,6 +121,7 @@ async def process_stock(symbol: str, db):
         # Build Document
         document = {
             "symbol": symbol,
+            "current_price": round(float(df["close"].iloc[-1]), 2),
             "risk_score": risk_score,
             "ai_rating": ai_rating,
             "monte_carlo": monte_carlo,

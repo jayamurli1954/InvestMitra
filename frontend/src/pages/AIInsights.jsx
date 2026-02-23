@@ -49,19 +49,27 @@ const AIInsights = () => {
   const [mlData, setMlData] = useState([]);
   const [loading, setLoading] = useState({ optimization: false, predictions: false, mlData: true });
 
-  useEffect(() => {
-    const fetchMlData = async () => {
-      try {
-        const response = await axios.get(`${API}/ai/ml-predictions`);
-        if (response.data && response.data.predictions) {
-          setMlData(response.data.predictions);
-        }
-      } catch (error) {
-        console.error('Error fetching ML predictions:', error);
-      } finally {
-        setLoading(prev => ({ ...prev, mlData: false }));
+  const fetchMlData = async (forceRefresh = false) => {
+    setLoading(prev => ({ ...prev, mlData: true }));
+    try {
+      const endpoint = forceRefresh ? `${API}/ai/ml-predictions?refresh=true` : `${API}/ai/ml-predictions`;
+      if (forceRefresh) {
+        toast.info('Triggered new AI computations. This takes ~30 seconds...', { id: 'ml-refresh' });
       }
-    };
+      const response = await axios.get(endpoint);
+      if (response.data && response.data.predictions) {
+        setMlData(response.data.predictions);
+        if (forceRefresh) toast.success('New ML models computed and loaded!', { id: 'ml-refresh' });
+      }
+    } catch (error) {
+      console.error('Error fetching ML predictions:', error);
+      if (forceRefresh) toast.error('Failed to trigger ML engine', { id: 'ml-refresh' });
+    } finally {
+      setLoading(prev => ({ ...prev, mlData: false }));
+    }
+  };
+
+  useEffect(() => {
     fetchMlData();
   }, []);
 
@@ -108,10 +116,25 @@ const AIInsights = () => {
 
       {/* Quantitative ML Predictions */}
       <div className="glass-card p-6">
-        <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
-          <Target className="w-6 h-6 mr-3 text-rose-400" />
-          Quantitative Portfolio Risk Intelligence
-        </h2>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-2 flex items-center">
+              <Target className="w-6 h-6 mr-3 text-rose-400" />
+              Quantitative Portfolio Risk Intelligence
+            </h2>
+            <p className="text-slate-400 text-sm">
+              An algorithmic snapshot evaluating predictive risk scaling (1-10), momentum trend, and forecasted 30-day Monte Carlo price scenarios.
+            </p>
+          </div>
+          <Button
+            onClick={() => fetchMlData(true)}
+            disabled={loading.mlData}
+            className="whitespace-nowrap bg-slate-800 hover:bg-slate-700 text-white"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading.mlData ? 'animate-spin' : ''}`} />
+            Refresh Models
+          </Button>
+        </div>
         {loading.mlData ? (
           <div className="flex justify-center p-8">
             <RefreshCw className="w-8 h-8 text-blue-400 animate-spin" />
@@ -121,10 +144,17 @@ const AIInsights = () => {
             {mlData.map((item, idx) => (
               <div key={idx} className="bg-slate-800/80 rounded-xl p-5 border border-slate-700/50 hover:border-slate-600 transition-colors">
                 <div className="flex justify-between items-start mb-3">
-                  <h3 className="text-xl font-bold text-white">{item.symbol}</h3>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">{item.symbol}</h3>
+                    {item.current_price && (
+                      <span className="text-sm font-medium text-slate-400">
+                        ₹{item.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    )}
+                  </div>
                   <span className={`px-2 py-1 rounded text-xs font-bold ${item.ai_rating >= 7 ? 'bg-emerald-500/20 text-emerald-400' :
-                      item.ai_rating >= 4 ? 'bg-amber-500/20 text-amber-400' :
-                        'bg-rose-500/20 text-rose-400'
+                    item.ai_rating >= 4 ? 'bg-amber-500/20 text-amber-400' :
+                      'bg-rose-500/20 text-rose-400'
                     }`}>
                     ★ {item.ai_rating}/10
                   </span>
@@ -137,7 +167,7 @@ const AIInsights = () => {
                     </div>
                     <div className="w-full bg-slate-700 rounded-full h-1.5">
                       <div className={`h-1.5 rounded-full ${item.risk_score > 7 ? 'bg-rose-500' :
-                          item.risk_score > 4 ? 'bg-amber-500' : 'bg-emerald-500'
+                        item.risk_score > 4 ? 'bg-amber-500' : 'bg-emerald-500'
                         }`} style={{ width: `${item.risk_score * 10}%` }}></div>
                     </div>
                   </div>
