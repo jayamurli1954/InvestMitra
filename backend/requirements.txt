@@ -76,6 +76,7 @@ uvicorn==0.25.0
 websockets==15.0.1
 yfinance==0.2.66
 scikit-learn==1.5.2
+scipy==1.13.1
 PyPortfolioOpt==1.5.5
 apscheduler==3.10.4
 
