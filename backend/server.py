@@ -1038,7 +1038,7 @@ async def login(user_data: UserLogin, response: Response, database=Depends(get_d
     
     # Verify password
     password_verified = verify_password(user_data.password, user.password_hash)
-    logger.info(f"Password verification result for {user_data.email}: {password_verified}")
+    logger.debug(f"Password verification result for {user_data.email}: {password_verified}")
     if not user.password_hash or not password_verified:
         logger.warning(f"Login failed: Invalid password for email: {user_data.email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -2907,7 +2907,7 @@ async def forgot_password(request_data: dict):
         # Find user by email
         user = await db.users.find_one({"email": {"$regex": f"^{email.strip().lower()}$", "$options": "i"}})
         
-        logger.info(f"User search result for {email}: {'Found' if user else 'Not Found'}")
+        logger.debug(f"User search result for {email}: {'Found' if user else 'Not Found'}")
         
         if not user:
             # Don't reveal if email exists (security)

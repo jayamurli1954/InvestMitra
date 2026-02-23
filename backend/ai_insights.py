@@ -40,60 +40,44 @@ GEMINI_MODEL = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
 if GEMINI_API_KEY is None:
     GEMINI_API_KEY = ""
 
-print("\n" + "="*70)
-print("🤖 INITIALIZING GEMINI AI")
-print("="*70)
+logger.info("\n" + "="*70)
+logger.info("🤖 INITIALIZING GEMINI AI")
+logger.info("="*70)
 
 try:
     if GENAI_IMPORT_ERROR:
         error_msg = f"❌ Gemini SDK import failed: {GENAI_IMPORT_ERROR}"
-        print(error_msg)
         logger.error(error_msg)
     elif not GEMINI_API_KEY:
         error_msg = "❌ GEMINI_API_KEY not found in environment variables"
-        print(error_msg)
-        print("   Add GEMINI_API_KEY in Render Environment")
         logger.error(error_msg)
         logger.error("   Add GEMINI_API_KEY in Render Environment")
     else:
         # Initialize with explicit API key
         client = genai.Client(api_key=GEMINI_API_KEY)
         success_msg1 = "✅ Gemini client initialized successfully"
-        success_msg2 = f"   Using API key: {GEMINI_API_KEY[:10]}...{GEMINI_API_KEY[-4:]}"
         success_msg3 = f"   Model: {GEMINI_MODEL}"
         
-        print(success_msg1)
-        print(success_msg2)
-        print(success_msg3)
-        
         logger.info(success_msg1)
-        logger.info(success_msg2)
         logger.info(success_msg3)
 except Exception as e:
     error_msg1 = f"❌ Error initializing Gemini client: {e}"
     error_msg2 = f"   Error type: {type(e).__name__}"
-    
-    print(error_msg1)
-    print(error_msg2)
     
     logger.error(error_msg1)
     logger.error(error_msg2)
 
 if client is not None:
     final_msg = "🎉 ai_insights module loaded - Gemini AI ready!"
-    print(final_msg)
     logger.info(final_msg)
 else:
     warning_msg1 = "⚠️  ai_insights module loaded - Gemini AI NOT available"
     warning_msg2 = "   Check GEMINI_API_KEY in .env file"
     
-    print(warning_msg1)
-    print(warning_msg2)
-    
     logger.warning(warning_msg1)
     logger.warning(warning_msg2)
 
-print("="*70 + "\n")
+logger.info("="*70 + "\n")
 # ------------------------------------
 
 
