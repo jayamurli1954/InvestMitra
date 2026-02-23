@@ -6,17 +6,28 @@ def generate_signal(
     worst_case_5pct: float,
     portfolio_weight_pct: float = 0.0,
     rsi: float = 50.0,
-    macd_signal: float = 0.0
+    macd_signal: float = 0.0,
+    volatility: float = 0.20
 ) -> dict:
     """
-    Generate Accumulate / Hold / Reduce signal using Phase 1 ML outputs.
-    Now enriched with RSI and MACD for higher-confidence signals.
-    No separate training required — all derived from yfinance price history.
+    Generate Accumulate / Hold / Reduce signal.
+
+    Uses Phase 1 ML outputs enriched with RSI, MACD, and a dynamic
+    volatility-aware REDUCE threshold (adapted from Anvesh portfolio script).
+
+    Dynamic threshold logic:
+      volatile stocks (30%+ annualised vol) get more tolerance before REDUCE fires.
+      stable stocks (10% vol) trigger REDUCE on smaller drawdowns.
+      Formula: reduce_threshold = clamp(-8%, -22%, -volatility * 0.65)
     """
 
-    # --- Step 1: Determine raw signal from ML data ---
+    # --- Dynamic REDUCE threshold based on stock volatility ---
+    # volatility is annualised (e.g. 0.20 = 20%). Clamp between -8% and -22%.
+    dynamic_reduce_threshold = max(-0.22, min(-0.08, -volatility * 0.65))
+
+    # --- Step 1: Raw signal ---
     # ACCUMULATE: strong rating + bullish trend + low risk + positive outlook
-    # RSI < 65 ensures we are not buying an overbought stock
+    # RSI < 65 ensures we are NOT buying an overbought stock
     # MACD > 0 confirms bullish momentum crossover
     if (
         ai_rating >= 7.0 and
@@ -28,24 +39,25 @@ def generate_signal(
     ):
         raw_signal = "ACCUMULATE"
 
-    # REDUCE: weak rating OR high risk + bearish OR severe downside
+    # REDUCE: weak rating OR high-risk + bearish OR severe downside
+    # Dynamic threshold: volatile stocks require deeper dip before REDUCE fires
     elif (
         ai_rating < 4.5 or
         (risk_score > 7.0 and trend_signal == "Bearish") or
-        worst_case_5pct < -0.15 or
-        rsi > 75.0  # Overbought — risk of correction
+        worst_case_5pct < dynamic_reduce_threshold or
+        rsi > 75.0  # Overbought — correction risk
     ):
         raw_signal = "REDUCE"
 
     else:
         raw_signal = "HOLD"
 
-    # --- Step 2: Portfolio-aware adjustment ---
-    # If already holding more than 25% in one stock, do not recommend adding more
+    # --- Step 2: Portfolio-aware cap ---
+    # Never recommend adding more if already over 25% concentrated
     if raw_signal == "ACCUMULATE" and portfolio_weight_pct > 25.0:
         raw_signal = "HOLD"
 
-    # --- Step 3: Build plain-English explanation ---
+    # --- Step 3: Plain-English explanation ---
     positives = []
     negatives = []
 
@@ -69,8 +81,11 @@ def generate_signal(
     else:
         negatives.append("Negative 30-day outlook")
 
-    if worst_case_5pct < -0.15:
-        negatives.append("High downside risk in worst case")
+    if worst_case_5pct < dynamic_reduce_threshold:
+        negatives.append(
+            f"Worst-case {worst_case_5pct*100:.1f}% exceeds dynamic risk limit "
+            f"({dynamic_reduce_threshold*100:.0f}% for this stock's volatility)"
+        )
 
     # RSI driver
     if rsi < 40:

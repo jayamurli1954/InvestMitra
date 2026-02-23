@@ -538,6 +538,126 @@ const AIInsights = () => {
         </div>
       )}
 
+      {/* ── Opportunity Scanner / Accumulate Radar ── */}
+      <div className="glass-card p-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Accumulate Radar</h2>
+              <p className="text-sm text-slate-400">Top ACCUMULATE signals from 250 NSE stocks — updated nightly</p>
+            </div>
+          </div>
+          <button
+            onClick={fetchOpportunities}
+            disabled={loading.opportunities}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading.opportunities ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+
+        {loading.opportunities ? (
+          <div className="flex items-center justify-center py-10">
+            <RefreshCw className="w-6 h-6 text-emerald-400 animate-spin mr-3" />
+            <span className="text-slate-400 text-sm">Scanning NSE stocks...</span>
+          </div>
+        ) : opportunities.length === 0 ? (
+          <div className="text-center py-10">
+            <div className="w-12 h-12 rounded-full bg-slate-700/60 flex items-center justify-center mx-auto mb-3">
+              <Lightbulb className="w-6 h-6 text-slate-500" />
+            </div>
+            <p className="text-slate-400 text-sm">No ACCUMULATE signals at the moment.</p>
+            <p className="text-slate-500 text-xs mt-1">The nightly scan runs at 2 AM IST. Click Refresh to trigger manually.</p>
+          </div>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500 mb-4">
+              {opportunities.length} stocks not in your portfolio currently show ACCUMULATE signals.
+              <span className="text-rose-400/70 ml-2">Not investment advice — do your own research.</span>
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {opportunities.slice(0, 12).map((opp, idx) => (
+                <div
+                  key={idx}
+                  className="bg-slate-800/70 rounded-xl p-4 border border-emerald-500/20 hover:border-emerald-500/50 transition-all hover:bg-slate-800"
+                >
+                  {/* Header */}
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h3 className="text-base font-bold text-white leading-tight">
+                        {opp.symbol?.replace('.NS', '').replace('.BO', '')}
+                      </h3>
+                      {opp.current_price && (
+                        <span className="text-xs text-slate-400">
+                          ₹{opp.current_price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/40">
+                      ACCUMULATE
+                    </span>
+                  </div>
+
+                  {/* Metrics row */}
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs mb-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">AI Rating</span>
+                      <span className={`font-semibold ${opp.ai_rating >= 7 ? 'text-emerald-400' : opp.ai_rating >= 5 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        ★ {opp.ai_rating}/10
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Risk</span>
+                      <span className={`font-semibold ${opp.risk_score <= 4 ? 'text-emerald-400' : opp.risk_score <= 7 ? 'text-amber-400' : 'text-rose-400'}`}>
+                        {opp.risk_score}/10
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Trend</span>
+                      <span className={`font-semibold ${opp.trend_signal === 'Bullish' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {opp.trend_signal}
+                      </span>
+                    </div>
+                    {opp.rsi && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">RSI</span>
+                        <span className={`font-semibold ${opp.rsi < 40 ? 'text-blue-400' : opp.rsi < 65 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {opp.rsi}
+                        </span>
+                      </div>
+                    )}
+                    {opp.monte_carlo?.expected_return !== undefined && (
+                      <div className="flex items-center justify-between col-span-2">
+                        <span className="text-slate-500">30-Day Exp.</span>
+                        <span className={`font-semibold ${opp.monte_carlo.expected_return >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {(opp.monte_carlo.expected_return * 100).toFixed(2)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Signal drivers */}
+                  {opp.signal_positives && opp.signal_positives.length > 0 && (
+                    <div className="border-t border-slate-700/50 pt-2 mt-2 space-y-1">
+                      {opp.signal_positives.slice(0, 3).map((pos, i) => (
+                        <div key={i} className="flex items-start gap-1 text-xs text-emerald-400/80">
+                          <span className="mt-0.5 shrink-0">+</span>
+                          <span>{pos}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Info Banner */}
       <div className="glass-card p-6 bg-blue-500/5 border-blue-500/20">
         <div className="flex items-start space-x-3">

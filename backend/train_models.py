@@ -167,7 +167,8 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
             expected_return=monte_carlo["expected_return"],
             worst_case_5pct=monte_carlo["worst_case_5pct"],
             rsi=rsi,
-            macd_signal=macd_signal_val
+            macd_signal=macd_signal_val,
+            volatility=volatility_raw  # annualised vol for dynamic threshold
         )
         
         document = {
