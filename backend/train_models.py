@@ -39,7 +39,7 @@ async def fetch_tracked_symbols(db) -> set:
             symbols.add(sym.upper())
     return symbols
 
-async def process_stock(symbol: str, db):
+async def process_stock(symbol: str, db, nifty_return: float = 0.0):
     """Fetch historical data and run ML predictions for a single stock."""
     logger.info(f"Processing {symbol}...")
     try:
@@ -105,8 +105,14 @@ async def process_stock(symbol: str, db):
         else:
             trend = 5.0
             
-        # Relative Strength (vs Nifty roughly)
-        rs = 5.0 # default placeholder
+        # Relative Strength (vs Nifty 50 baseline)
+        if num_rows >= 30:
+            stock_return = (df["close"].iloc[-1] / df["close"].iloc[-30]) - 1
+            rs_raw = stock_return - nifty_return
+        else:
+            rs_raw = 0.0
+        
+        rs = float(min(max((rs_raw * 25) + 5, 0.0), 10.0))
         
         ai_rating = calculate_ai_rating(
             momentum=momentum,
@@ -120,6 +126,10 @@ async def process_stock(symbol: str, db):
         monte_carlo = monte_carlo_simulation(df["returns"].dropna())
         
         # Build Document
+        # Compute confidence based dynamically on Monte Carlo volatility spread mapping
+        spread = abs(monte_carlo["expected_return"] - monte_carlo["worst_case_5pct"])
+        confidence = int(min(max(100 - (spread * 200), 20), 95))
+        
         document = {
             "symbol": symbol,
             "current_price": round(float(df["close"].iloc[-1]), 2),
@@ -127,7 +137,7 @@ async def process_stock(symbol: str, db):
             "ai_rating": ai_rating,
             "monte_carlo": monte_carlo,
             "trend_signal": "Bullish" if trend > 5 else "Bearish",
-            "confidence": 70, # static placeholder for now
+            "confidence": confidence,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
@@ -167,13 +177,26 @@ async def run_training(dry_run=False):
         
     logger.info(f"Found {len(symbols_to_process)} tracked symbols to process.")
     
+    # Fetch Nifty 50 baseline for Relative Strength mapping
+    nifty_return = 0.0
+    try:
+        nifty = await asyncio.to_thread(yf.download, "^NSEI", period="6mo", interval="1d", progress=False)
+        if not nifty.empty and len(nifty) >= 30:
+            if isinstance(nifty.columns, pd.MultiIndex):
+                nifty.columns = nifty.columns.get_level_values(0)
+            nifty_close = nifty["Close"] if "Close" in nifty.columns else nifty["Adj Close"]
+            nifty_return = float((nifty_close.iloc[-1] / nifty_close.iloc[-30]) - 1)
+            logger.info(f"Nifty baseline 30-day return computed: {nifty_return*100:.2f}%")
+    except Exception as e:
+        logger.warning(f"Failed to fetch Nifty baseline: {e}")
+    
     for idx, symbol in enumerate(symbols_to_process):
         # Format suffix appropriately if missing (this is mostly required for Indian stocks on Yahoo)
         lookup_symbol = symbol
         if "." not in lookup_symbol and lookup_symbol not in ["SENSEX", "NIFTY"]:
             lookup_symbol = f"{lookup_symbol}.NS"
             
-        await process_stock(lookup_symbol, db)
+        await process_stock(lookup_symbol, db, nifty_return)
         
         # Small delay to avoid rate-limiting from Yahoo Finance
         if idx < len(symbols_to_process) - 1:
