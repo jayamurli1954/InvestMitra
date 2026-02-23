@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from ml_models.risk_model import calculate_risk_score
 from ml_models.rating_model import calculate_ai_rating
 from ml_models.monte_carlo import monte_carlo_simulation
+from ml_models.signal_model import generate_signal
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -125,10 +126,20 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
         # 3. Monte Carlo Simulation
         monte_carlo = monte_carlo_simulation(df["returns"].dropna())
         
+        trend_signal = "Bullish" if trend > 5 else "Bearish"
+        
         # Build Document
         # Compute confidence based dynamically on Monte Carlo volatility spread mapping
         spread = abs(monte_carlo["expected_return"] - monte_carlo["worst_case_5pct"])
         confidence = int(min(max(100 - (spread * 200), 20), 95))
+        
+        signal_data = generate_signal(
+            ai_rating=ai_rating,
+            risk_score=risk_score,
+            trend_signal=trend_signal,
+            expected_return=monte_carlo["expected_return"],
+            worst_case_5pct=monte_carlo["worst_case_5pct"]
+        )
         
         document = {
             "symbol": symbol,
@@ -136,7 +147,10 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
             "risk_score": risk_score,
             "ai_rating": ai_rating,
             "monte_carlo": monte_carlo,
-            "trend_signal": "Bullish" if trend > 5 else "Bearish",
+            "trend_signal": trend_signal,
+            "signal": signal_data["signal"],
+            "signal_positives": signal_data["positives"],
+            "signal_negatives": signal_data["negatives"],
             "confidence": confidence,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
