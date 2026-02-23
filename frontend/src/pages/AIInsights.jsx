@@ -152,12 +152,22 @@ const AIInsights = () => {
                       </span>
                     )}
                   </div>
-                  <span className={`px-2 py-1 rounded text-xs font-bold ${item.ai_rating >= 7 ? 'bg-emerald-500/20 text-emerald-400' :
-                    item.ai_rating >= 4 ? 'bg-amber-500/20 text-amber-400' :
-                      'bg-rose-500/20 text-rose-400'
-                    }`}>
-                    ★ {item.ai_rating}/10
-                  </span>
+                  <div className="flex flex-col items-end space-y-2">
+                    <span className={`px-2 py-1 rounded text-xs font-bold ${item.ai_rating >= 7 ? 'bg-emerald-500/20 text-emerald-400' :
+                      item.ai_rating >= 4 ? 'bg-amber-500/20 text-amber-400' :
+                        'bg-rose-500/20 text-rose-400'
+                      }`}>
+                      ★ {item.ai_rating}/10
+                    </span>
+                    {item.signal && (
+                      <span className={`px-2 py-1 rounded text-xs font-bold border ${item.signal === 'ACCUMULATE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50' :
+                        item.signal === 'HOLD' ? 'bg-amber-500/10 text-amber-400 border-amber-500/50' :
+                          'bg-rose-500/10 text-rose-400 border-rose-500/50'
+                        }`}>
+                        {item.signal}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-4">
                   <div>
@@ -194,6 +204,26 @@ const AIInsights = () => {
                       </span>
                     </div>
                   </div>
+
+                  {item.signal_positives && item.signal_positives.length > 0 && (
+                    <div className="bg-slate-900/50 rounded-lg p-3 text-sm mt-3 border-t border-slate-700/50 pt-3">
+                      <p className="text-xs font-medium text-slate-400 mb-2">Signal Drivers</p>
+                      <div className="space-y-1">
+                        {item.signal_positives.map((pos, i) => (
+                          <div key={`pos-${i}`} className="flex items-start text-xs text-emerald-400/90">
+                            <span className="mr-1 mt-0.5">+</span>
+                            <span>{pos}</span>
+                          </div>
+                        ))}
+                        {item.signal_negatives && item.signal_negatives.map((neg, i) => (
+                          <div key={`neg-${i}`} className="flex items-start text-xs text-rose-400/90">
+                            <span className="mr-1 mt-0.5">-</span>
+                            <span>{neg}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
