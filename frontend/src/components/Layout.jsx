@@ -84,17 +84,12 @@ const Layout = ({ children }) => {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { path: '/watchlist', icon: Eye, label: 'Watchlist' },
-    { path: '/transactions', icon: Receipt, label: 'Transactions' },
-    { path: '/dividends', icon: DollarSign, label: 'Dividends' },
-    { path: '/alerts', icon: Bell, label: 'Alerts' },
     { path: '/performance', icon: Activity, label: 'Performance' },
     { path: '/backtesting', icon: TrendingUp, label: 'Backtest' },
     { path: '/ai-insights', icon: Sparkles, label: 'AI Insights' },
-    { path: '/tax-report', icon: FileText, label: 'Tax Report' },
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
     { path: '/analytics', icon: PieChart, label: 'Analytics' },
-    { path: '/market', icon: BarChart3, label: 'Market' },
   ];
 
   const sidebarContent = (
@@ -132,8 +127,8 @@ const Layout = ({ children }) => {
               to={item.path}
               data-testid={`nav-${item.label.toLowerCase()}`}
               className={`flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${isActive
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                : 'text-slate-400 hover:bg-white/5 hover:text-white'
                 }`}
             >
               <Icon className="w-6 h-6" />
