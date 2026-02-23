@@ -30,6 +30,26 @@ DB_NAME = os.environ.get("DB_NAME", "investment_framework")
 
 DEFAULT_STOCKS = ["TCS.NS", "INFY.NS", "HDFCBANK.NS", "RELIANCE.NS"]
 
+
+def compute_rsi(series: pd.Series, period: int = 14) -> float:
+    """14-day RSI — standard momentum oscillator (0 to 100)."""
+    delta = series.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss.replace(0, 1e-9)
+    rsi = 100 - (100 / (1 + rs))
+    return float(rsi.iloc[-1]) if not rsi.dropna().empty else 50.0
+
+
+def compute_macd_signal(series: pd.Series) -> float:
+    """MACD histogram (MACD line minus Signal line). Positive = bullish crossover."""
+    ema12 = series.ewm(span=12, adjust=False).mean()
+    ema26 = series.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    histogram = macd - signal
+    return float(histogram.iloc[-1]) if not histogram.dropna().empty else 0.0
+
 async def fetch_tracked_symbols(db) -> set:
     """Fetch all unique stock symbols currently held in user portfolios."""
     cursor = db.portfolio.find({"asset_type": {"$in": ["STOCK", None]}, "symbol": {"$exists": True, "$ne": None}})
@@ -45,7 +65,8 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
     logger.info(f"Processing {symbol}...")
     try:
         # Run blocking yfinance call in a thread to avoid freezing asyncio loop
-        df = await asyncio.to_thread(yf.download, symbol, period="1y", interval="1d", progress=False)
+        # 3 years of data gives ~750 rows — minimum needed for reliable signal generation
+        df = await asyncio.to_thread(yf.download, symbol, period="3y", interval="1d", progress=False)
         
         if df.empty:
             logger.warning(f"No data returned from yfinance for {symbol}.")
@@ -127,7 +148,13 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
         monte_carlo = monte_carlo_simulation(df["returns"].dropna())
         
         trend_signal = "Bullish" if trend > 5 else "Bearish"
-        
+
+        # 4. RSI (14-day) — adds technical momentum depth to signal
+        rsi = compute_rsi(df["close"])
+
+        # 5. MACD Histogram (12/26/9) — confirms or denies trend direction
+        macd_signal_val = compute_macd_signal(df["close"])
+
         # Build Document
         # Compute confidence based dynamically on Monte Carlo volatility spread mapping
         spread = abs(monte_carlo["expected_return"] - monte_carlo["worst_case_5pct"])
@@ -138,7 +165,9 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
             risk_score=risk_score,
             trend_signal=trend_signal,
             expected_return=monte_carlo["expected_return"],
-            worst_case_5pct=monte_carlo["worst_case_5pct"]
+            worst_case_5pct=monte_carlo["worst_case_5pct"],
+            rsi=rsi,
+            macd_signal=macd_signal_val
         )
         
         document = {
@@ -148,6 +177,8 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
             "ai_rating": ai_rating,
             "monte_carlo": monte_carlo,
             "trend_signal": trend_signal,
+            "rsi": round(rsi, 2),
+            "macd_signal": round(macd_signal_val, 4),
             "signal": signal_data["signal"],
             "signal_positives": signal_data["positives"],
             "signal_negatives": signal_data["negatives"],
@@ -164,7 +195,7 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
             )
             logger.info(f"Successfully saved ML predictions for {symbol}: AI Rating {ai_rating}, Risk {risk_score}")
         else:
-            logger.info(f"[DRY RUN] {symbol} | Risk: {risk_score} | Rating: {ai_rating} | Trend: {document['trend_signal']}")
+            logger.info(f"[DRY RUN] {symbol} | Risk: {risk_score} | Rating: {ai_rating} | Trend: {document['trend_signal']} | RSI: {rsi:.1f} | MACD: {macd_signal_val:.4f} | Signal: {signal_data['signal']}")
             logger.info(f"   -> Monte Carlo: Expected {monte_carlo['expected_return']*100:.2f}% | Worst Case 5%: {monte_carlo['worst_case_5pct']*100:.2f}%")
         
     except Exception as e:
