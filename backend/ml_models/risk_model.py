@@ -33,13 +33,14 @@ def calculate_risk_score(df: pd.DataFrame, market_returns: pd.Series = None) -> 
                 beta = cov_matrix[0][1] / np.var(aligned_market)
 
     # Risk Score Formula (based on spec weighting)
-    risk_score = (
+    # Raw values usually fall between 0.5 and 2.5.
+    risk_score_raw = (
         (volatility * 4) +
         (abs(max_drawdown) * 3) +
         (abs(beta - 1) * 2)
     )
     
-    # Normalize to 1-10 scale
-    normalized_score = min(max(risk_score * 10, 1), 10)
+    # Normalize to 1-10 scale (multiply by 3.5 instead of 10 so we don't hit the 10 cap instantly)
+    normalized_score = min(max(risk_score_raw * 3.5, 1.0), 10.0)
     
     return round(normalized_score, 2)
