@@ -1,5 +1,6 @@
 import "@/App.css";
 import { HashRouter, Routes, Route, Navigate } from "react-router-dom";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import axios from "axios";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Dashboard from "@/pages/Dashboard";
@@ -33,6 +34,17 @@ export const API = `${BACKEND_URL}/api`;
 // Configure axios to send credentials with every request
 axios.defaults.withCredentials = true;
 
+// Intercept 401 Unauthorized errors to automatically log out users whose session has expired
+axios.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      window.location.hash = '#/auth';
+    }
+    return Promise.reject(error);
+  }
+);
+
 // Protected Route component
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
@@ -63,30 +75,32 @@ function AppRoutes() {
           path="/*"
           element={
             <ProtectedRoute>
-              <Layout>
-                <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/portfolio" element={<Portfolio />} />
-                  <Route path="/watchlist" element={<Watchlist />} />
-                  <Route path="/transactions" element={<Transactions />} />
-                  <Route path="/tax-report" element={<TaxReport />} />
-                  <Route path="/alerts" element={<Alerts />} />
-                  <Route path="/dividends" element={<Dividends />} />
-                  <Route path="/performance" element={<PerformanceReport />} />
-                  <Route path="/backtesting" element={<Backtesting />} />
-                  <Route path="/ai-insights" element={<AIInsights />} />
-                  <Route path="/screener" element={<Screener />} />
-                  <Route path="/stock/:symbol" element={<StockDetail />} />
-                  <Route path="/strategies" element={<Strategies />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/market" element={<MarketOverview />} />
-                  <Route path="/profile-settings" element={<ProfileSettings />} />
-                  <Route path="/about-us" element={<AboutUs />} />
-                  <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-                  <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
-                </Routes>
-              </Layout>
+              <ErrorBoundary>
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/portfolio" element={<Portfolio />} />
+                    <Route path="/watchlist" element={<Watchlist />} />
+                    <Route path="/transactions" element={<Transactions />} />
+                    <Route path="/tax-report" element={<TaxReport />} />
+                    <Route path="/alerts" element={<Alerts />} />
+                    <Route path="/dividends" element={<Dividends />} />
+                    <Route path="/performance" element={<PerformanceReport />} />
+                    <Route path="/backtesting" element={<Backtesting />} />
+                    <Route path="/ai-insights" element={<AIInsights />} />
+                    <Route path="/screener" element={<Screener />} />
+                    <Route path="/stock/:symbol" element={<StockDetail />} />
+                    <Route path="/strategies" element={<Strategies />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/market" element={<MarketOverview />} />
+                    <Route path="/profile-settings" element={<ProfileSettings />} />
+                    <Route path="/about-us" element={<AboutUs />} />
+                    <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                    <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+                  </Routes>
+                </Layout>
+              </ErrorBoundary>
             </ProtectedRoute>
           }
         />

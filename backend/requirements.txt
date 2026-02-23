@@ -78,3 +78,5 @@ yfinance==0.2.66
 scikit-learn==1.5.2
 PyPortfolioOpt==1.5.5
 apscheduler==3.10.4
+
+slowapi==0.1.9

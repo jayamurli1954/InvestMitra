@@ -130,13 +130,31 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Register startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
     load_local_stocks_cache()
     await init_db()
+    
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from train_models import run_training
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(run_training, "cron", hour=2, minute=0, args=[False])
+        scheduler.start()
+        logger.info("Nightly ML scheduler started — trains at 2 AM daily")
+    except ImportError:
+        logger.error("APScheduler missing, unable to start nightly training.")
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -1024,7 +1042,8 @@ async def register_options():
 async def login_options():
     return Response(status_code=200)    
 @api_router.post("/auth/login", response_model=Token)
-async def login(user_data: UserLogin, response: Response, database=Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, user_data: UserLogin, response: Response, database=Depends(get_db)):
     """Login with email/password"""
     logger.info(f"Login attempt for email: {user_data.email}")
     # Find user
@@ -1549,6 +1568,14 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 
 @api_router.post("/portfolio", response_model=PortfolioHolding)
 async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: User = Depends(require_auth)):
+    if holding.asset_type == "STOCK":
+        symbol = holding.symbol.strip().upper() if holding.symbol else ""
+        if not symbol or len(symbol) > 20:
+            raise HTTPException(status_code=400, detail="Invalid stock symbol")
+        if not symbol.replace(".", "").replace("-", "").isalnum():
+            raise HTTPException(status_code=400, detail="Symbol contains invalid characters")
+        holding.symbol = symbol
+
     holding_obj = PortfolioHolding(**holding.model_dump(), user_id=current_user.id)
     
     # Get real-time current price
