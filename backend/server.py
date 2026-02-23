@@ -2709,10 +2709,18 @@ async def get_ml_predictions(background_tasks: BackgroundTasks, refresh: bool = 
         if not predictions or refresh:
             try:
                 from train_models import run_training
-                background_tasks.add_task(run_training, False)
-                logger.info("Triggered ML predictions on-demand securely in background task.")
+                # Await synchronously instead of background, so we map new data back to frontend explicitly
+                await run_training(False)
+                logger.info("Computed ML predictions on-demand successfully.")
+                
+                # Refetch fresh values immediately
+                predictions = await db.ml_predictions.find(
+                    {"symbol": {"$in": symbols}}, 
+                    {"_id": 0}
+                ).to_list(length=None)
+                
             except Exception as ml_err:
-                logger.error(f"Failed to background train models: {ml_err}")
+                logger.error(f"Failed to synchronously train models: {ml_err}")
         
         return {"predictions": predictions}
         
