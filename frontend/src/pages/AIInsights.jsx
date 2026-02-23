@@ -47,7 +47,8 @@ const AIInsights = () => {
   const [optimization, setOptimization] = useState(null);
   const [predictions, setPredictions] = useState(null);
   const [mlData, setMlData] = useState([]);
-  const [loading, setLoading] = useState({ optimization: false, predictions: false, mlData: true });
+  const [opportunities, setOpportunities] = useState([]);
+  const [loading, setLoading] = useState({ optimization: false, predictions: false, mlData: true, opportunities: true });
 
   const fetchMlData = async (forceRefresh = false) => {
     setLoading(prev => ({ ...prev, mlData: true }));
@@ -69,8 +70,23 @@ const AIInsights = () => {
     }
   };
 
+  const fetchOpportunities = async () => {
+    setLoading(prev => ({ ...prev, opportunities: true }));
+    try {
+      const response = await axios.get(`${API}/ai/opportunities`);
+      if (response.data && response.data.opportunities) {
+        setOpportunities(response.data.opportunities);
+      }
+    } catch (error) {
+      console.error('Error fetching opportunities:', error);
+    } finally {
+      setLoading(prev => ({ ...prev, opportunities: false }));
+    }
+  };
+
   useEffect(() => {
     fetchMlData();
+    fetchOpportunities();
   }, []);
 
   const fetchOptimization = async () => {

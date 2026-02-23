@@ -2753,7 +2753,38 @@ async def get_ml_predictions(background_tasks: BackgroundTasks, refresh: bool = 
         
     except Exception as e:
         logger.error(f"Error fetching ML predictions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return empty rather than fail entirely, so UI doesn't crash
+        return {"predictions": []}
+
+@api_router.get("/ai/opportunities")
+async def get_opportunity_scanner(current_user: User = Depends(require_auth)):
+    """Fetch 'ACCUMULATE' stocks from the daily scan, excluding user portfolio."""
+    try:
+        # Get user's current holdings
+        holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
+        user_symbols = {h.get("symbol") for h in holdings if h.get("symbol")}
+        user_symbols_stripped = {s.replace('.NS', '').replace('.BO', '') for s in user_symbols}
+        
+        # Query ML predictions for 'ACCUMULATE'
+        opportunities = await db.ml_predictions.find(
+            {"signal": "ACCUMULATE"},
+            {"_id": 0}
+        ).sort("ai_rating", -1).to_list(length=None)
+        
+        # Filter out user's symbols
+        filtered_opportunities = []
+        for opp in opportunities:
+            sym = opp.get("symbol", "")
+            base_sym = sym.replace('.NS', '').replace('.BO', '')
+            if base_sym not in user_symbols_stripped and sym not in user_symbols:
+                filtered_opportunities.append(opp)
+        
+        # Return top 30 or fewer
+        return {"opportunities": filtered_opportunities[:30]}
+        
+    except Exception as e:
+        logger.error(f"Error fetching opportunities: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch opportunities")
 
 app.include_router(api_router)
 

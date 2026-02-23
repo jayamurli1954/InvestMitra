@@ -189,6 +189,20 @@ async def run_training(dry_run=False):
     else:
         logger.info("Starting in DRY RUN mode. No database connection will be made.")
         
+    # Load top 250 NSE stocks for Opportunity Scanner
+    try:
+        import csv
+        with open("nse_stocks_with_sectors.csv", "r") as f:
+            reader = csv.DictReader(f)
+            count = 0
+            for row in reader:
+                if row.get("symbol") and count < 250:
+                    symbols_to_process.add(row["symbol"])
+                    count += 1
+        logger.info(f"Loaded {count} top NSE stocks for Opportunity Scanner.")
+    except Exception as e:
+        logger.warning(f"Could not load top NSE stocks for Opportunity Scanner: {e}")
+        
     logger.info(f"Found {len(symbols_to_process)} tracked symbols to process.")
     
     # Fetch Nifty 50 baseline for Relative Strength mapping

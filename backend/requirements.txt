@@ -30,10 +30,10 @@ motor==3.3.1
 multitasking==0.0.12
 mypy==1.18.2
 mypy_extensions==1.1.0
-numpy==2.3.3
+numpy==1.26.4
 oauthlib==3.3.1
 packaging==25.0
-pandas==2.3.3
+pandas==2.2.3
 passlib==1.7.4
 pathspec==0.12.1
 peewee==3.18.2
