@@ -8,6 +8,12 @@ on:
     branches:
       - "**"
 
+# Cancel any in-progress CI runs on the same branch when a new commit is pushed.
+# This prevents a backlog of old failing runs from masking the latest result.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend checks
