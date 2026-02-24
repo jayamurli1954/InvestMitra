@@ -83,25 +83,56 @@ logger.info("="*70 + "\n")
 
 def extract_json_from_markdown(text: str) -> str:
     """
-    Extract JSON content from markdown code blocks or plain text.
-    
-    Handles formats like:
-    - ```json {...}```
-    - ``` {...}```
-    - {...} (plain JSON)
+    Extract JSON content from Gemini responses that may be wrapped in markdown
+    code fences (```json ... ``` or ``` ... ```).
+
+    Uses bracket-counting instead of regex so nested JSON objects are captured
+    correctly regardless of depth. The old non-greedy regex .*? would stop at
+    the first closing brace, breaking all multi-key responses.
     """
-    patterns = [
-        r'```json\s*(\{.*?\})\s*```',
-        r'```\s*(\{.*?\})\s*```',
-        r'(\{.*?\})',
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, text, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-    
-    return text
+    if not text:
+        return text
+
+    # Step 1: Strip markdown code fences (```json or ```)
+    stripped = text.strip()
+    # Remove opening fence
+    for fence in ("```json", "```"):
+        if stripped.startswith(fence):
+            stripped = stripped[len(fence):].lstrip()
+            break
+    # Remove closing fence
+    if stripped.endswith("```"):
+        stripped = stripped[:-3].rstrip()
+
+    # Step 2: Find the outermost { ... } block by bracket counting
+    start = stripped.find("{")
+    if start == -1:
+        return stripped   # No JSON object found — return as-is
+
+    depth = 0
+    in_string = False
+    escape_next = False
+    for i, ch in enumerate(stripped[start:], start=start):
+        if escape_next:
+            escape_next = False
+            continue
+        if ch == "\\" and in_string:
+            escape_next = True
+            continue
+        if ch == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return stripped[start:i + 1]
+
+    # Fallback: return everything from the first brace onward
+    return stripped[start:]
 
 
 def format_holdings(holdings: List[Dict]) -> str:
