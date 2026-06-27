@@ -121,8 +121,12 @@ else:
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://invest-mitra.vercel.app",
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "http://localhost",
     ]
-CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX", r"^https://.*\.vercel\.app$")
+CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX", r"^(https://.*\.vercel\.app|tauri://.*|http://.*\.localhost)$")
 
 logging.basicConfig(
     level=logging.INFO,
