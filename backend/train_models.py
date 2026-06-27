@@ -171,12 +171,21 @@ async def process_stock(symbol: str, db, nifty_return: float = 0.0):
             volatility=volatility_raw  # annualised vol for dynamic threshold
         )
         
+        # Phase 2 ML Classifier Execution
+        try:
+            from ml_models.xgboost_model import train_xgboost_classifier
+            ml_classifier = train_xgboost_classifier(df)
+        except Exception as ml_err:
+            logger.warning(f"ML Classifier error for {symbol}: {ml_err}")
+            ml_classifier = {"prediction_prob": 0.5, "directional_signal": "NEUTRAL", "model_used": "ERROR"}
+
         document = {
             "symbol": symbol,
             "current_price": round(float(df["close"].iloc[-1]), 2),
             "risk_score": risk_score,
             "ai_rating": ai_rating,
             "monte_carlo": monte_carlo,
+            "ml_classifier": ml_classifier,
             "trend_signal": trend_signal,
             "rsi": round(rsi, 2),
             "macd_signal": round(macd_signal_val, 4),
@@ -221,15 +230,20 @@ async def run_training(dry_run=False):
     else:
         logger.info("Starting in DRY RUN mode. No database connection will be made.")
         
-    # Load top 250 NSE stocks for Opportunity Scanner
+    # Load top 300 NSE stocks for Opportunity Scanner
     try:
         import csv
-        with open("nse_stocks_with_sectors.csv", "r") as f:
+        csv_path = os.path.join(os.path.dirname(__file__), "data", "NSE_Stock-List.csv")
+        if not os.path.exists(csv_path):
+            csv_path = "NSE_Stock-List.csv"
+        with open(csv_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             count = 0
             for row in reader:
-                if row.get("symbol") and count < 250:
-                    symbols_to_process.add(row["symbol"])
+                sym = row.get("SYMBOL") or row.get("symbol")
+                series = str(row.get(" SERIES", "") or row.get("series", "")).strip()
+                if sym and (series in ["EQ", ""] or count < 300) and count < 300:
+                    symbols_to_process.add(f"{sym.strip()}.NS")
                     count += 1
         logger.info(f"Loaded {count} top NSE stocks for Opportunity Scanner.")
     except Exception as e:

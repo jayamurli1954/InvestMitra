@@ -11,6 +11,7 @@ export const useWebSocket = () => {
 export const WebSocketProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [liveStockPrices, setLiveStockPrices] = useState({});
+  const [priceFlashes, setPriceFlashes] = useState({});
   const ws = useRef(null);
 
   useEffect(() => {
@@ -34,12 +35,22 @@ export const WebSocketProvider = ({ children }) => {
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'stock_price_update') {
-        setLiveStockPrices(prevPrices => ({
-          ...prevPrices,
-          [data.symbol]: data.price,
-        }));
+        setLiveStockPrices(prevPrices => {
+          const oldPrice = prevPrices[data.symbol];
+          const newPrice = data.price;
+          if (oldPrice !== undefined && oldPrice !== newPrice) {
+            const flashClass = newPrice > oldPrice ? 'flash-up' : 'flash-down';
+            setPriceFlashes(prev => ({ ...prev, [data.symbol]: flashClass }));
+            setTimeout(() => {
+              setPriceFlashes(prev => ({ ...prev, [data.symbol]: '' }));
+            }, 1200);
+          }
+          return {
+            ...prevPrices,
+            [data.symbol]: newPrice,
+          };
+        });
       }
-      // Handle other types of real-time updates here
     };
 
     ws.current.onclose = () => {
@@ -67,6 +78,7 @@ export const WebSocketProvider = ({ children }) => {
 
   const value = {
     liveStockPrices,
+    priceFlashes,
   };
 
   return (

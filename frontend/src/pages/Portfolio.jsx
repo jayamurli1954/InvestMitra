@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown, Trash2 } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown, Trash2, RefreshCw, Pencil } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,7 +48,9 @@ const Portfolio = () => {
   const [formData, setFormData] = useState({
     quantity: '',
     purchase_price: '',
-    purchase_date: initialPurchaseDate
+    purchase_date: initialPurchaseDate,
+    broker: 'Zerodha',
+    exchange: 'NSE'
   });
   const [purchaseDateParts, setPurchaseDateParts] = useState(() => getDateParts(initialPurchaseDate));
   const [isAddingHolding, setIsAddingHolding] = useState(false);
@@ -62,6 +64,45 @@ const Portfolio = () => {
   const [selectedHoldingForTx, setSelectedHoldingForTx] = useState(null);
   const [transactionType, setTransactionType] = useState('buy');
   const [selectedHoldings, setSelectedHoldings] = useState([]);
+
+  // State for Edit Holding dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedHoldingForEdit, setSelectedHoldingForEdit] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    broker: 'Zerodha',
+    exchange: 'NSE',
+    quantity: '',
+    purchase_price: ''
+  });
+
+  const openEditDialog = (holding) => {
+    setSelectedHoldingForEdit(holding);
+    setEditFormData({
+      broker: holding.broker || 'Zerodha',
+      exchange: holding.exchange || 'NSE',
+      quantity: holding.quantity,
+      purchase_price: holding.purchase_price
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!selectedHoldingForEdit) return;
+    try {
+      await axios.put(`${API}/portfolio/${selectedHoldingForEdit.id}`, {
+        broker: editFormData.broker,
+        exchange: editFormData.exchange,
+        quantity: parseFloat(editFormData.quantity),
+        purchase_price: parseFloat(editFormData.purchase_price)
+      });
+      toast.success('Holding updated successfully!');
+      setEditDialogOpen(false);
+      fetchPortfolio();
+    } catch (error) {
+      console.error('Error updating holding:', error);
+      toast.error('Failed to update holding');
+    }
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -264,6 +305,28 @@ const Portfolio = () => {
     }
   };
 
+  const [syncingActions, setSyncingActions] = useState(false);
+
+  const handleSyncCorporateActions = async () => {
+    setSyncingActions(true);
+    try {
+      const response = await axios.post(`${API}/portfolio/process-corporate-actions`);
+      const resData = response.data?.result || {};
+      const adjusted = resData.adjusted || 0;
+      if (adjusted > 0) {
+        toast.success(`Applied ${adjusted} corporate action(s) (Bonus/Splits)!`);
+      } else {
+        toast.info('Portfolio is up to date. No new bonus/splits detected.');
+      }
+      fetchPortfolio();
+    } catch (error) {
+      console.error('Error syncing corporate actions:', error);
+      toast.error('Failed to sync corporate actions');
+    } finally {
+      setSyncingActions(false);
+    }
+  };
+
   const handleFileSelection = (event) => {
     const file = event.target.files[0];
     setSelectedUploadFile(file || null);
@@ -378,6 +441,10 @@ const Portfolio = () => {
           <Button onClick={handleDownload} className="bg-blue-600 hover:bg-blue-700 text-white">
             <Download className="w-4 h-4 mr-2" />
             Download
+          </Button>
+          <Button onClick={handleSyncCorporateActions} disabled={syncingActions} className="bg-purple-600 hover:bg-purple-700 text-white">
+            <RefreshCw className={`w-4 h-4 mr-2 ${syncingActions ? 'animate-spin' : ''}`} />
+            {syncingActions ? 'Syncing...' : 'Sync Bonus/Splits'}
           </Button>
           <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
             <DialogTrigger asChild>
@@ -539,6 +606,47 @@ const Portfolio = () => {
                         onChange={(e) => setFormData({ ...formData, purchase_price: e.target.value })}
                         className="bg-slate-800 border-slate-700 text-white"
                       />
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Broker</Label>
+                      <select
+                        value={formData.broker || 'Zerodha'}
+                        onChange={(e) => setFormData({ ...formData, broker: e.target.value })}
+                        className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white mt-1"
+                      >
+                        <option value="Zerodha">Zerodha</option>
+                        <option value="Angel One">Angel One</option>
+                        <option value="Groww">Groww</option>
+                        <option value="Upstox">Upstox</option>
+                        <option value="ICICI Direct">ICICI Direct</option>
+                        <option value="HDFC Securities">HDFC Securities</option>
+                        <option value="Kotak Securities">Kotak Securities</option>
+                        <option value="Paytm Money">Paytm Money</option>
+                        <option value="Motilal Oswal">Motilal Oswal</option>
+                        <option value="SBI Securities">SBI Securities</option>
+                        <option value="Dhan">Dhan</option>
+                        <option value="5Paisa">5Paisa</option>
+                        <option value="Sharekhan">Sharekhan</option>
+                        <option value="Axis Direct">Axis Direct</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-slate-300">Exchange</Label>
+                      <select
+                        value={formData.exchange || 'NSE'}
+                        onChange={(e) => setFormData({ ...formData, exchange: e.target.value })}
+                        className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white mt-1"
+                      >
+                        <option value="NSE">NSE (India)</option>
+                        <option value="BSE">BSE (India)</option>
+                        <option value="NASDAQ">NASDAQ (US)</option>
+                        <option value="NYSE">NYSE (US)</option>
+                        <option value="LSE">LSE (London)</option>
+                        <option value="TSX">TSX (Canada)</option>
+                        <option value="ASX">ASX (Australia)</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </div>
                     <div>
                       <Label className="text-slate-300">Purchase Date</Label>
@@ -768,7 +876,15 @@ const Portfolio = () => {
                               onChange={() => toggleHoldingSelection(holding.id)}
                             />
                             <div>
-                              <p className="font-medium text-white">{holding.symbol || 'Stock'}</p>
+                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                <p className="font-medium text-white">{holding.symbol || 'Stock'}</p>
+                                <span className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
+                                  {holding.broker || 'Zerodha'}
+                                </span>
+                                <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30 font-medium">
+                                  {holding.exchange || 'NSE'}
+                                </span>
+                              </div>
                               <p className="text-sm text-slate-400">{holding.name}</p>
                             </div>
                           </div>
@@ -806,6 +922,9 @@ const Portfolio = () => {
                         </div>
 
                         <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
+                            <Pencil className="w-4 h-4 mr-1" /> Edit
+                          </Button>
                           <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                             <ArrowUp className="w-4 h-4 mr-2" /> Buy
                           </Button>
@@ -847,7 +966,12 @@ const Portfolio = () => {
                               onChange={() => toggleHoldingSelection(holding.id)}
                             />
                             <div>
-                              <p className="font-medium text-white">{holding.scheme_name}</p>
+                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                <p className="font-medium text-white">{holding.scheme_name}</p>
+                                <span className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
+                                  {holding.broker || 'Zerodha'}
+                                </span>
+                              </div>
                               <p className="text-sm text-slate-400">Mutual Fund</p>
                             </div>
                           </div>
@@ -885,6 +1009,9 @@ const Portfolio = () => {
                         </div>
 
                         <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
+                            <Pencil className="w-4 h-4 mr-1" /> Edit
+                          </Button>
                           <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
                             <ArrowUp className="w-4 h-4 mr-2" /> Buy
                           </Button>
@@ -915,6 +1042,84 @@ const Portfolio = () => {
             fetchPortfolio(); // Refresh portfolio data on successful transaction
           }}
         />
+      )}
+
+      {selectedHoldingForEdit && (
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="bg-slate-900 border-slate-700 max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-white">
+                Edit Holding details: {selectedHoldingForEdit.symbol || selectedHoldingForEdit.scheme_name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-slate-300">Broker</Label>
+                <select
+                  value={editFormData.broker}
+                  onChange={(e) => setEditFormData({ ...editFormData, broker: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white mt-1"
+                >
+                  <option value="Zerodha">Zerodha</option>
+                  <option value="Angel One">Angel One</option>
+                  <option value="Groww">Groww</option>
+                  <option value="Upstox">Upstox</option>
+                  <option value="ICICI Direct">ICICI Direct</option>
+                  <option value="HDFC Securities">HDFC Securities</option>
+                  <option value="Kotak Securities">Kotak Securities</option>
+                  <option value="Paytm Money">Paytm Money</option>
+                  <option value="Motilal Oswal">Motilal Oswal</option>
+                  <option value="SBI Securities">SBI Securities</option>
+                  <option value="Dhan">Dhan</option>
+                  <option value="5Paisa">5Paisa</option>
+                  <option value="Sharekhan">Sharekhan</option>
+                  <option value="Axis Direct">Axis Direct</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-slate-300">Exchange</Label>
+                <select
+                  value={editFormData.exchange}
+                  onChange={(e) => setEditFormData({ ...editFormData, exchange: e.target.value })}
+                  className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-white mt-1"
+                >
+                  <option value="NSE">NSE (India)</option>
+                  <option value="BSE">BSE (India)</option>
+                  <option value="NASDAQ">NASDAQ (US)</option>
+                  <option value="NYSE">NYSE (US)</option>
+                  <option value="LSE">LSE (London)</option>
+                  <option value="TSX">TSX (Canada)</option>
+                  <option value="ASX">ASX (Australia)</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div>
+                <Label className="text-slate-300">Quantity</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={editFormData.quantity}
+                  onChange={(e) => setEditFormData({ ...editFormData, quantity: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white mt-1"
+                />
+              </div>
+              <div>
+                <Label className="text-slate-300">Purchase Price / Avg NAV</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  value={editFormData.purchase_price}
+                  onChange={(e) => setEditFormData({ ...editFormData, purchase_price: e.target.value })}
+                  className="bg-slate-800 border-slate-700 text-white mt-1"
+                />
+              </div>
+              <Button onClick={handleSaveEdit} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-medium mt-2">
+                Save Changes
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

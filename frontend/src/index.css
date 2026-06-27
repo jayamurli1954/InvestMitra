@@ -20,6 +20,24 @@
   animation: marquee2 60s linear infinite;
 }
 
+@keyframes flashGreen {
+  0% { background-color: rgba(16, 185, 129, 0.4); color: #34d399; }
+  100% { background-color: transparent; }
+}
+
+@keyframes flashRed {
+  0% { background-color: rgba(244, 63, 94, 0.4); color: #fb7185; }
+  100% { background-color: transparent; }
+}
+
+.flash-up {
+  animation: flashGreen 1.2s ease-out;
+}
+
+.flash-down {
+  animation: flashRed 1.2s ease-out;
+}
+
 body {
     margin: 0;
     font-family:

@@ -146,6 +146,25 @@ async def startup_event():
     load_local_stocks_cache()
     await init_db()
     
+    # Auto-seed default test user for local Quick Test Login
+    if db is not None:
+        try:
+            existing = await db.users.find_one({"email": "test@example.com"})
+            if not existing:
+                test_user = User(
+                    email="test@example.com",
+                    name="Test Investor",
+                    password_hash=get_password_hash("Test123!@#"),
+                    auth_provider="email",
+                    disclaimer_accepted=True,
+                    disclaimer_accepted_at=datetime.now(timezone.utc).isoformat(),
+                    disclaimer_version="1.0"
+                )
+                await db.users.insert_one(test_user.model_dump(by_alias=True))
+                logger.info("✓ Auto-seeded test user (test@example.com) into local database.")
+        except Exception as err:
+            logger.warning(f"Failed to auto-seed test user: {err}")
+
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from train_models import run_training
@@ -181,7 +200,20 @@ class Cache:
     def set(self, key: str, value: any):
         self.cache[key] = (value, time.time())
 
+    def invalidate(self, key_prefix: str, user_id: str = None):
+        if user_id:
+            cache_key = f"{key_prefix}:{user_id}"
+            self.cache.pop(cache_key, None)
+        else:
+            keys_to_del = [k for k in self.cache if k.startswith(f"{key_prefix}:")]
+            for k in keys_to_del:
+                self.cache.pop(k, None)
+
 cache_instance = Cache(ttl=60) # Cache for 60 seconds
+
+def clear_user_portfolio_cache(user_id: str):
+    cache_instance.invalidate("portfolio", user_id)
+    cache_instance.invalidate("portfolio_performance", user_id)
 
 MARKET_OVERVIEW_FALLBACK = [
     {"name": "NIFTY 50", "value": 0.0, "change": 0.0, "change_percent": 0.0},
@@ -344,11 +376,13 @@ class PortfolioHolding(BaseModel):
     scheme_name: Optional[str] = None
     
     # Common fields
-    quantity: int
+    quantity: float
     purchase_price: float
     purchase_date: str
     asset_type: str = "STOCK"
     current_price: Optional[float] = 0.0
+    broker: Optional[str] = "Zerodha"
+    exchange: Optional[str] = "NSE"
 
 class PortfolioHoldingCreate(BaseModel):
     # Stock fields
@@ -360,16 +394,20 @@ class PortfolioHoldingCreate(BaseModel):
     scheme_name: Optional[str] = None
     
     # Common fields
-    quantity: int
+    quantity: float
     purchase_price: float
     purchase_date: str
     asset_type: str = "STOCK"
+    broker: Optional[str] = "Zerodha"
+    exchange: Optional[str] = "NSE"
 
 class HoldingTransaction(BaseModel):
-    quantity: int
+    quantity: float
     price: float
     transaction_date: str
     transaction_type: str # 'buy' or 'sell'
+    broker: Optional[str] = "Zerodha"
+    exchange: Optional[str] = "NSE"
 
 from fastapi import UploadFile, File
 
@@ -1158,12 +1196,18 @@ async def get_me(current_user: User = Depends(require_auth)):
     return UserPublic(**current_user.model_dump())
 
 @api_router.post("/auth/logout")
-async def logout(response: Response, current_user: User = Depends(require_auth), session_token: Optional[str] = Cookie(None)):
+async def logout(
+    response: Response,
+    current_user: User = Depends(require_auth),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    session_token: Optional[str] = Cookie(None)
+):
     """Logout user"""
-    if session_token:
-        await db.user_sessions.delete_one({"session_token": session_token})
-    
-    response.delete_cookie(key="session_token", path="/")
+    token = session_token or (credentials.credentials if credentials else None)
+    if token:
+        await db.user_sessions.delete_one({"session_token": token})
+
+    response.delete_cookie(key="session_token", path="/", secure=True, samesite="none")
     return {"message": "Logged out successfully"}
 
 class UserUpdate(BaseModel):
@@ -1594,6 +1638,7 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
     
     doc = holding_obj.model_dump()
     await db.portfolio.insert_one(doc)
+    clear_user_portfolio_cache(current_user.id)
 
     # Also create a buy transaction
     transaction_doc = {
@@ -1651,7 +1696,6 @@ async def transact_holding(holding_id: str, transaction: HoldingTransaction, cur
         
         if new_quantity == 0:
             await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
-            return {"message": "Holding sold completely and removed from portfolio"}
         else:
             # Average price does not change on selling
             await db.portfolio.update_one(
@@ -1659,6 +1703,7 @@ async def transact_holding(holding_id: str, transaction: HoldingTransaction, cur
                 {"$set": {"quantity": new_quantity}}
             )
     
+    clear_user_portfolio_cache(current_user.id)
     return {"message": "Transaction recorded and portfolio updated"}
 
 @api_router.options("/portfolio")
@@ -1673,7 +1718,37 @@ async def delete_portfolio_holding(holding_id: str, current_user: User = Depends
     result = await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Holding not found")
+    clear_user_portfolio_cache(current_user.id)
     return {"message": "Holding deleted successfully"}
+
+@api_router.put("/portfolio/{holding_id}")
+async def update_portfolio_holding(holding_id: str, updates: dict, current_user: User = Depends(require_auth)):
+    query_list = [{"id": holding_id}, {"_id": holding_id}]
+    try:
+        from bson import ObjectId
+        if ObjectId.is_valid(holding_id):
+            query_list.append({"_id": ObjectId(holding_id)})
+    except Exception:
+        pass
+    query = {"$or": query_list, "user_id": current_user.id}
+    clean_updates = {k: v for k, v in updates.items() if k not in ["_id", "id", "user_id"]}
+    result = await db.portfolio.update_one(query, {"$set": clean_updates})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    clear_user_portfolio_cache(current_user.id)
+    return {"message": "Holding updated successfully"}
+
+@api_router.post("/portfolio/process-corporate-actions")
+async def process_corporate_actions_route(current_user: User = Depends(require_auth)):
+    """Manually or automatically trigger bonus/split corporate action processing for current user."""
+    try:
+        from corporate_actions import process_user_corporate_actions
+        result = await process_user_corporate_actions(db, current_user.id)
+        clear_user_portfolio_cache(current_user.id)
+        return {"message": "Corporate actions processed successfully", "result": result}
+    except Exception as e:
+        logger.error(f"Error executing corporate actions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/portfolio/performance")
 @cached(key_prefix="portfolio_performance")
@@ -1817,7 +1892,15 @@ async def watchlist_delete_options(item_id: str = None):
 
 @api_router.delete("/watchlist/{item_id}")
 async def delete_watchlist_item(item_id: str, current_user: User = Depends(require_auth)):
-    result = await db.watchlist.delete_one({"id": item_id, "user_id": current_user.id})
+    query_list = [{"id": item_id}, {"_id": item_id}, {"symbol": item_id}]
+    try:
+        query_list.append({"_id": ObjectId(item_id)})
+    except Exception:
+        pass
+    result = await db.watchlist.delete_one({
+        "$or": query_list,
+        "user_id": current_user.id
+    })
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Watchlist item not found")
     return {"message": "Item removed from watchlist"}
@@ -2758,28 +2841,24 @@ async def get_ml_predictions(background_tasks: BackgroundTasks, refresh: bool = 
 
 @api_router.get("/ai/opportunities")
 async def get_opportunity_scanner(current_user: User = Depends(require_auth)):
-    """Fetch 'ACCUMULATE' stocks from the daily scan, excluding user portfolio."""
+    """Scan top NSE stocks evaluated across financial, technical & risk metrics and suggest additions excluding portfolio holdings."""
     try:
-        # Get user's current holdings
+        # Get user's current holdings to exclude
         holdings = await db.portfolio.find({"user_id": current_user.id}).to_list(length=None)
         user_symbols = {h.get("symbol") for h in holdings if h.get("symbol")}
-        user_symbols_stripped = {s.replace('.NS', '').replace('.BO', '') for s in user_symbols}
+        user_symbols_stripped = {s.replace('.NS', '').replace('.BO', '').upper() for s in user_symbols}
         
-        # Query ML predictions for 'ACCUMULATE'
-        opportunities = await db.ml_predictions.find(
-            {"signal": "ACCUMULATE"},
-            {"_id": 0}
-        ).sort("ai_rating", -1).to_list(length=None)
+        # Query all pre-calculated ML predictions sorted by highest AI rating
+        opportunities = await db.ml_predictions.find({}, {"_id": 0}).sort("ai_rating", -1).to_list(length=1000)
         
-        # Filter out user's symbols
         filtered_opportunities = []
         for opp in opportunities:
             sym = opp.get("symbol", "")
-            base_sym = sym.replace('.NS', '').replace('.BO', '')
-            if base_sym not in user_symbols_stripped and sym not in user_symbols:
+            base_sym = sym.replace('.NS', '').replace('.BO', '').upper()
+            if base_sym not in user_symbols_stripped and sym.upper() not in user_symbols:
                 filtered_opportunities.append(opp)
         
-        # Return top 30 or fewer
+        # Return top 30 opportunities for adding
         return {"opportunities": filtered_opportunities[:30]}
         
     except Exception as e:
@@ -3201,4 +3280,6 @@ async def verify_email(request_data: dict):
             content={"error": "An error occurred"},
             status_code=500
         )
+
+
 

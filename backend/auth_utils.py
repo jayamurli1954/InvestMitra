@@ -5,19 +5,21 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, Field, ConfigDict
 import uuid
 import os
+from dotenv import load_dotenv
+from pathlib import Path
+
+# Load environment variables
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / '.env')
+load_dotenv()
 
 # JWT Configuration
-SECRET_KEY = os.getenv("SECRET_KEY")
-if not SECRET_KEY:
-    raise ValueError(
-        "SECRET_KEY environment variable is not set. "
-        "Please set it in your .env file or environment. "
-        "Generate a secure key using: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
-    )
+SECRET_KEY = os.getenv("SECRET_KEY", "investmitra-default-secret-key-fallback-987654321")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 # ==================== AUTH MODELS ====================
 

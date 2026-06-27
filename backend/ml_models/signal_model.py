@@ -106,8 +106,15 @@ def generate_signal(
     if portfolio_weight_pct > 25.0:
         negatives.append("Already high portfolio concentration")
 
-    return {
+    raw_output = {
         "signal": raw_signal,
         "positives": positives,
         "negatives": negatives
     }
+
+    try:
+        from sebi_compliance_guard import sanitize_signal_output
+        return sanitize_signal_output(raw_output)
+    except Exception:
+        return raw_output
+

@@ -3,6 +3,24 @@ import axios from 'axios';
 import { API } from '@/App';
 
 const AuthContext = createContext(null);
+const AUTH_TOKEN_STORAGE_KEY = 'investmitra_access_token';
+
+const storeAccessToken = (token) => {
+  if (!token) return;
+  try {
+    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+  } catch (error) {
+    console.error('Failed to persist access token:', error);
+  }
+};
+
+const clearAccessToken = () => {
+  try {
+    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch (error) {
+    console.error('Failed to clear access token:', error);
+  }
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -67,6 +85,7 @@ export const AuthProvider = ({ children }) => {
       setUser(response.data);
       setIsAuthenticated(true);
     } catch (error) {
+      clearAccessToken();
       setUser(null);
       setIsAuthenticated(false);
     } finally {
@@ -81,6 +100,7 @@ export const AuthProvider = ({ children }) => {
         { email, password },
         { withCredentials: true }
       );
+      storeAccessToken(response.data.access_token);
       setUser(response.data.user);
       setIsAuthenticated(true);
       return response.data;
@@ -99,6 +119,7 @@ export const AuthProvider = ({ children }) => {
         { email, password, name, disclaimer_accepted: disclaimerAccepted },
         { withCredentials: true }
       );
+      storeAccessToken(response.data.access_token);
       setUser(response.data.user);
       setIsAuthenticated(true);
       return response.data;
@@ -122,6 +143,7 @@ export const AuthProvider = ({ children }) => {
         {},
         { withCredentials: true }
       );
+      storeAccessToken(response.data.access_token);
       setUser(response.data.user);
       setIsAuthenticated(true);
       
@@ -145,6 +167,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     }
+    clearAccessToken();
     setUser(null);
     setIsAuthenticated(false);
   };
@@ -264,3 +287,4 @@ export const AuthProvider = ({ children }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+

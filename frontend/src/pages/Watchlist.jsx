@@ -8,7 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 
+import { useWebSocket } from '../context/WebSocketContext';
+
 const Watchlist = () => {
+  const wsData = useWebSocket() || {};
+  const liveStockPrices = wsData.liveStockPrices || {};
+  const priceFlashes = wsData.priceFlashes || {};
+
   const [stocks, setStocks] = useState([]);
   const [mutualFunds, setMutualFunds] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -376,7 +382,7 @@ const Watchlist = () => {
                         )}
                       </div>
                       <button
-                        onClick={() => handleRemoveFromWatchlist(item.id)}
+                        onClick={() => handleRemoveFromWatchlist(item.id || item._id || item.symbol)}
                         className="text-rose-400 hover:text-rose-300 transition-colors"
                       >
                         <Trash2 className="w-5 h-5" />
@@ -386,8 +392,8 @@ const Watchlist = () => {
                     <div className="space-y-2">
                       <div>
                         <p className="text-sm text-slate-400">Current Price</p>
-                        <p className="text-2xl font-bold text-white">
-                          ₹{(item.current_price || 0).toLocaleString('en-IN', {
+                        <p className={`text-2xl font-bold text-white transition-colors rounded px-1 py-0.5 inline-block ${priceFlashes[item.symbol] || ''}`}>
+                          ₹{((liveStockPrices[item.symbol] !== undefined ? liveStockPrices[item.symbol] : item.current_price) || 0).toLocaleString('en-IN', {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2
                           })}
@@ -432,7 +438,7 @@ const Watchlist = () => {
                         </span>
                       </div>
                       <button
-                        onClick={() => handleRemoveFromWatchlist(item.id)}
+                        onClick={() => handleRemoveFromWatchlist(item.id || item._id || item.symbol)}
                         className="text-rose-400 hover:text-rose-300 transition-colors"
                       >
                         <Trash2 className="w-5 h-5" />

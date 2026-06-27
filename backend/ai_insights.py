@@ -10,6 +10,7 @@ Model: gemini-2.5-flash (latest & fastest)
 import os
 import re
 import json
+import ast
 import logging
 from typing import List, Dict, Any
 from dotenv import load_dotenv
@@ -135,6 +136,59 @@ def extract_json_from_markdown(text: str) -> str:
     return stripped[start:]
 
 
+def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
+    """Parse Gemini JSON robustly, even when it includes minor markdown noise."""
+    extracted = extract_json_from_markdown(raw_text)
+    candidates = [extracted]
+
+    normalized = extracted.strip().lstrip("\ufeff")
+    normalized = re.sub(r"^\s*`{3,}\s*json\s*", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^\s*`{3,}\s*", "", normalized)
+    normalized = re.sub(r"\s*`{3,}\s*$", "", normalized)
+    normalized = normalized.translate(str.maketrans({chr(0x201C): "\"", chr(0x201D): "\"", chr(0x2019): "'", chr(0x2018): "'"}))
+    normalized = re.sub(r",(\s*[}\]])", r"\1", normalized)
+
+    if normalized not in candidates:
+        candidates.append(normalized)
+
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+
+    python_like = re.sub(r"\btrue\b", "True", normalized)
+    python_like = re.sub(r"\bfalse\b", "False", python_like)
+    python_like = re.sub(r"\bnull\b", "None", python_like)
+
+    try:
+        parsed = ast.literal_eval(python_like)
+    except (ValueError, SyntaxError) as exc:
+        raise ValueError(f"Unable to parse AI JSON response: {exc}") from exc
+
+    if not isinstance(parsed, dict):
+        raise ValueError("AI response did not parse into a JSON object")
+
+    def _sanitize_obj(obj):
+        try:
+            from sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
+        except Exception:
+            return obj
+
+        if isinstance(obj, str):
+            return sanitize_text(obj)
+        elif isinstance(obj, list):
+            return [_sanitize_obj(item) for item in obj]
+        elif isinstance(obj, dict):
+            res = {k: _sanitize_obj(v) for k, v in obj.items()}
+            res["sebi_disclaimer"] = SEBI_DISCLAIMER_TEXT
+            return res
+        return obj
+
+    return _sanitize_obj(parsed)
+
+
+
 def format_holdings(holdings: List[Dict]) -> str:
     """Format detailed holdings for AI context"""
     if not holdings:
@@ -258,7 +312,6 @@ Provide pinpointed, actionable optimization suggestions for this portfolio in JS
 - Tailor observations strictly to the user's risk profile ({risk_profile}).
 
 **Output Format (JSON ONLY):**
-```json
 {{
     "optimization_suggestions": {{
         "rebalancing": [
@@ -279,7 +332,6 @@ Provide pinpointed, actionable optimization suggestions for this portfolio in JS
         ]
     }}
 }}
-```
 
 Respond with ONLY the JSON object, nothing else.
 """
@@ -338,15 +390,12 @@ Respond with ONLY the JSON object, nothing else.
             }
 
         logger.debug(f"Processing Gemini response: {len(raw_text)} characters")
-        
-        json_str = extract_json_from_markdown(raw_text)
-        
         try:
-            result = json.loads(json_str)
-            logger.info("✅ Successfully parsed Gemini response")
+            result = parse_ai_json_response(raw_text)
+            logger.info("??? Successfully parsed Gemini response")
             return result
             
-        except json.JSONDecodeError as parse_error:
+        except Exception as parse_error:
             logger.error(f"❌ JSON parsing failed: {parse_error}")
             logger.error(f"Raw response: {raw_text[:500]}")
             
@@ -446,7 +495,6 @@ As an expert market analyst, provide 3-month predictive insights for this Indian
 - Market Sentiment: {sentiment}
 
 **Output JSON Format:**
-```json
 {{
     "predictive_insights": {{
         "outlook_3m": "Concise 2-3 sentence forecast for next 3 months",
@@ -465,7 +513,6 @@ As an expert market analyst, provide 3-month predictive insights for this Indian
         ]
     }}
 }}
-```
 
 Generate ONLY the JSON object.
 """
@@ -499,8 +546,7 @@ Generate ONLY the JSON object.
                 "error": "empty_response"
             }
         
-        json_str = extract_json_from_markdown(raw_text)
-        return json.loads(json_str)
+        return parse_ai_json_response(raw_text)
         
     except Exception as e:
         logger.error(f"❌ Predictive insights error: {e}")
@@ -582,3 +628,4 @@ Keep it concise and actionable.
     except Exception as e:
         logger.error(f"❌ Stock analysis error for {symbol}: {e}")
         return f"Analysis for {symbol} temporarily unavailable."
+

@@ -5,8 +5,9 @@ import { API } from '@/App';
 import { ArrowLeft, TrendingUp, TrendingDown, Eye, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { AreaChart, BarChart, Card } from '@tremor/react';
+import { BarChart, Card } from '@tremor/react';
 import { Label } from "@/components/ui/label";
+import TradingViewChart from '@/components/TradingViewChart';
 
 const StockDetail = () => {
   const { symbol } = useParams();
@@ -208,26 +209,16 @@ const StockDetail = () => {
         </div>
       </div>
 
-      {/* Price Chart */}
+      {/* TradingView Technical Price Chart */}
       <div className="glass-card p-6" data-testid="price-chart">
-        <h2 className="text-2xl font-bold text-white mb-6">30-Day Price Chart</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold text-white">Interactive Candlestick Chart</h2>
+          <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded border border-emerald-500/20">
+            TradingView Engine
+          </span>
+        </div>
         {historicalData.length > 0 ? (
-          <AreaChart
-            data={historicalData.map(d => ({
-              date: new Date(d.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-              Close: d.close,
-              High: d.high,
-              Low: d.low
-            }))}
-            index="date"
-            categories={["Close"]}
-            colors={["sky"]}
-            valueFormatter={(value) => `₹${value.toFixed(2)}`}
-            yAxisWidth={60}
-            className="h-80"
-            showAnimation={true}
-            showLegend={false}
-          />
+          <TradingViewChart data={historicalData} height={420} />
         ) : (
           <p className="text-slate-400 text-center py-8">No historical data available</p>
         )}
@@ -272,7 +263,7 @@ const StockDetail = () => {
               </tr>
             </thead>
             <tbody>
-              {historicalData.slice(0, 10).map((data, idx) => (
+              {[...historicalData].reverse().slice(0, 10).map((data, idx) => (
                 <tr key={idx} data-testid={`history-row-${idx}`}>
                   <td className="text-white">{data.date}</td>
                   <td className="text-slate-300">₹{data.open.toFixed(2)}</td>

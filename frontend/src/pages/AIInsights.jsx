@@ -176,8 +176,11 @@ const AIInsights = () => {
                       ★ {item.ai_rating}/10
                     </span>
                     {item.signal && (
-                      <span className={`px-2 py-1 rounded text-xs font-bold border ${item.signal === 'ACCUMULATE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50' :
-                        item.signal === 'HOLD' ? 'bg-amber-500/10 text-amber-400 border-amber-500/50' :
+                      <span className={`px-2 py-1 rounded text-xs font-bold border ${
+                        item.signal === 'ACCUMULATE' || item.signal === 'FAVORABLE OUTLOOK' || item.signal.includes('FAVORABLE') || item.signal.includes('POSITIVE')
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50' :
+                        item.signal === 'HOLD' || item.signal === 'BALANCED POSITION' || item.signal.includes('BALANCED') || item.signal.includes('NEUTRAL')
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/50' :
                           'bg-rose-500/10 text-rose-400 border-rose-500/50'
                         }`}>
                         {item.signal}
@@ -546,8 +549,8 @@ const AIInsights = () => {
               <TrendingUp className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-white">Accumulate Radar</h2>
-              <p className="text-sm text-slate-400">Top ACCUMULATE signals from 250 NSE stocks — updated nightly</p>
+              <h2 className="text-2xl font-bold text-white">Stock Opportunity Radar</h2>
+              <p className="text-sm text-slate-400">Top opportunities evaluated across financial, technical & sentiment analysis — excluding portfolio holdings</p>
             </div>
           </div>
           <button
@@ -563,21 +566,21 @@ const AIInsights = () => {
         {loading.opportunities ? (
           <div className="flex items-center justify-center py-10">
             <RefreshCw className="w-6 h-6 text-emerald-400 animate-spin mr-3" />
-            <span className="text-slate-400 text-sm">Scanning NSE stocks...</span>
+            <span className="text-slate-400 text-sm">Scanning NSE stocks across financial, technical & risk metrics...</span>
           </div>
         ) : opportunities.length === 0 ? (
           <div className="text-center py-10">
             <div className="w-12 h-12 rounded-full bg-slate-700/60 flex items-center justify-center mx-auto mb-3">
               <Lightbulb className="w-6 h-6 text-slate-500" />
             </div>
-            <p className="text-slate-400 text-sm">No ACCUMULATE signals at the moment.</p>
-            <p className="text-slate-500 text-xs mt-1">The nightly scan runs at 2 AM IST. Click Refresh to trigger manually.</p>
+            <p className="text-slate-400 text-sm">No new stock opportunities detected at the moment.</p>
+            <p className="text-slate-500 text-xs mt-1">The automated scan runs nightly at 2 AM IST. Click Refresh to trigger scan.</p>
           </div>
         ) : (
           <>
             <p className="text-xs text-slate-500 mb-4">
-              {opportunities.length} stocks not in your portfolio currently show ACCUMULATE signals.
-              <span className="text-rose-400/70 ml-2">Not investment advice — do your own research.</span>
+              {opportunities.length} top rated stocks evaluated across metrics (excluding your existing portfolio holdings).
+              <span className="text-emerald-400/70 ml-2">Educational analytics & research insights only.</span>
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {opportunities.slice(0, 12).map((opp, idx) => (

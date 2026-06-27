@@ -25,7 +25,7 @@ const TransactionDialog = ({ holding, transactionType, open, onOpenChange, onSuc
     try {
       const payload = {
         ...formData,
-        quantity: parseInt(formData.quantity),
+        quantity: parseFloat(formData.quantity),
         price: parseFloat(formData.price),
         transaction_type: transactionType,
       };

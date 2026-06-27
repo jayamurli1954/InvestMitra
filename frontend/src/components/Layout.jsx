@@ -19,10 +19,23 @@ import {
   PieChart,
   LogOut,
   User as UserIcon,
-  Settings
+  Settings,
+  Search,
+  Zap,
+  Building2
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator
+} from "@/components/ui/command";
 import InstallAppButton from "@/components/InstallAppButton";
 
 const Layout = ({ children }) => {
@@ -31,11 +44,24 @@ const Layout = ({ children }) => {
   const { user, logout } = useAuth();
   const [marketStatus, setMarketStatus] = useState({ isOpen: false, text: 'Checking...' });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
     navigate('/auth');
   };
+
+  // Toggle Command Palette on Ctrl+K or Cmd+K
+  useEffect(() => {
+    const down = (e) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
 
   // Check Indian market status
   useEffect(() => {
@@ -91,6 +117,20 @@ const Layout = ({ children }) => {
     { path: '/strategies', icon: Target, label: 'Strategies' },
     { path: '/analytics', icon: PieChart, label: 'Analytics' },
   ];
+
+  const popularStocks = [
+    { symbol: 'RELIANCE.NS', name: 'Reliance Industries' },
+    { symbol: 'TCS.NS', name: 'Tata Consultancy Services' },
+    { symbol: 'HDFCBANK.NS', name: 'HDFC Bank' },
+    { symbol: 'INFY.NS', name: 'Infosys Limited' },
+    { symbol: 'ICICIBANK.NS', name: 'ICICI Bank' },
+    { symbol: 'TATAMOTORS.NS', name: 'Tata Motors' },
+  ];
+
+  const handleSelectCommand = (action) => {
+    setCommandOpen(false);
+    action();
+  };
 
   const sidebarContent = (
     <div className="p-6 h-full flex flex-col">
@@ -174,9 +214,9 @@ const Layout = ({ children }) => {
 
       {/* Main Content */}
       <main className="flex-1 h-screen overflow-y-auto app-body-scroll">
-        {/* Top Bar with User Profile */}
+        {/* Top Bar with Search & User Profile */}
         <div className="sticky top-0 z-10 bg-slate-900/80 backdrop-blur-xl border-b border-white/10">
-          <div className="px-4 md:px-8 py-4 flex items-center justify-between">
+          <div className="px-4 md:px-8 py-3.5 flex items-center justify-between gap-4">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
@@ -185,7 +225,24 @@ const Layout = ({ children }) => {
             >
               <Menu className="w-6 h-6" />
             </button>
-            <div className="ml-auto flex items-center gap-2">
+
+            {/* Terminal Command Trigger Search Bar */}
+            <div className="flex-1 max-w-md">
+              <button
+                onClick={() => setCommandOpen(true)}
+                className="w-full flex items-center justify-between px-3.5 py-2 rounded-xl glass-card text-slate-400 hover:text-slate-200 hover:bg-white/5 transition-all text-sm group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Search className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span>Search pages, stocks, commands...</span>
+                </div>
+                <kbd className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold text-slate-300 bg-slate-800 border border-slate-700 rounded-md">
+                  <span>Ctrl</span> K
+                </kbd>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
               <InstallAppButton />
               {user && (
                 <DropdownMenu>
@@ -204,14 +261,14 @@ const Layout = ({ children }) => {
                       </div>
                     </div>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56">
+                  <DropdownMenuContent className="w-56 bg-slate-900 border-white/10 text-slate-200">
                     <DropdownMenuItem asChild>
-                      <Link to="/profile-settings" className="cursor-pointer">
+                      <Link to="/profile-settings" className="cursor-pointer hover:bg-white/5">
                         <Settings className="w-4 h-4 mr-2" />
                         Profile Settings
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer">
+                    <DropdownMenuItem onClick={handleLogout} className="cursor-pointer hover:bg-white/5 text-rose-400 focus:text-rose-400">
                       <LogOut className="w-4 h-4 mr-2" />
                       Logout
                     </DropdownMenuItem>
@@ -226,6 +283,72 @@ const Layout = ({ children }) => {
         <div className="p-4 md:p-8 pb-24 md:pb-12 min-h-full">
           {children}
         </div>
+
+        {/* Global Command Palette Modal */}
+        <CommandDialog open={commandOpen} onOpenChange={setCommandOpen}>
+          <div className="bg-slate-900 border border-white/10 text-slate-200 rounded-xl overflow-hidden shadow-2xl">
+            <CommandInput placeholder="Type a command or search..." className="text-slate-100 placeholder:text-slate-500" />
+            <CommandList className="max-h-[350px] p-2 bg-slate-900">
+              <CommandEmpty className="text-slate-400 py-6 text-center text-sm">No results found.</CommandEmpty>
+              
+              <CommandGroup heading="Navigation">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <CommandItem
+                      key={item.path}
+                      onSelect={() => handleSelectCommand(() => navigate(item.path))}
+                      className="cursor-pointer text-slate-300 hover:text-white hover:bg-white/10 rounded-lg px-3 py-2 flex items-center gap-3"
+                    >
+                      <Icon className="w-4 h-4 text-emerald-400" />
+                      <span>{item.label}</span>
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+
+              <CommandSeparator className="my-2 bg-white/10" />
+
+              <CommandGroup heading="AI Actions & Analysis">
+                <CommandItem
+                  onSelect={() => handleSelectCommand(() => navigate('/ai-insights'))}
+                  className="cursor-pointer text-slate-300 hover:text-white hover:bg-white/10 rounded-lg px-3 py-2 flex items-center gap-3"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Run AI Accumulate/Hold/Reduce Signal</span>
+                  <CommandShortcut>AI</CommandShortcut>
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => handleSelectCommand(() => navigate('/backtesting'))}
+                  className="cursor-pointer text-slate-300 hover:text-white hover:bg-white/10 rounded-lg px-3 py-2 flex items-center gap-3"
+                >
+                  <Zap className="w-4 h-4 text-sky-400" />
+                  <span>Run Quantitative Strategy Backtest</span>
+                </CommandItem>
+              </CommandGroup>
+
+              <CommandSeparator className="my-2 bg-white/10" />
+
+              <CommandGroup heading="Popular NSE Stocks">
+                {popularStocks.map((stock) => (
+                  <CommandItem
+                    key={stock.symbol}
+                    onSelect={() => handleSelectCommand(() => navigate(`/stock/${stock.symbol}`))}
+                    className="cursor-pointer text-slate-300 hover:text-white hover:bg-white/10 rounded-lg px-3 py-2 flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Building2 className="w-4 h-4 text-indigo-400" />
+                      <span>{stock.name}</span>
+                    </div>
+                    <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      {stock.symbol}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </div>
+        </CommandDialog>
 
         {/* Footer */}
         <footer className="border-t border-white/10 bg-slate-900/60 px-4 md:px-8 py-5">
@@ -269,4 +392,5 @@ const Layout = ({ children }) => {
 };
 
 export default Layout;
+
 
