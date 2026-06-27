@@ -110,23 +110,19 @@
     "productName": "InvestMitra",
     "files": [
       "build/**/*",
-      "node_modules/**/*"
+      "public/electron.js"
     ],
     "directories": {
       "buildResources": "assets"
     },
-    "extraResources": [
-      {
-        "from": "../dist/server",
-        "to": "backend"
-      }
-    ],
     "win": {
       "target": "nsis"
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
-    }
+      "allowToChangeInstallationDirectory": true,
+      "differentialPackage": false
+    },
+    "compression": "maximum"
   }
 }

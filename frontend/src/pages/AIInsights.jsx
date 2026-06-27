@@ -4,6 +4,7 @@ import { API } from '@/App';
 import { Sparkles, TrendingUp, AlertTriangle, Target, Lightbulb, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import PersonaSelector from '@/components/PersonaSelector';
 
 // Helper function to render data that might be string, array, or object
 const renderContent = (data) => {
@@ -44,6 +45,9 @@ const renderContent = (data) => {
 };
 
 const AIInsights = () => {
+  const [activePersona, setActivePersona] = useState('buffett');
+  const [personaAnalysis, setPersonaAnalysis] = useState(null);
+  const [loadingPersona, setLoadingPersona] = useState(false);
   const [optimization, setOptimization] = useState(null);
   const [predictions, setPredictions] = useState(null);
   const [mlData, setMlData] = useState([]);
@@ -129,6 +133,10 @@ const AIInsights = () => {
           <p className="text-slate-400">Get personalized recommendations powered by AI</p>
         </div>
       </div>
+
+      {/* Investor Personas Component */}
+      <PersonaSelector activePersona={activePersona} onSelectPersona={(p) => setActivePersona(p)} />
+
 
       {/* Quantitative ML Predictions */}
       <div className="glass-card p-6">

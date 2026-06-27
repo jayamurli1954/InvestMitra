@@ -14,7 +14,7 @@ function createWindow() {
     },
   });
 
-  win.webContents.openDevTools(); // Open DevTools for debugging
+  // win.webContents.openDevTools(); // Open DevTools for debugging (commented out for clean app view)
 
   // Load the appropriate URL based on the environment
   const startUrl = process.env.NODE_ENV === 'development'

@@ -8,6 +8,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { DonutChart, BarChart as TremorBarChart, Card } from '@tremor/react';
+import CrashSimulator from '@/components/CrashSimulator';
 
 const Analytics = () => {
   const [analytics, setAnalytics] = useState(null);
@@ -142,6 +143,9 @@ const Analytics = () => {
               <p className="text-sm text-slate-400">Historical Max Loss</p>
             </div>
           </div>
+
+          {/* Market Crash Stress Testing Simulator */}
+          <CrashSimulator totalPortfolioValue={analytics.total_value || 100000} />
 
           {/* Sector Allocation Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

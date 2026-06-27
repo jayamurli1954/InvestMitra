@@ -22,6 +22,14 @@ const clearAccessToken = () => {
   }
 };
 
+const getStoredAccessToken = () => {
+  try {
+    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch (error) {
+    return null;
+  }
+};
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -78,10 +86,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuth = async () => {
+    const token = getStoredAccessToken();
+    if (!token) {
+      setUser(null);
+      setIsAuthenticated(false);
+      setLoading(false);
+      return;
+    }
     try {
-      const response = await axios.get(`${API}/auth/me`, {
-        withCredentials: true
-      });
+      const response = await axios.get(`${API}/auth/me`);
       setUser(response.data);
       setIsAuthenticated(true);
     } catch (error) {
@@ -97,8 +110,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await axios.post(
         `${API}/auth/login`,
-        { email, password },
-        { withCredentials: true }
+        { email, password }
       );
       storeAccessToken(response.data.access_token);
       setUser(response.data.user);
@@ -116,8 +128,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await axios.post(
         `${API}/auth/register`,
-        { email, password, name, disclaimer_accepted: disclaimerAccepted },
-        { withCredentials: true }
+        { email, password, name, disclaimer_accepted: disclaimerAccepted }
       );
       storeAccessToken(response.data.access_token);
       setUser(response.data.user);

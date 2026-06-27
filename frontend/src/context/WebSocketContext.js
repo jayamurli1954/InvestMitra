@@ -24,7 +24,8 @@ export const WebSocketProvider = ({ children }) => {
     }
 
     const userId = user.id;
-    const websocketUrl = `ws://localhost:8000/ws/${userId}`.replace('http', 'ws'); // Adjust for production if needed
+    const wsHost = window.location.hostname === 'localhost' ? 'ws://localhost:8000' : 'wss://investmitra-backend.onrender.com';
+    const websocketUrl = `${wsHost}/ws/${userId}`;
 
     ws.current = new WebSocket(websocketUrl);
 

@@ -8,6 +8,9 @@ import { toast } from 'sonner';
 import { BarChart, Card } from '@tremor/react';
 import { Label } from "@/components/ui/label";
 import TradingViewChart from '@/components/TradingViewChart';
+import DCFWorkbench from '@/components/DCFWorkbench';
+import BerkshireScorecard from '@/components/BerkshireScorecard';
+
 
 const StockDetail = () => {
   const { symbol } = useParams();
@@ -138,6 +141,13 @@ const StockDetail = () => {
           </div>
         </div>
       </div>
+
+      {/* DCF Valuation Workbench */}
+      <DCFWorkbench symbol={stock.symbol} currentPrice={stock.current_price} />
+
+      {/* Berkshire Fundamental Scorecard */}
+      <BerkshireScorecard symbol={stock.symbol} />
+
 
       {/* Fundamentals & Technical Indicators */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

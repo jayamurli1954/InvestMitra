@@ -99,12 +99,84 @@ const Screener = () => {
     setTimeout(() => fetchStocks(), 100);
   };
 
+  const handleApplyPreset = async (presetKey) => {
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API}/screener/technical-presets?preset=${presetKey}`);
+      if (response.data && response.data.results) {
+        setStocks(response.data.results);
+        toast.success(`Loaded PKScreener: ${presetKey.replace(/_/g, ' ').toUpperCase()}`);
+      }
+    } catch (err) {
+      console.error('Error fetching preset screener:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8 fade-in" data-testid="screener-page">
       {/* Header */}
       <div>
         <h1 className="text-4xl font-bold text-white mb-2" data-testid="screener-title">Stock Screener</h1>
         <p className="text-slate-400">Filter and discover stocks based on your investment criteria</p>
+      </div>
+
+      {/* PKScreener Algorithmic Preset Chips */}
+      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 backdrop-blur-md">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+            <span>🔍</span> PKScreener Technical Scan Presets
+          </h3>
+          <span className="text-[11px] text-emerald-400 font-semibold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-800/40">
+            NSE Algorithmic Scans
+          </span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+          <button
+            onClick={() => handleApplyPreset('volume_breakout')}
+            className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-emerald-500 hover:bg-emerald-950/20 text-left transition-all group"
+          >
+            <span className="text-xs font-bold text-slate-200 group-hover:text-emerald-400 flex items-center justify-between">
+              <span>🚀 Volume Breakout</span>
+              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">NSE</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Vol &gt; 2.5x 20-Day Avg</span>
+          </button>
+
+          <button
+            onClick={() => handleApplyPreset('high_52w')}
+            className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-amber-500 hover:bg-amber-950/20 text-left transition-all group"
+          >
+            <span className="text-xs font-bold text-slate-200 group-hover:text-amber-400 flex items-center justify-between">
+              <span>📈 52W High Breakout</span>
+              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">Momentum</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Within 2% of 52-wk high</span>
+          </button>
+
+          <button
+            onClick={() => handleApplyPreset('rsi_bullish')}
+            className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-blue-500 hover:bg-blue-950/20 text-left transition-all group"
+          >
+            <span className="text-xs font-bold text-slate-200 group-hover:text-blue-400 flex items-center justify-between">
+              <span>⚡ Bullish RSI Cross</span>
+              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">RSI &gt; 50</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Rebound from oversold</span>
+          </button>
+
+          <button
+            onClick={() => handleApplyPreset('ema_golden')}
+            className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-purple-500 hover:bg-purple-950/20 text-left transition-all group"
+          >
+            <span className="text-xs font-bold text-slate-200 group-hover:text-purple-400 flex items-center justify-between">
+              <span>✨ EMA Golden Cross</span>
+              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">EMA 20/50</span>
+            </span>
+            <span className="text-[10px] text-slate-400 block mt-0.5">Golden cross trend signal</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

@@ -48,8 +48,7 @@ const clearStoredAccessToken = () => {
   }
 };
 
-// Configure axios to send credentials with every request
-axios.defaults.withCredentials = true;
+// Configure axios interceptor for Authorization token
 
 axios.interceptors.request.use(
   config => {
