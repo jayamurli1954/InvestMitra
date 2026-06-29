@@ -10,16 +10,13 @@ logger = logging.getLogger(__name__)
 # Ratio represents total multiplier (e.g. 2:1 bonus means 1 share becomes 3 -> ratio 3.0)
 KNOWN_CORPORATE_ACTIONS = {
     "NMDC": [
-        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"},
-        {"action_date": "2024-12-30", "ratio": 3.0, "type": "2:1 BONUS"}
+        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"}
     ],
     "NMDC.NS": [
-        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"},
-        {"action_date": "2024-12-30", "ratio": 3.0, "type": "2:1 BONUS"}
+        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"}
     ],
     "NMDC.BO": [
-        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"},
-        {"action_date": "2024-12-30", "ratio": 3.0, "type": "2:1 BONUS"}
+        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"}
     ],
     "RELIANCE": [
         {"action_date": "2024-10-28", "ratio": 2.0, "type": "1:1 BONUS"}
@@ -69,13 +66,14 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
             symbol = holding.get("symbol")
             current_qty = float(holding.get("quantity", 0))
             current_price = float(holding.get("purchase_price", 0))
-            holding_id = str(holding.get("_id") or holding.get("id"))
+            holding_id = holding.get("id") or str(holding.get("_id"))
 
             if not symbol or current_qty <= 0:
                 continue
 
             processed_count += 1
-            purchase_date = holding.get("purchase_date", "")
+            raw_p_date = str(holding.get("purchase_date", ""))
+            purchase_date_clean = raw_p_date[:10] if raw_p_date else ""
 
             # Build candidate actions list combining Known Master DB + Live yfinance
             candidate_actions = []
@@ -115,8 +113,8 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 ratio = act["ratio"]
                 action_label = act.get("type", "BONUS_SPLIT")
 
-                # Skip actions that occurred on or before purchase date
-                if purchase_date and date_str < purchase_date:
+                # Skip actions that occurred prior to purchase date (unless known bonus like NMDC where date string alignment might differ)
+                if purchase_date_clean and date_str < purchase_date_clean and sym_clean != "NMDC":
                     continue
 
                 # Check if already applied to this holding
@@ -133,10 +131,10 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 new_qty = current_qty * ratio
                 new_price = current_price / ratio if current_price > 0 else 0.0
 
-                # Update portfolio document in MongoDB
-                query = {"_id": ObjectId(holding_id)} if ObjectId.is_valid(holding_id) else {"id": holding_id}
-                await db.portfolio.update_one(
-                    query,
+                # Update portfolio document in MongoDB using symbol or id matching
+                update_query = {"user_id": user_id, "$or": [{"id": holding_id}, {"symbol": symbol}]}
+                await db.portfolio.update_many(
+                    update_query,
                     {"$set": {
                         "quantity": int(new_qty) if new_qty.is_integer() else new_qty,
                         "purchase_price": new_price,
