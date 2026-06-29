@@ -42,6 +42,7 @@ const Portfolio = () => {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [selectedStock, setSelectedStock] = useState(null);
   const [assetType, setAssetType] = useState("STOCK");
   const initialPurchaseDate = getTodayDateString();
@@ -111,15 +112,17 @@ const Portfolio = () => {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    const minLen = assetType === "STOCK" ? 3 : 2;
+    const minLen = 2;
     if (!isAuthenticated || searchQuery.length < minLen) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
 
+    setIsSearching(true);
     const timer = setTimeout(() => {
       handleAssetSearch(searchQuery);
-    }, 300);
+    }, 250);
 
     return () => clearTimeout(timer);
   }, [searchQuery, assetType, isAuthenticated]);
@@ -128,6 +131,10 @@ const Portfolio = () => {
     if (!dialogOpen) {
       setAddHoldingStatus(null);
       setIsAddingHolding(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setSelectedStock(null);
+      setIsSearching(false);
     }
   }, [dialogOpen]);
 
@@ -167,21 +174,24 @@ const Portfolio = () => {
   const handleAssetSearch = async (query) => {
     if (!query || query.length < 2) {
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
 
     try {
       let response;
       if (assetType === "STOCK") {
-        response = await axios.get(`${API}/stocks/search?q=${query}`);
+        response = await axios.get(`${API}/stocks/search?q=${encodeURIComponent(query)}&exchange=${formData.exchange || 'NSE'}`);
         setSearchResults(Array.isArray(response.data) ? response.data : response.data.results || []);
       } else {
-        response = await axios.get(`${API}/mutual-funds/search?q=${query}`);
+        response = await axios.get(`${API}/mutual-funds/search?q=${encodeURIComponent(query)}`);
         setSearchResults(Array.isArray(response.data) ? response.data : response.data.results || []);
       }
     } catch (error) {
       console.error('Error searching:', error);
       setSearchResults([]);
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -548,13 +558,21 @@ const Portfolio = () => {
                     {assetType === "STOCK" ? "Search Stock" : "Search Mutual Fund"}
                   </Label>
                   <Input
-                    placeholder={assetType === "STOCK" ? "Search by symbol..." : "Search by fund name..."}
+                    placeholder={assetType === "STOCK" ? "Search by symbol (e.g. AFCONS, RELIANCE)..." : "Search by fund name..."}
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setSelectedStock(null);
+                    }}
                     className="bg-slate-800 border-slate-700 text-white"
                   />
+                  {isSearching && (
+                    <p className="text-xs text-emerald-400 mt-1.5 animate-pulse font-medium">
+                      🔍 Searching market records for "{searchQuery}"...
+                    </p>
+                  )}
                   {searchResults.length > 0 && (
-                    <div className="mt-2 max-h-48 overflow-y-auto bg-slate-800 rounded-lg border border-slate-700">
+                    <div className="mt-2 max-h-48 overflow-y-auto bg-slate-800 rounded-lg border border-slate-700 shadow-xl">
                       {searchResults.map((result, idx) => (
                         <div
                           key={idx}
@@ -563,21 +581,44 @@ const Portfolio = () => {
                             setSearchQuery(assetType === "STOCK" ? result.symbol : result.scheme_name);
                             setSearchResults([]);
                           }}
-                          className="p-3 hover:bg-slate-700 cursor-pointer border-b border-slate-700"
+                          className="p-3 hover:bg-slate-700 cursor-pointer border-b border-slate-700/80 flex justify-between items-center"
                         >
                           {assetType === "STOCK" ? (
-                            <>
-                              <p className="font-medium text-white">{result.symbol}</p>
-                              <p className="text-sm text-slate-400">{result.name}</p>
-                            </>
+                            <div>
+                              <p className="font-bold text-emerald-400 text-sm">{result.symbol}</p>
+                              <p className="text-xs text-slate-300">{result.name}</p>
+                            </div>
                           ) : (
-                            <>
-                              <p className="font-medium text-white">{result.scheme_name}</p>
-                              <p className="text-sm text-slate-400">NAV: ₹{result.current_nav.toFixed(2)}</p>
-                            </>
+                            <div>
+                              <p className="font-bold text-emerald-400 text-sm">{result.scheme_name}</p>
+                              <p className="text-xs text-slate-300">NAV: ₹{result.current_nav ? result.current_nav.toFixed(2) : 'N/A'}</p>
+                            </div>
                           )}
+                          <span className="text-[10px] bg-slate-900 text-emerald-400 px-2 py-1 rounded border border-emerald-500/30 font-semibold">Select</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {!isSearching && searchQuery.length >= 2 && !selectedStock && searchResults.length === 0 && (
+                    <div className="mt-2 p-3 bg-slate-800/80 border border-slate-700 rounded-lg text-xs flex items-center justify-between">
+                      <span className="text-slate-300">Add symbol directly: <strong className="text-white">{searchQuery.toUpperCase()}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const sym = searchQuery.toUpperCase();
+                          const finalSym = sym.includes('.') ? sym : (formData.exchange === 'BSE' ? `${sym}.BO` : `${sym}.NS`);
+                          const customStock = {
+                            symbol: finalSym,
+                            name: sym,
+                            exchange: formData.exchange || 'NSE'
+                          };
+                          setSelectedStock(customStock);
+                          setSearchQuery(finalSym);
+                        }}
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded text-xs transition-colors"
+                      >
+                        Use "{searchQuery.toUpperCase()}"
+                      </button>
                     </div>
                   )}
                 </div>
