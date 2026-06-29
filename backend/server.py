@@ -1571,8 +1571,38 @@ async def broadcast_stock_prices(stock_data: Dict[str, Dict]):
 @api_router.get("/portfolio", response_model=List[PortfolioHolding])
 @cached(key_prefix="portfolio")
 async def get_portfolio(current_user: User = Depends(require_auth)):
-    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    raw_holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
     
+    # Consolidate duplicate entries for the same asset into a single weighted average holding
+    consolidated_map = {}
+    for h in raw_holdings:
+        asset_type = h.get("asset_type", "STOCK")
+        key = h.get("symbol") if asset_type != "MUTUAL_FUND" else (h.get("scheme_code") or h.get("scheme_name") or h.get("symbol"))
+        if not key:
+            key = h.get("id")
+
+        if key not in consolidated_map:
+            consolidated_map[key] = dict(h)
+        else:
+            existing = consolidated_map[key]
+            e_qty = float(existing.get("quantity", 0))
+            e_price = float(existing.get("purchase_price", 0))
+            n_qty = float(h.get("quantity", 0))
+            n_price = float(h.get("purchase_price", 0))
+
+            total_qty = e_qty + n_qty
+            if total_qty > 0:
+                weighted_price = ((e_qty * e_price) + (n_qty * n_price)) / total_qty
+            else:
+                weighted_price = e_price
+
+            existing["quantity"] = int(total_qty) if total_qty.is_integer() else total_qty
+            existing["purchase_price"] = weighted_price
+            if h.get("purchase_date") and (not existing.get("purchase_date") or h.get("purchase_date") > existing.get("purchase_date")):
+                existing["purchase_date"] = h.get("purchase_date")
+
+    holdings = list(consolidated_map.values())
+
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     mf_scheme_codes = [h["scheme_code"] for h in holdings if h.get("asset_type") == "MUTUAL_FUND" and h.get("scheme_code")]
 
@@ -1639,9 +1669,45 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
 
     if current_price > 0:
         holding_obj.current_price = current_price
-    
-    doc = holding_obj.model_dump()
-    await db.portfolio.insert_one(doc)
+
+    # Check if a holding for this asset already exists in DB to update weighted average
+    query = {"user_id": current_user.id}
+    if holding.asset_type == "STOCK":
+        query["symbol"] = holding.symbol
+    else:
+        if holding.scheme_code:
+            query["scheme_code"] = holding.scheme_code
+        elif holding.scheme_name:
+            query["scheme_name"] = holding.scheme_name
+        else:
+            query["symbol"] = holding.symbol
+
+    existing_doc = await db.portfolio.find_one(query)
+    if existing_doc:
+        e_qty = float(existing_doc.get("quantity", 0))
+        e_price = float(existing_doc.get("purchase_price", 0))
+        n_qty = float(holding.quantity)
+        n_price = float(holding.purchase_price)
+
+        total_qty = e_qty + n_qty
+        weighted_price = ((e_qty * e_price) + (n_qty * n_price)) / total_qty if total_qty > 0 else n_price
+
+        update_fields = {
+            "quantity": int(total_qty) if total_qty.is_integer() else total_qty,
+            "purchase_price": weighted_price,
+        }
+        if holding.purchase_date:
+            update_fields["purchase_date"] = holding.purchase_date
+        if current_price > 0:
+            update_fields["current_price"] = current_price
+
+        await db.portfolio.update_one({"id": existing_doc["id"]}, {"$set": update_fields})
+        existing_doc.update(update_fields)
+        holding_obj = PortfolioHolding(**existing_doc)
+    else:
+        doc = holding_obj.model_dump()
+        await db.portfolio.insert_one(doc)
+
     clear_user_portfolio_cache(current_user.id)
 
     # Also create a buy transaction
@@ -1657,8 +1723,8 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
         "transaction_date": holding.purchase_date,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
-    logger.info(f"Adding transaction with quantity: {holding.quantity}, price: {holding.purchase_price}, total_amount: {holding.quantity * holding.purchase_price}")
     await db.transactions.insert_one(transaction_doc)
+    logger.info(f"Adding transaction with quantity: {holding.quantity}, price: {holding.purchase_price}, total_amount: {holding.quantity * holding.purchase_price}")
 
     return holding_obj
 
