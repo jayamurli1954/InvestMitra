@@ -107,7 +107,7 @@ const Layout = ({ children }) => {
   }, [location.pathname]);
 
   const navItems = [
-    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
     { path: '/watchlist', icon: Eye, label: 'Watchlist' },
     { path: '/performance', icon: Activity, label: 'Performance' },
