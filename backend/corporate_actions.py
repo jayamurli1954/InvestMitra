@@ -6,9 +6,50 @@ from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 
+# Known Indian Market Corporate Actions (Bonus & Splits) master registry
+# Ratio represents total multiplier (e.g. 2:1 bonus means 1 share becomes 3 -> ratio 3.0)
+KNOWN_CORPORATE_ACTIONS = {
+    "NMDC": [
+        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"},
+        {"action_date": "2024-12-30", "ratio": 3.0, "type": "2:1 BONUS"}
+    ],
+    "NMDC.NS": [
+        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"},
+        {"action_date": "2024-12-30", "ratio": 3.0, "type": "2:1 BONUS"}
+    ],
+    "NMDC.BO": [
+        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"},
+        {"action_date": "2024-12-30", "ratio": 3.0, "type": "2:1 BONUS"}
+    ],
+    "RELIANCE": [
+        {"action_date": "2024-10-28", "ratio": 2.0, "type": "1:1 BONUS"}
+    ],
+    "RELIANCE.NS": [
+        {"action_date": "2024-10-28", "ratio": 2.0, "type": "1:1 BONUS"}
+    ],
+    "WIPRO": [
+        {"action_date": "2024-12-03", "ratio": 2.0, "type": "1:1 BONUS"}
+    ],
+    "WIPRO.NS": [
+        {"action_date": "2024-12-03", "ratio": 2.0, "type": "1:1 BONUS"}
+    ],
+    "BPCL": [
+        {"action_date": "2024-06-21", "ratio": 2.0, "type": "1:1 BONUS"}
+    ],
+    "BPCL.NS": [
+        {"action_date": "2024-06-21", "ratio": 2.0, "type": "1:1 BONUS"}
+    ],
+    "HPCL": [
+        {"action_date": "2024-06-21", "ratio": 1.5, "type": "1:2 BONUS"}
+    ],
+    "HPCL.NS": [
+        {"action_date": "2024-06-21", "ratio": 1.5, "type": "1:2 BONUS"}
+    ]
+}
+
 async def process_user_corporate_actions(db, user_id: str) -> dict:
     """
-    Scans user portfolio for Stock Splits and Bonus Shares via yfinance corporate actions data.
+    Scans user portfolio for Stock Splits and Bonus Shares via master registry and yfinance.
     Adjusts quantities and average purchase prices automatically while preserving total invested capital.
     """
     if db is None:
@@ -19,7 +60,6 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
     details = []
 
     try:
-        # Get user stock holdings
         holdings = await db.portfolio.find({
             "user_id": user_id,
             "$or": [{"asset_type": "STOCK"}, {"asset_type": None}]
@@ -35,41 +75,55 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 continue
 
             processed_count += 1
+            purchase_date = holding.get("purchase_date", "")
 
-            # Run blocking yfinance call in thread
+            # Build candidate actions list combining Known Master DB + Live yfinance
+            candidate_actions = []
+
+            # 1. Check Known Corporate Actions
+            sym_clean = symbol.upper().replace(".NS", "").replace(".BO", "")
+            for key in [symbol.upper(), sym_clean]:
+                if key in KNOWN_CORPORATE_ACTIONS:
+                    for act in KNOWN_CORPORATE_ACTIONS[key]:
+                        candidate_actions.append(act)
+
+            # 2. Fetch from yfinance as fallback / supplemental
             def fetch_actions():
                 try:
                     t = yf.Ticker(symbol)
                     return t.splits
                 except Exception as err:
-                    logger.warning(f"Failed to fetch actions for {symbol}: {err}")
+                    logger.warning(f"Failed to fetch yfinance actions for {symbol}: {err}")
                     return None
 
             splits = await asyncio.to_thread(fetch_actions)
+            if splits is not None and not splits.empty:
+                for split_date, ratio in splits.items():
+                    ratio_val = float(ratio)
+                    if ratio_val > 1.0:
+                        date_str = split_date.strftime("%Y-%m-%d")
+                        candidate_actions.append({"action_date": date_str, "ratio": ratio_val, "type": f"{ratio_val}:1 SPLIT/BONUS"})
 
-            if splits is None or splits.empty:
-                continue
+            # Deduplicate candidate actions by action_date
+            unique_actions = {}
+            for act in candidate_actions:
+                d = act["action_date"]
+                if d not in unique_actions or act["ratio"] > unique_actions[d]["ratio"]:
+                    unique_actions[d] = act
 
-            purchase_date = holding.get("purchase_date", "")
+            for date_str, act in sorted(unique_actions.items()):
+                ratio = act["ratio"]
+                action_label = act.get("type", "BONUS_SPLIT")
 
-            # Iterate through historical splits/bonus events
-            for split_date, ratio in splits.items():
-                ratio = float(ratio)
-                if ratio <= 1.0: # Skip 1:1 non-splits or negative splits
+                # Skip actions that occurred on or before purchase date
+                if purchase_date and date_str < purchase_date:
                     continue
 
-                date_str = split_date.strftime("%Y-%m-%d")
-
-                # Skip corporate actions that occurred on or before purchase date
-                if purchase_date and date_str <= purchase_date:
-                    continue
-
-                # Check if this corporate action was already applied to this holding
+                # Check if already applied to this holding
                 already_applied = await db.corporate_action_logs.find_one({
                     "user_id": user_id,
                     "symbol": symbol,
-                    "action_date": date_str,
-                    "ratio": ratio
+                    "action_date": date_str
                 })
 
                 if already_applied:
@@ -79,22 +133,22 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 new_qty = current_qty * ratio
                 new_price = current_price / ratio if current_price > 0 else 0.0
 
-                # Update portfolio document
+                # Update portfolio document in MongoDB
                 query = {"_id": ObjectId(holding_id)} if ObjectId.is_valid(holding_id) else {"id": holding_id}
                 await db.portfolio.update_one(
                     query,
                     {"$set": {
-                        "quantity": new_qty,
+                        "quantity": int(new_qty) if new_qty.is_integer() else new_qty,
                         "purchase_price": new_price,
                         "updated_at": datetime.now(timezone.utc).isoformat()
                     }}
                 )
 
-                # Record audit log to prevent duplicate processing
+                # Record audit log entry
                 log_entry = {
                     "user_id": user_id,
                     "symbol": symbol,
-                    "action_type": "BONUS_SPLIT",
+                    "action_type": action_label,
                     "action_date": date_str,
                     "ratio": ratio,
                     "old_quantity": current_qty,
@@ -107,15 +161,16 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
 
                 # Record transaction history entry for ledger tracking
                 txn_entry = {
+                    "id": str(ObjectId()),
                     "user_id": user_id,
                     "symbol": symbol,
                     "name": holding.get("name", symbol),
-                    "type": "CORPORATE_ACTION",
+                    "transaction_type": "buy",
                     "quantity": new_qty - current_qty,
-                    "purchase_price": 0.0,
+                    "price": 0.0,
                     "total_amount": 0.0,
-                    "date": date_str,
-                    "notes": f"Automated Corporate Action: {ratio}:1 Bonus/Split adjustment"
+                    "transaction_date": date_str,
+                    "notes": f"Automated Corporate Action: {action_label} adjustment"
                 }
                 await db.transactions.insert_one(txn_entry)
 
@@ -128,7 +183,6 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                     "new_qty": new_qty
                 })
 
-                # Update current variables for subsequent loop iterations
                 current_qty = new_qty
                 current_price = new_price
 
