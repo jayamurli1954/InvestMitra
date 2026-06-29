@@ -26,7 +26,7 @@ const Auth = () => {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 

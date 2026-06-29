@@ -25,6 +25,7 @@ import Disclaimer from "@/pages/Disclaimer";
 import AboutUs from "@/pages/AboutUs";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import TermsAndConditions from "@/pages/TermsAndConditions";
+import Landing from "@/pages/Landing";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -49,7 +50,6 @@ const clearStoredAccessToken = () => {
 };
 
 // Configure axios interceptor for Authorization token
-
 axios.interceptors.request.use(
   config => {
     const token = getStoredAccessToken();
@@ -97,6 +97,8 @@ function AppRoutes() {
   return (
     <HashRouter>
       <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/landing" element={<Landing />} />
         <Route path="/auth" element={<Auth />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/disclaimer" element={<Disclaimer />} />
@@ -150,4 +152,3 @@ function App() {
 }
 
 export default App;
-
