@@ -7,39 +7,21 @@ from bson import ObjectId
 logger = logging.getLogger(__name__)
 
 # Known Indian Market Corporate Actions (Bonus & Splits) master registry
-# Ratio represents total multiplier (e.g. 2:1 bonus means 1 share becomes 3 -> ratio 3.0)
+# Uses cleaned base symbols to prevent duplicate matching
 KNOWN_CORPORATE_ACTIONS = {
     "NMDC": [
-        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"}
-    ],
-    "NMDC.NS": [
-        {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"}
-    ],
-    "NMDC.BO": [
         {"action_date": "2024-12-27", "ratio": 3.0, "type": "2:1 BONUS"}
     ],
     "RELIANCE": [
         {"action_date": "2024-10-28", "ratio": 2.0, "type": "1:1 BONUS"}
     ],
-    "RELIANCE.NS": [
-        {"action_date": "2024-10-28", "ratio": 2.0, "type": "1:1 BONUS"}
-    ],
     "WIPRO": [
-        {"action_date": "2024-12-03", "ratio": 2.0, "type": "1:1 BONUS"}
-    ],
-    "WIPRO.NS": [
         {"action_date": "2024-12-03", "ratio": 2.0, "type": "1:1 BONUS"}
     ],
     "BPCL": [
         {"action_date": "2024-06-21", "ratio": 2.0, "type": "1:1 BONUS"}
     ],
-    "BPCL.NS": [
-        {"action_date": "2024-06-21", "ratio": 2.0, "type": "1:1 BONUS"}
-    ],
     "HPCL": [
-        {"action_date": "2024-06-21", "ratio": 1.5, "type": "1:2 BONUS"}
-    ],
-    "HPCL.NS": [
         {"action_date": "2024-06-21", "ratio": 1.5, "type": "1:2 BONUS"}
     ]
 }
@@ -66,7 +48,7 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
             symbol = holding.get("symbol")
             current_qty = float(holding.get("quantity", 0))
             current_price = float(holding.get("purchase_price", 0))
-            holding_id = holding.get("id") or str(holding.get("_id"))
+            holding_db_id = holding.get("_id")
 
             if not symbol or current_qty <= 0:
                 continue
@@ -75,15 +57,13 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
             raw_p_date = str(holding.get("purchase_date", ""))
             purchase_date_clean = raw_p_date[:10] if raw_p_date else ""
 
-            # Build candidate actions list combining Known Master DB + Live yfinance
             candidate_actions = []
 
-            # 1. Check Known Corporate Actions
+            # 1. Check Known Corporate Actions using cleaned base symbol
             sym_clean = symbol.upper().replace(".NS", "").replace(".BO", "")
-            for key in [symbol.upper(), sym_clean]:
-                if key in KNOWN_CORPORATE_ACTIONS:
-                    for act in KNOWN_CORPORATE_ACTIONS[key]:
-                        candidate_actions.append(act)
+            if sym_clean in KNOWN_CORPORATE_ACTIONS:
+                for act in KNOWN_CORPORATE_ACTIONS[sym_clean]:
+                    candidate_actions.append(act)
 
             # 2. Fetch from yfinance as fallback / supplemental
             def fetch_actions():
@@ -113,7 +93,7 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 ratio = act["ratio"]
                 action_label = act.get("type", "BONUS_SPLIT")
 
-                # Skip actions that occurred prior to purchase date (unless known bonus like NMDC where date string alignment might differ)
+                # Skip actions that occurred prior to purchase date (unless known bonus like NMDC where date alignment might differ)
                 if purchase_date_clean and date_str < purchase_date_clean and sym_clean != "NMDC":
                     continue
 
@@ -131,16 +111,16 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 new_qty = current_qty * ratio
                 new_price = current_price / ratio if current_price > 0 else 0.0
 
-                # Update portfolio document in MongoDB using symbol or id matching
-                update_query = {"user_id": user_id, "$or": [{"id": holding_id}, {"symbol": symbol}]}
-                await db.portfolio.update_many(
-                    update_query,
-                    {"$set": {
-                        "quantity": int(new_qty) if new_qty.is_integer() else new_qty,
-                        "purchase_price": new_price,
-                        "updated_at": datetime.now(timezone.utc).isoformat()
-                    }}
-                )
+                # Target exact document ID to avoid collateral over-multiplication
+                if holding_db_id:
+                    await db.portfolio.update_one(
+                        {"_id": holding_db_id},
+                        {"$set": {
+                            "quantity": int(new_qty) if new_qty.is_integer() else new_qty,
+                            "purchase_price": new_price,
+                            "updated_at": datetime.now(timezone.utc).isoformat()
+                        }}
+                    )
 
                 # Record audit log entry
                 log_entry = {

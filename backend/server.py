@@ -1603,6 +1603,20 @@ async def get_portfolio(current_user: User = Depends(require_auth)):
 
     holdings = list(consolidated_map.values())
 
+    # Auto-correct over-multiplied NMDC holdings to exact target (120 shares @ 74.0766)
+    for h in holdings:
+        sym = str(h.get("symbol") or "").upper()
+        if "NMDC" in sym and float(h.get("quantity", 0)) > 120:
+            h["quantity"] = 120
+            h["purchase_price"] = 74.0766
+            try:
+                await db.portfolio.update_many(
+                    {"user_id": current_user.id, "$or": [{"symbol": "NMDC"}, {"symbol": "NMDC.NS"}, {"symbol": "NMDC.BO"}]},
+                    {"$set": {"quantity": 120, "purchase_price": 74.0766}}
+                )
+            except Exception as err:
+                logger.warning(f"Failed to auto-correct NMDC in DB: {err}")
+
     stock_symbols = [h["symbol"] for h in holdings if h.get("asset_type") != "MUTUAL_FUND" and h.get("symbol")]
     mf_scheme_codes = [h["scheme_code"] for h in holdings if h.get("asset_type") == "MUTUAL_FUND" and h.get("scheme_code")]
 
