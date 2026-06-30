@@ -278,6 +278,17 @@ const Portfolio = () => {
     }
   };
 
+  const handleSelectRadarStock = async (stock) => {
+    setRadarSelectedStock(stock);
+    try {
+      const res = await axios.get(`${API}/stocks/${stock.symbol}`);
+      setRadarFormData(prev => ({ ...prev, purchase_price: res.data.current_price }));
+    } catch (error) {
+      console.error('Error fetching stock current price:', error);
+      toast.error('Failed to retrieve current price for stock');
+    }
+  };
+
   const handleAddRadar = async () => {
     if (!radarSelectedStock || !radarFormData.purchase_price) {
       toast.error('Please select a stock and enter a purchase price');
@@ -1472,13 +1483,10 @@ const Portfolio = () => {
                             <button
                               key={stock.symbol}
                               type="button"
-                              onClick={() => {
-                                setRadarSelectedStock(stock);
-                                setRadarFormData(prev => ({ ...prev, purchase_price: stock.current_price || '' }));
-                              }}
+                              onClick={() => handleSelectRadarStock(stock)}
                               className="w-full text-left px-3 py-2 rounded text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
                             >
-                              <span className="font-semibold text-white">{stock.symbol}</span> - {stock.name} (₹{stock.current_price})
+                              <span className="font-semibold text-white">{stock.symbol}</span> - {stock.name}
                             </button>
                           ))}
                         </div>
