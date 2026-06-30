@@ -109,6 +109,7 @@ const Layout = ({ children }) => {
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/portfolio', icon: Briefcase, label: 'Portfolio' },
+    { path: '/portfolio?tab=radar', icon: Target, label: 'Opportunity Radar' },
     { path: '/watchlist', icon: Eye, label: 'Watchlist' },
     { path: '/performance', icon: Activity, label: 'Performance' },
     { path: '/backtesting', icon: TrendingUp, label: 'Backtest' },

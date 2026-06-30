@@ -136,6 +136,16 @@ const Portfolio = () => {
   }, [isAuthenticated]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'radar') {
+      setActiveTab('radar');
+    } else if (tab === 'portfolio') {
+      setActiveTab('portfolio');
+    }
+  }, [window.location.search]);
+
+  useEffect(() => {
     const minLen = 2;
     if (!isAuthenticated || searchQuery.length < minLen) {
       setSearchResults([]);
