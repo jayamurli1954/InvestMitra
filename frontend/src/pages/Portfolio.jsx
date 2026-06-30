@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown, Trash2, RefreshCw, Pencil } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, ArrowUp, ArrowDown, Download, Upload, FileDown, Trash2, RefreshCw, Pencil, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,7 +40,6 @@ const Portfolio = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  
   // Risk, Mandates & AI Diagnostics States
   const [mandates, setMandates] = useState(null);
   const [diagnostics, setDiagnostics] = useState([]);
@@ -48,6 +47,22 @@ const Portfolio = () => {
   const [committeeLoading, setCommitteeLoading] = useState(false);
   const [committeeResult, setCommitteeResult] = useState(null);
   const [activeDebateStep, setActiveDebateStep] = useState(0);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState('portfolio'); // 'portfolio' or 'radar'
+
+  // Opportunity Radar States
+  const [radarItems, setRadarItems] = useState([]);
+  const [radarDialogOpen, setRadarDialogOpen] = useState(false);
+  const [radarSearchQuery, setRadarSearchQuery] = useState('');
+  const [radarSearchResults, setRadarSearchResults] = useState([]);
+  const [radarSelectedStock, setRadarSelectedStock] = useState(null);
+  const [isRadarSearching, setIsRadarSearching] = useState(false);
+  const [radarFormData, setRadarFormData] = useState({
+    purchase_price: '',
+    purchase_date: getTodayDateString()
+  });
+  const [isAddingRadar, setIsAddingRadar] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -137,6 +152,26 @@ const Portfolio = () => {
   }, [searchQuery, assetType, isAuthenticated]);
 
   useEffect(() => {
+    const minLen = 2;
+    if (!isAuthenticated || radarSearchQuery.length < minLen) {
+      setRadarSearchResults([]);
+      setIsRadarSearching(false);
+      return;
+    }
+    setIsRadarSearching(true);
+    const timer = setTimeout(() => {
+      handleRadarSearch(radarSearchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [radarSearchQuery, isAuthenticated]);
+
+  useEffect(() => {
+    if (!radarDialogOpen) {
+      resetRadarForm();
+    }
+  }, [radarDialogOpen]);
+
+  useEffect(() => {
     if (!dialogOpen) {
       setAddHoldingStatus(null);
       setIsAddingHolding(false);
@@ -166,16 +201,18 @@ const Portfolio = () => {
 
   const fetchPortfolio = async () => {
     try {
-      const [holdingsRes, performanceRes, mandatesRes, diagnosticsRes] = await Promise.all([
+      const [holdingsRes, performanceRes, mandatesRes, diagnosticsRes, radarRes] = await Promise.all([
         axios.get(`${API}/portfolio`),
         axios.get(`${API}/portfolio/performance`),
         axios.get(`${API}/portfolio/mandates`),
-        axios.get(`${API}/portfolio/diagnostics`)
+        axios.get(`${API}/portfolio/diagnostics`),
+        axios.get(`${API}/portfolio/radar`)
       ]);
       setHoldings(holdingsRes.data);
       setPerformance(performanceRes.data);
       setMandates(mandatesRes.data);
       setDiagnostics(diagnosticsRes.data);
+      setRadarItems(radarRes.data);
     } catch (error) {
       console.error('Error fetching portfolio:', error);
       toast.error('Failed to load portfolio');
@@ -211,6 +248,81 @@ const Portfolio = () => {
     } finally {
       setCommitteeLoading(false);
     }
+  };
+
+  const handleRadarSearch = async (query) => {
+    if (!query || query.length < 2) {
+      setRadarSearchResults([]);
+      setIsRadarSearching(false);
+      return;
+    }
+    setIsRadarSearching(true);
+    try {
+      const response = await axios.get(`${API}/stocks/search?q=${encodeURIComponent(query)}&exchange=NSE`);
+      setRadarSearchResults(Array.isArray(response.data) ? response.data : response.data.results || []);
+    } catch (error) {
+      console.error('Error searching radar stock:', error);
+      setRadarSearchResults([]);
+    } finally {
+      setIsRadarSearching(false);
+    }
+  };
+
+  const handleAddRadar = async () => {
+    if (!radarSelectedStock || !radarFormData.purchase_price) {
+      toast.error('Please select a stock and enter a purchase price');
+      return;
+    }
+    setIsAddingRadar(true);
+    try {
+      await axios.post(`${API}/portfolio/radar`, {
+        symbol: radarSelectedStock.symbol,
+        name: radarSelectedStock.name,
+        purchase_price: parseFloat(radarFormData.purchase_price),
+        purchase_date: radarFormData.purchase_date
+      });
+      toast.success(`Opportunity ${radarSelectedStock.symbol} added to Radar!`);
+      setRadarDialogOpen(false);
+      resetRadarForm();
+      fetchPortfolio();
+    } catch (error) {
+      console.error('Error adding opportunity to radar:', error);
+      toast.error('Failed to add opportunity');
+    } finally {
+      setIsAddingRadar(false);
+    }
+  };
+
+  const handleRetireRadar = async (id) => {
+    try {
+      const res = await axios.post(`${API}/portfolio/radar/${id}/retire`);
+      toast.success(`Position retired successfully at exit price of ₹${res.data.retired_price}!`);
+      fetchPortfolio();
+    } catch (error) {
+      console.error('Error retiring radar stock:', error);
+      toast.error('Failed to retire stock');
+    }
+  };
+
+  const handleDeleteRadar = async (id) => {
+    try {
+      await axios.delete(`${API}/portfolio/radar/${id}`);
+      toast.success('Opportunity removed from Radar');
+      fetchPortfolio();
+    } catch (error) {
+      console.error('Error deleting radar item:', error);
+      toast.error('Failed to delete opportunity');
+    }
+  };
+
+  const resetRadarForm = () => {
+    setRadarSearchQuery('');
+    setRadarSearchResults([]);
+    setRadarSelectedStock(null);
+    setRadarFormData({
+      purchase_price: '',
+      purchase_date: getTodayDateString()
+    });
   };
 
   const handleAssetSearch = async (query) => {
@@ -1008,225 +1120,551 @@ const Portfolio = () => {
         </div>
       )}
 
-      <div className="glass-card p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">Your Holdings</h2>
-          {holdings.length > 0 && (
-            <div className="flex items-center gap-4">
-              {selectedHoldings.length > 0 && (
-                <Button onClick={handleDeleteSelected} size="sm" className="bg-rose-600 hover:bg-rose-700 text-white">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Selected ({selectedHoldings.length})
-                </Button>
+      {/* Premium Tab Selector */}
+      <div className="flex bg-slate-900/80 p-1 rounded-xl border border-slate-800 max-w-md my-6">
+        <button
+          onClick={() => setActiveTab('portfolio')}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            activeTab === 'portfolio' 
+              ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/10' 
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+          }`}
+        >
+          💼 Real Portfolio
+        </button>
+        <button
+          onClick={() => setActiveTab('radar')}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
+            activeTab === 'radar' 
+              ? 'bg-amber-500 text-white shadow-md shadow-amber-500/10' 
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/40'
+          }`}
+        >
+          🎯 Opportunity Radar (Paper)
+        </button>
+      </div>
+
+      {activeTab === 'portfolio' ? (
+        <div className="glass-card p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-white">Your Holdings</h2>
+            {holdings.length > 0 && (
+              <div className="flex items-center gap-4">
+                {selectedHoldings.length > 0 && (
+                  <Button onClick={handleDeleteSelected} size="sm" className="bg-rose-600 hover:bg-rose-700 text-white">
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete Selected ({selectedHoldings.length})
+                  </Button>
+                )}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="selectAllHoldings"
+                    className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                    checked={selectedHoldings.length === holdings.length && holdings.length > 0}
+                    onChange={toggleAllHoldings}
+                  />
+                  <label htmlFor="selectAllHoldings" className="text-sm text-slate-300 font-medium cursor-pointer select-none">
+                    Select All
+                  </label>
+                </div>
+              </div>
+            )}
+          </div>
+          {holdings.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-slate-400 mb-4">No holdings yet. Start building your portfolio!</p>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {/* STOCKS SECTION */}
+              {holdings.filter(h => h.asset_type === "STOCK").length > 0 && (
+                <div>
+                  <h3 className="text-xl font-semibold text-emerald-400 mb-4 pb-2 border-b border-slate-700">
+                    📈 Stocks ({holdings.filter(h => h.asset_type === "STOCK").length})
+                  </h3>
+                  <div className="space-y-3">
+                    {holdings.filter(h => h.asset_type === "STOCK").map((holding) => {
+                      const totalCost = holding.quantity * holding.purchase_price;
+                      const currentValue = holding.quantity * (holding.current_value || holding.current_price || holding.purchase_price);
+                      const gain = currentValue - totalCost;
+                      const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
+
+                      return (
+                        <div key={holding.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex flex-1 items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                                checked={selectedHoldings.includes(holding.id)}
+                                onChange={() => toggleHoldingSelection(holding.id)}
+                              />
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                  <p className="font-medium text-white">{holding.symbol || 'Stock'}</p>
+                                  <span className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
+                                    {holding.broker || 'Zerodha'}
+                                  </span>
+                                  <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30 font-medium">
+                                    {holding.exchange || 'NSE'}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-400">{holding.name}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
+                              </p>
+                              <p className={`text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {gain >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
+                            <div>
+                              <p className="text-slate-400">Quantity</p>
+                              <p className="text-white font-medium">{holding.quantity}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Avg Price</p>
+                              <p className="text-white font-medium">{formatCurrency(holding.purchase_price, user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Current Price</p>
+                              <p className="text-white font-medium">{formatCurrency((holding.current_value || holding.current_price || holding.purchase_price), user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Invested</p>
+                              <p className="text-blue-400 font-medium">{formatCurrency(totalCost, user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Current Value</p>
+                              <p className="text-white font-medium">{formatCurrency(currentValue, user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 mt-4">
+                            <Button 
+                              onClick={() => handleRunCommittee(holding.symbol, holding.name)} 
+                              size="sm" 
+                              className="bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-md shadow-amber-900/20"
+                              title="AI Investment Committee"
+                            >
+                              ⚖️ AI Committee
+                            </Button>
+                            <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
+                              <Pencil className="w-4 h-4 mr-1" /> Edit
+                            </Button>
+                            <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                              <ArrowUp className="w-4 h-4 mr-2" /> Buy
+                            </Button>
+                            <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                              <ArrowDown className="w-4 h-4 mr-2" /> Sell
+                            </Button>
+                            <Button onClick={() => handleDeleteHolding(holding.id)} size="sm" className="bg-slate-700 hover:bg-rose-600 text-white ml-2" title="Delete Holding">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="selectAllHoldings"
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                  checked={selectedHoldings.length === holdings.length && holdings.length > 0}
-                  onChange={toggleAllHoldings}
-                />
-                <label htmlFor="selectAllHoldings" className="text-sm text-slate-300 font-medium cursor-pointer select-none">
-                  Select All
-                </label>
+
+              {/* MUTUAL FUNDS SECTION */}
+              {holdings.filter(h => h.asset_type === "MUTUAL_FUND").length > 0 && (
+                <div>
+                  <h3 className="text-xl font-semibold text-blue-400 mb-4 pb-2 border-b border-slate-700">
+                    💰 Mutual Funds ({holdings.filter(h => h.asset_type === "MUTUAL_FUND").length})
+                  </h3>
+                  <div className="space-y-3">
+                    {holdings.filter(h => h.asset_type === "MUTUAL_FUND").map((holding) => {
+                      const totalCost = holding.quantity * holding.purchase_price;
+                      const currentValue = holding.quantity * (holding.current_value || holding.current_nav || holding.purchase_price);
+                      const gain = currentValue - totalCost;
+                      const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
+
+                      return (
+                        <div key={holding.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex flex-1 items-center gap-3">
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                                checked={selectedHoldings.includes(holding.id)}
+                                onChange={() => toggleHoldingSelection(holding.id)}
+                              />
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                  <p className="font-medium text-white">{holding.scheme_name}</p>
+                                  <span className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
+                                    {holding.broker || 'Zerodha'}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-slate-400">Mutual Fund</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
+                              </p>
+                              <p className={`text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                {gain >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
+                            <div>
+                              <p className="text-slate-400">Units</p>
+                              <p className="text-white font-medium">{holding.quantity}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Avg NAV</p>
+                              <p className="text-white font-medium">{formatCurrency(holding.purchase_price, user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Current NAV</p>
+                              <p className="text-white font-medium">{formatCurrency((holding.current_value || holding.current_nav || holding.purchase_price), user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Invested</p>
+                              <p className="text-blue-400 font-medium">{formatCurrency(totalCost, user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-400">Current Value</p>
+                              <p className="text-white font-medium">{formatCurrency(currentValue, user?.default_currency || 'INR', 'en-IN')}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-end gap-2 mt-4">
+                            <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
+                              <Pencil className="w-4 h-4 mr-1" /> Edit
+                            </Button>
+                            <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
+                              <ArrowUp className="w-4 h-4 mr-2" /> Buy
+                            </Button>
+                            <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                              <ArrowDown className="w-4 h-4 mr-2" /> Sell
+                            </Button>
+                            <Button onClick={() => handleDeleteHolding(holding.id)} size="sm" className="bg-slate-700 hover:bg-rose-600 text-white ml-2" title="Delete Holding">
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* STOCK OPPORTUNITY RADAR VIEW (PAPER PORTFOLIO) */
+        <div className="space-y-6">
+          {/* Radar Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {(() => {
+              const activeRadar = radarItems.filter(item => item.status !== 'RETIRED');
+              const retiredRadar = radarItems.filter(item => item.status === 'RETIRED');
+              
+              const totalPaperInvested = activeRadar.length * 50000.0;
+              let totalPaperCurrent = 0.0;
+              activeRadar.forEach(item => {
+                const currentPrice = item.current_price || item.purchase_price;
+                totalPaperCurrent += (item.quantity * currentPrice);
+              });
+              
+              const activeGain = totalPaperCurrent - totalPaperInvested;
+              const activeGainPercent = totalPaperInvested > 0 ? (activeGain / totalPaperInvested) * 100 : 0.0;
+              
+              // Retirement success rate: appreciation >= 15%
+              let successfulRetirements = 0;
+              retiredRadar.forEach(item => {
+                const exitPrice = item.retired_price || item.purchase_price;
+                const appreciation = ((exitPrice - item.purchase_price) / item.purchase_price) * 100;
+                if (appreciation >= 15.0) {
+                  successfulRetirements++;
+                }
+              });
+              
+              const successRate = retiredRadar.length > 0 ? (successfulRetirements / retiredRadar.length) * 100 : 0.0;
+
+              return (
+                <>
+                  <div className="glass-card p-5 border-l-4 border-amber-500">
+                    <p className="text-xs text-slate-400 mb-1">Active Paper Capital</p>
+                    <p className="text-2xl font-bold text-white">
+                      {formatCurrency(totalPaperInvested, 'INR', 'en-IN')}
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">₹50,000 per stock allocation rule</p>
+                  </div>
+                  <div className="glass-card p-5 border-l-4 border-emerald-500">
+                    <p className="text-xs text-slate-400 mb-1">Active Gain/Loss</p>
+                    <p className={`text-2xl font-bold ${activeGain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {activeGain >= 0 ? '+' : ''}{formatCurrency(activeGain, 'INR', 'en-IN')}
+                    </p>
+                    <p className={`text-[10px] ${activeGain >= 0 ? 'text-emerald-400' : 'text-rose-400'} mt-1`}>
+                      {activeGain >= 0 ? '+' : ''}{activeGainPercent.toFixed(2)}% returns
+                    </p>
+                  </div>
+                  <div className="glass-card p-5 border-l-4 border-indigo-500">
+                    <p className="text-xs text-slate-400 mb-1">Retired Success Rate (Target ≥15%)</p>
+                    <p className="text-2xl font-bold text-white">
+                      {successRate.toFixed(1)}% <span className="text-sm font-medium text-slate-400">({successfulRetirements}/{retiredRadar.length} hits)</span>
+                    </p>
+                    <p className="text-[10px] text-slate-500 mt-1">Goal: Retire stocks at 15% - 18% appreciation</p>
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Active Opportunities Table */}
+          <div className="glass-card p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h3 className="text-lg font-bold text-white">Active Shadow Targets</h3>
+                <p className="text-xs text-slate-400">Testing performance toward retirement appreciation limits</p>
+              </div>
+              <Dialog open={radarDialogOpen} onOpenChange={setRadarDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="bg-amber-500 hover:bg-amber-600 text-white font-medium">
+                    <Plus className="w-4 h-4 mr-2" /> Add Target Stock
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="bg-slate-900 border-slate-700 text-white max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="text-xl font-bold text-white">🎯 Add Stock to Opportunity Radar</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div>
+                      <Label className="text-slate-300 text-xs">Search target stock symbol</Label>
+                      <Input
+                        type="text"
+                        placeholder="e.g. NMDC"
+                        value={radarSearchQuery}
+                        onChange={(e) => setRadarSearchQuery(e.target.value)}
+                        className="bg-slate-800 border-slate-700 text-white mt-1"
+                      />
+                      {isRadarSearching && (
+                        <p className="text-xs text-amber-400 mt-1">Searching...</p>
+                      )}
+                      {!isRadarSearching && radarSearchResults.length > 0 && !radarSelectedStock && (
+                        <div className="bg-slate-950 border border-slate-800 max-h-40 overflow-y-auto rounded-lg mt-2 p-1 space-y-1">
+                          {radarSearchResults.map((stock) => (
+                            <button
+                              key={stock.symbol}
+                              type="button"
+                              onClick={() => {
+                                setRadarSelectedStock(stock);
+                                setRadarFormData(prev => ({ ...prev, purchase_price: stock.current_price || '' }));
+                              }}
+                              className="w-full text-left px-3 py-2 rounded text-xs text-slate-300 hover:bg-slate-800 hover:text-white"
+                            >
+                              <span className="font-semibold text-white">{stock.symbol}</span> - {stock.name} (₹{stock.current_price})
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {radarSelectedStock && (
+                        <div className="bg-slate-950 border border-slate-800 p-3 rounded-lg mt-2 flex items-center justify-between text-xs">
+                          <div>
+                            <span className="font-bold text-white">{radarSelectedStock.symbol}</span>
+                            <p className="text-[10px] text-slate-500">{radarSelectedStock.name}</p>
+                          </div>
+                          <Button variant="outline" size="xs" onClick={() => setRadarSelectedStock(null)} className="text-slate-400 hover:text-white border-slate-700 text-[10px]">
+                            Clear
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg text-amber-300 text-xs leading-relaxed">
+                      💡 **Standardized Rule Alert:** InvestMitra sandbox rules enforce exactly **₹50,000/-** virtual capital per opportunity. The system automatically computes quantities from your entry price.
+                    </div>
+
+                    <div>
+                      <Label className="text-slate-300 text-xs">Entry Price (₹)</Label>
+                      <Input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 195.50"
+                        value={radarFormData.purchase_price}
+                        onChange={(e) => setRadarFormData({ ...radarFormData, purchase_price: e.target.value })}
+                        className="bg-slate-800 border-slate-700 text-white mt-1"
+                      />
+                    </div>
+
+                    {radarFormData.purchase_price && (
+                      <div className="text-xs text-slate-400 bg-slate-950 p-2 rounded border border-slate-800 flex justify-between">
+                        <span>Calculated Position Quantity:</span>
+                        <span className="font-bold text-white">{(50000.0 / parseFloat(radarFormData.purchase_price || 1)).toFixed(2)} shares</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <Label className="text-slate-300 text-xs">Entry Date</Label>
+                      <Input
+                        type="date"
+                        value={radarFormData.purchase_date}
+                        onChange={(e) => setRadarFormData({ ...radarFormData, purchase_date: e.target.value })}
+                        className="bg-slate-800 border-slate-700 text-white mt-1"
+                      />
+                    </div>
+
+                    <Button onClick={handleAddRadar} disabled={isAddingRadar} className="w-full bg-amber-500 hover:bg-amber-600 text-white mt-2">
+                      {isAddingRadar ? 'Adding Target...' : 'Deploy Virtual Capital'}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            {radarItems.filter(item => item.status !== 'RETIRED').length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-slate-400 text-sm">No active opportunities in the radar. Add stocks above to begin shadow-testing!</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {radarItems.filter(item => item.status !== 'RETIRED').map((item) => {
+                  const currentPrice = item.current_price || item.purchase_price;
+                  const totalCost = item.quantity * item.purchase_price;
+                  const currentValue = item.quantity * currentPrice;
+                  const appreciation = ((currentPrice - item.purchase_price) / item.purchase_price) * 100;
+                  
+                  // Progress to 15% retirement threshold
+                  const progressPct = Math.max(0, Math.min((appreciation / 15.0) * 100, 100));
+                  const isAppreciated = appreciation >= 0;
+                  const isTargetReached = appreciation >= 15.0;
+
+                  return (
+                    <div key={item.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-white">{item.symbol}</span>
+                            <span className="text-xs text-slate-400 font-medium truncate max-w-[200px]">{item.name}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 block">Invested: {formatCurrency(item.purchase_amount, 'INR', 'en-IN')} on {item.purchase_date}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-lg font-bold ${isAppreciated ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {isAppreciated ? '+' : ''}{appreciation.toFixed(2)}%
+                          </p>
+                          {isTargetReached && (
+                            <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[9px] font-extrabold rounded border border-amber-500/30 animate-pulse">
+                              🎯 TARGET HIT (READY)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Visual Progress Bar to Target */}
+                      <div className="space-y-1 mb-4">
+                        <div className="flex justify-between text-[10px] text-slate-400">
+                          <span>Appreciation progress to Target (15%+)</span>
+                          <span>{appreciation.toFixed(1)}% / 15%</span>
+                        </div>
+                        <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              isTargetReached ? 'bg-amber-500' : 'bg-emerald-500'
+                            }`}
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3 text-slate-300">
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Mock Entry Price</span>
+                          <span className="font-medium text-white">{formatCurrency(item.purchase_price, 'INR', 'en-IN')}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Mock Quantity</span>
+                          <span className="font-medium text-white">{item.quantity}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Current Price</span>
+                          <span className="font-medium text-white">{formatCurrency(currentPrice, 'INR', 'en-IN')}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px]">Current Value</span>
+                          <span className="font-medium text-white">{formatCurrency(currentValue, 'INR', 'en-IN')}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/50">
+                        <Button 
+                          onClick={() => handleRetireRadar(item.id)} 
+                          size="xs" 
+                          className={`font-semibold shadow-md ${
+                            isTargetReached 
+                              ? 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-900/30 border border-amber-400/20' 
+                              : 'bg-slate-700 hover:bg-slate-600 text-slate-200'
+                          }`}
+                        >
+                          🎉 Retire Target
+                        </Button>
+                        <Button onClick={() => handleDeleteRadar(item.id)} size="xs" variant="ghost" className="text-slate-400 hover:text-rose-400 hover:bg-rose-500/10">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Retired / Archived opportunities */}
+          {radarItems.filter(item => item.status === 'RETIRED').length > 0 && (
+            <div className="glass-card p-6">
+              <h3 className="text-lg font-bold text-white mb-4">🏆 Retired Opportunities Archive</h3>
+              <div className="space-y-3">
+                {radarItems.filter(item => item.status === 'RETIRED').map((item) => {
+                  const exitPrice = item.retired_price || item.purchase_price;
+                  const finalAppreciation = ((exitPrice - item.purchase_price) / item.purchase_price) * 100;
+                  const isAppreciated = finalAppreciation >= 0;
+
+                  return (
+                    <div key={item.id} className="bg-slate-900/40 p-4 rounded-lg border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-white text-sm">{item.symbol}</span>
+                          <span className="text-xs text-slate-500 font-medium truncate max-w-[200px]">{item.name}</span>
+                          <span className="px-2 py-0.5 bg-indigo-500/20 text-indigo-300 text-[9px] rounded font-semibold tracking-wider">RETIRED</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-1 grid grid-cols-2 md:grid-cols-4 gap-x-4">
+                          <span>Bought: ₹{item.purchase_price.toFixed(2)} ({item.purchase_date})</span>
+                          <span>Retired: ₹{exitPrice.toFixed(2)} ({item.retired_date || 'N/A'})</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 self-end md:self-auto">
+                        <div className="text-right">
+                          <span className={`font-bold text-sm ${isAppreciated ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {isAppreciated ? '+' : ''}{finalAppreciation.toFixed(2)}%
+                          </span>
+                          <p className="text-[9px] text-slate-500">Final Appreciation</p>
+                        </div>
+                        <Button onClick={() => handleDeleteRadar(item.id)} size="xs" variant="ghost" className="text-slate-500 hover:text-rose-400">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
-        {holdings.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-slate-400 mb-4">No holdings yet. Start building your portfolio!</p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* STOCKS SECTION */}
-            {holdings.filter(h => h.asset_type === "STOCK").length > 0 && (
-              <div>
-                <h3 className="text-xl font-semibold text-emerald-400 mb-4 pb-2 border-b border-slate-700">
-                  📈 Stocks ({holdings.filter(h => h.asset_type === "STOCK").length})
-                </h3>
-                <div className="space-y-3">
-                  {holdings.filter(h => h.asset_type === "STOCK").map((holding) => {
-                    const totalCost = holding.quantity * holding.purchase_price;
-                    const currentValue = holding.quantity * (holding.current_value || holding.current_price || holding.purchase_price);
-                    const gain = currentValue - totalCost;
-                    const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
-
-                    return (
-                      <div key={holding.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex flex-1 items-center gap-3">
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                              checked={selectedHoldings.includes(holding.id)}
-                              onChange={() => toggleHoldingSelection(holding.id)}
-                            />
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                                <p className="font-medium text-white">{holding.symbol || 'Stock'}</p>
-                                <span className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
-                                  {holding.broker || 'Zerodha'}
-                                </span>
-                                <span className="px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-300 rounded border border-emerald-500/30 font-medium">
-                                  {holding.exchange || 'NSE'}
-                                </span>
-                              </div>
-                              <p className="text-sm text-slate-400">{holding.name}</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
-                            </p>
-                            <p className={`text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {gain >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
-                          <div>
-                            <p className="text-slate-400">Quantity</p>
-                            <p className="text-white font-medium">{holding.quantity}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Avg Price</p>
-                            <p className="text-white font-medium">{formatCurrency(holding.purchase_price, user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Current Price</p>
-                            <p className="text-white font-medium">{formatCurrency((holding.current_value || holding.current_price || holding.purchase_price), user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Invested</p>
-                            <p className="text-blue-400 font-medium">{formatCurrency(totalCost, user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Current Value</p>
-                            <p className="text-white font-medium">{formatCurrency(currentValue, user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 mt-4">
-                          <Button 
-                            onClick={() => handleRunCommittee(holding.symbol, holding.name)} 
-                            size="sm" 
-                            className="bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-md shadow-amber-900/20"
-                            title="AI Investment Committee"
-                          >
-                            ⚖️ AI Committee
-                          </Button>
-                          <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
-                            <Pencil className="w-4 h-4 mr-1" /> Edit
-                          </Button>
-                          <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-                            <ArrowUp className="w-4 h-4 mr-2" /> Buy
-                          </Button>
-                          <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
-                            <ArrowDown className="w-4 h-4 mr-2" /> Sell
-                          </Button>
-                          <Button onClick={() => handleDeleteHolding(holding.id)} size="sm" className="bg-slate-700 hover:bg-rose-600 text-white ml-2" title="Delete Holding">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* MUTUAL FUNDS SECTION */}
-            {holdings.filter(h => h.asset_type === "MUTUAL_FUND").length > 0 && (
-              <div>
-                <h3 className="text-xl font-semibold text-blue-400 mb-4 pb-2 border-b border-slate-700">
-                  💰 Mutual Funds ({holdings.filter(h => h.asset_type === "MUTUAL_FUND").length})
-                </h3>
-                <div className="space-y-3">
-                  {holdings.filter(h => h.asset_type === "MUTUAL_FUND").map((holding) => {
-                    const totalCost = holding.quantity * holding.purchase_price;
-                    const currentValue = holding.quantity * (holding.current_value || holding.current_nav || holding.purchase_price);
-                    const gain = currentValue - totalCost;
-                    const gainPercent = totalCost > 0 ? (gain / totalCost) * 100 : 0;
-
-                    return (
-                      <div key={holding.id} className="bg-slate-800 p-4 rounded-lg border border-slate-700">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex flex-1 items-center gap-3">
-                            <input
-                              type="checkbox"
-                              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                              checked={selectedHoldings.includes(holding.id)}
-                              onChange={() => toggleHoldingSelection(holding.id)}
-                            />
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                                <p className="font-medium text-white">{holding.scheme_name}</p>
-                                <span className="px-2 py-0.5 text-xs bg-indigo-500/20 text-indigo-300 rounded border border-indigo-500/30 font-medium">
-                                  {holding.broker || 'Zerodha'}
-                                </span>
-                              </div>
-                              <p className="text-sm text-slate-400">Mutual Fund</p>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className={`text-lg font-bold ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {gain >= 0 ? '+' : ''}{formatCurrency(gain, user?.default_currency || 'INR', 'en-IN')}
-                            </p>
-                            <p className={`text-sm ${gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {gain >= 0 ? '+' : ''}{gainPercent.toFixed(2)}%
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3 text-sm">
-                          <div>
-                            <p className="text-slate-400">Units</p>
-                            <p className="text-white font-medium">{holding.quantity}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Avg NAV</p>
-                            <p className="text-white font-medium">{formatCurrency(holding.purchase_price, user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Current NAV</p>
-                            <p className="text-white font-medium">{formatCurrency((holding.current_value || holding.current_nav || holding.purchase_price), user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Invested</p>
-                            <p className="text-blue-400 font-medium">{formatCurrency(totalCost, user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                          <div>
-                            <p className="text-slate-400">Current Value</p>
-                            <p className="text-white font-medium">{formatCurrency(currentValue, user?.default_currency || 'INR', 'en-IN')}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-end gap-2 mt-4">
-                          <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
-                            <Pencil className="w-4 h-4 mr-1" /> Edit
-                          </Button>
-                          <Button onClick={() => openTransactionDialog(holding, 'buy')} size="sm" className="bg-green-600 hover:bg-green-700 text-white">
-                            <ArrowUp className="w-4 h-4 mr-2" /> Buy
-                          </Button>
-                          <Button onClick={() => openTransactionDialog(holding, 'sell')} size="sm" className="bg-red-600 hover:bg-red-700 text-white">
-                            <ArrowDown className="w-4 h-4 mr-2" /> Sell
-                          </Button>
-                          <Button onClick={() => handleDeleteHolding(holding.id)} size="sm" className="bg-slate-700 hover:bg-rose-600 text-white ml-2" title="Delete Holding">
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      )}
 
       {selectedHoldingForTx && (
         <TransactionDialog
