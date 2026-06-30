@@ -1013,6 +1013,7 @@ const Portfolio = () => {
             </div>
           </div>
         </div>
+      )}
       {/* RISK MANDATES & AI BEHAVIORAL DIAGNOSTICS */}
       {holdings.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 my-6">
@@ -1534,7 +1535,6 @@ const Portfolio = () => {
               <div className="space-y-4">
                 {radarItems.filter(item => item.status !== 'RETIRED').map((item) => {
                   const currentPrice = item.current_price || item.purchase_price;
-                  const totalCost = item.quantity * item.purchase_price;
                   const currentValue = item.quantity * currentPrice;
                   const appreciation = ((currentPrice - item.purchase_price) / item.purchase_price) * 100;
                   
