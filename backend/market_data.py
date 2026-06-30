@@ -30,38 +30,57 @@ def get_stock_info(symbols: any) -> Dict[str, Dict]:
         
         for symbol in symbols:
             try:
-                info = tickers.tickers[symbol].info
-                hist = tickers.tickers[symbol].history(period="1d")
-
+                ticker = tickers.tickers[symbol]
+                
+                # Fetch history first (highly resilient)
+                hist = ticker.history(period="5d")
                 if hist.empty:
-                    logger.warning(f"No data available for {symbol}")
+                    # Fallback to single ticker lookup
+                    try:
+                        t = yf.Ticker(symbol)
+                        hist = t.history(period="5d")
+                    except Exception:
+                        pass
+                
+                if hist.empty:
+                    logger.warning(f"No history data available for {symbol}")
                     continue
 
-                current_price = hist['Close'].iloc[-1]
-                prev_close = info.get('previousClose', current_price)
+                current_price = float(hist['Close'].iloc[-1])
+                prev_close = float(hist['Close'].iloc[-2]) if len(hist) > 1 else current_price
+                
+                # Safely attempt to fetch info (might fail on Render)
+                info = {}
+                try:
+                    info = ticker.info
+                    if not info or not isinstance(info, dict):
+                        info = {}
+                except Exception as info_err:
+                    logger.warning(f"Info fetch failed for {symbol}: {info_err}")
+
                 change = current_price - prev_close
                 change_percent = (change / prev_close) * 100 if prev_close else 0
 
                 results[symbol] = {
                     "symbol": symbol,
-                    "name": info.get('longName', symbol),
-                    "exchange": info.get('exchange', 'N/A'),
+                    "name": info.get('longName') or info.get('shortName') or symbol,
+                    "exchange": info.get('exchange', 'NSE'),
                     "sector": info.get('sector', 'Other'),
                     "current_price": float(current_price),
                     "change": float(change),
                     "change_percent": float(change_percent),
-                    "volume": int(info.get('volume', hist['Volume'].iloc[-1])),
-                    "market_cap": float(info.get('marketCap', 0)),
+                    "volume": int(info.get('volume') or (hist['Volume'].iloc[-1] if 'Volume' in hist.columns else 0)),
+                    "market_cap": float(info.get('marketCap', 0)) if info.get('marketCap') else 0.0,
                     "pe_ratio": float(info.get('trailingPE', 0)) if info.get('trailingPE') else None,
                     "pb_ratio": float(info.get('priceToBook', 0)) if info.get('priceToBook') else None,
                     "roe": float(info.get('returnOnEquity', 0) * 100) if info.get('returnOnEquity') else None,
                     "debt_to_equity": float(info.get('debtToEquity', 0) / 100) if info.get('debtToEquity') else None,
                     "dividend_yield": float(info.get('dividendYield', 0) * 100) if info.get('dividendYield') else None,
-                    "week_52_high": float(info.get('fiftyTwoWeekHigh', current_price)),
-                    "week_52_low": float(info.get('fiftyTwoWeekLow', current_price)),
+                    "week_52_high": float(info.get('fiftyTwoWeekHigh') or (current_price * 1.1)),
+                    "week_52_low": float(info.get('fiftyTwoWeekLow') or (current_price * 0.9)),
                     "rsi": None,
-                    "ma_50": float(info.get('fiftyDayAverage', current_price)),
-                    "ma_200": float(info.get('twoHundredDayAverage', current_price)),
+                    "ma_50": float(info.get('fiftyDayAverage') or current_price),
+                    "ma_200": float(info.get('twoHundredDayAverage') or current_price),
                 }
             except Exception as e:
                 logger.error(f"Error processing symbol {symbol} in batch: {str(e)}")
