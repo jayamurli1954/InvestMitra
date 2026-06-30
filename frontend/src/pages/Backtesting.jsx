@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { API } from '@/App';
-import { Play, TrendingUp, TrendingDown, Award, Target, AlertCircle, Calendar } from 'lucide-react';
+import { Play, TrendingUp, TrendingDown, Award, Target, AlertCircle, Calendar, Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,10 @@ const Backtesting = () => {
   const [backtestResult, setBacktestResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  
+  // AI Prompt strategy states
+  const [promptText, setPromptText] = useState('');
+  const [promptLoading, setPromptLoading] = useState(false);
 
   useEffect(() => {
     fetchStrategies();
@@ -65,6 +69,27 @@ const Backtesting = () => {
       toast.error('Failed to run backtest');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePromptBacktest = async () => {
+    if (!promptText.trim()) {
+      toast.error('Please enter a strategy description');
+      return;
+    }
+    setPromptLoading(true);
+    try {
+      const response = await axios.post(`${API}/backtest/prompt`, {
+        prompt: promptText,
+        initial_capital: parseFloat(backtestConfig.initial_capital || 100000)
+      });
+      setBacktestResult(response.data);
+      toast.success(`AI compiled strategy: "${response.data.strategy_info.name}"`);
+    } catch (error) {
+      console.error('Error running prompt backtest:', error);
+      toast.error('Failed to run prompt backtest');
+    } finally {
+      setPromptLoading(false);
     }
   };
 
@@ -194,6 +219,41 @@ const Backtesting = () => {
             </div>
           </DialogContent>
         </Dialog>
+      </div>
+
+      {/* AI Strategy Prompt Sandbox */}
+      <div className="glass-card p-6 border-l-4 border-amber-500 hover:shadow-lg hover:shadow-amber-500/5 transition-all duration-300">
+        <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-3">
+          <Sparkles className="w-5 h-5 text-amber-400" />
+          AI Strategy Sandbox (Plain English)
+        </h3>
+        <p className="text-sm text-slate-400 mb-4">
+          Type your quantitative strategy logic in plain English. The AI agent will parse parameters and run a vectorized backtest instantly.
+        </p>
+        <div className="flex flex-col md:flex-row gap-3">
+          <Input
+            type="text"
+            placeholder="e.g., Buy when 20 EMA crosses above 50 EMA, sell when RSI exceeds 70"
+            value={promptText}
+            onChange={(e) => setPromptText(e.target.value)}
+            className="flex-1 bg-slate-950 border-slate-800 text-white placeholder-slate-500 focus:border-amber-500 focus:ring-amber-500"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handlePromptBacktest();
+            }}
+          />
+          <Button
+            onClick={handlePromptBacktest}
+            disabled={promptLoading}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold transition-colors duration-200"
+          >
+            {promptLoading ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-slate-900 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            {promptLoading ? 'Compiling...' : 'Compile & Run'}
+          </Button>
+        </div>
       </div>
 
       {/* Results */}
