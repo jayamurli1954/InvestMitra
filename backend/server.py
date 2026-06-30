@@ -225,6 +225,9 @@ def clear_user_portfolio_cache(user_id: str):
     cache_instance.invalidate("portfolio", user_id)
     cache_instance.invalidate("portfolio_performance", user_id)
 
+def clear_user_watchlist_cache(user_id: str):
+    cache_instance.invalidate("watchlist", user_id)
+
 MARKET_OVERVIEW_FALLBACK = [
     {"name": "NIFTY 50", "value": 0.0, "change": 0.0, "change_percent": 0.0},
     {"name": "SENSEX", "value": 0.0, "change": 0.0, "change_percent": 0.0},
@@ -1974,6 +1977,7 @@ async def add_watchlist_item(item: WatchlistItemCreate, current_user: User = Dep
     item_obj = WatchlistItem(**item.model_dump(), user_id=current_user.id)
     doc = item_obj.model_dump()
     await db.watchlist.insert_one(doc)
+    clear_user_watchlist_cache(current_user.id)
     return item_obj
 
 @api_router.options("/watchlist/{item_id}")
@@ -1982,16 +1986,27 @@ async def watchlist_delete_options(item_id: str = None):
 
 @api_router.delete("/watchlist/{item_id}")
 async def delete_watchlist_item(item_id: str, current_user: User = Depends(require_auth)):
+    logger.info(f"Delete watchlist item request received for item_id: '{item_id}', user_id: '{current_user.id}'")
     query_list = [{"id": item_id}, {"_id": item_id}, {"symbol": item_id}]
     try:
         query_list.append({"_id": ObjectId(item_id)})
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"Could not convert item_id '{item_id}' to ObjectId: {e}")
+    
+    logger.info(f"Executing delete query with OR conditions: {query_list}")
     result = await db.watchlist.delete_one({
         "$or": query_list,
         "user_id": current_user.id
     })
+    logger.info(f"Delete result: deleted_count={result.deleted_count}")
+    
+    clear_user_watchlist_cache(current_user.id)
+    
     if result.deleted_count == 0:
+        # Diagnostic lookup to find if the item exists under any other key or user
+        exists_any = await db.watchlist.find_one({"$or": [{"symbol": item_id}, {"id": item_id}]})
+        if exists_any:
+            logger.warning(f"Watchlist doc found but owner user_id '{exists_any.get('user_id')}' does not match requester '{current_user.id}'")
         raise HTTPException(status_code=404, detail="Watchlist item not found")
     return {"message": "Item removed from watchlist"}
 
