@@ -3292,9 +3292,11 @@ async def add_opportunity_radar(payload: Dict[str, Any], current_user: User = De
     if not symbol or purchase_price <= 0:
         raise HTTPException(status_code=400, detail="Invalid stock symbol or purchase price")
         
-    # Auto-calculate quantity based on ₹50,000 fixed allocation rule
-    purchase_amount = 50000.0
-    quantity = round(purchase_amount / purchase_price, 4)
+    # Auto-calculate quantity rounded to nearest whole integer
+    quantity = int(round(50000.0 / purchase_price))
+    if quantity <= 0:
+        quantity = 1
+    purchase_amount = round(quantity * purchase_price, 2)
     
     current_price = purchase_price
     try:

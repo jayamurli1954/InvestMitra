@@ -1395,10 +1395,11 @@ const Portfolio = () => {
               const activeRadar = radarItems.filter(item => item.status !== 'RETIRED');
               const retiredRadar = radarItems.filter(item => item.status === 'RETIRED');
               
-              const totalPaperInvested = activeRadar.length * 50000.0;
+              let totalPaperInvested = 0.0;
               let totalPaperCurrent = 0.0;
               activeRadar.forEach(item => {
                 const currentPrice = item.current_price || item.purchase_price;
+                totalPaperInvested += (item.quantity * item.purchase_price);
                 totalPaperCurrent += (item.quantity * currentPrice);
               });
               
@@ -1520,12 +1521,22 @@ const Portfolio = () => {
                       />
                     </div>
 
-                    {radarFormData.purchase_price && (
-                      <div className="text-xs text-slate-400 bg-slate-950 p-2 rounded border border-slate-800 flex justify-between">
-                        <span>Calculated Position Quantity:</span>
-                        <span className="font-bold text-white">{(50000.0 / parseFloat(radarFormData.purchase_price || 1)).toFixed(2)} shares</span>
-                      </div>
-                    )}
+                    {radarFormData.purchase_price && (() => {
+                      const qty = Math.max(1, Math.round(50000.0 / parseFloat(radarFormData.purchase_price || 1)));
+                      const amt = qty * parseFloat(radarFormData.purchase_price);
+                      return (
+                        <div className="text-xs text-slate-400 bg-slate-950 p-3 rounded border border-slate-800 space-y-1.5">
+                          <div className="flex justify-between">
+                            <span>Calculated Quantity (Rounded):</span>
+                            <span className="font-bold text-white">{qty} shares</span>
+                          </div>
+                          <div className="flex justify-between text-[11px] text-slate-500">
+                            <span>Virtual Cost:</span>
+                            <span className="font-semibold text-slate-300">₹{amt.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div>
                       <Label className="text-slate-300 text-xs">Entry Date</Label>
@@ -1606,7 +1617,7 @@ const Portfolio = () => {
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[10px]">Mock Quantity</span>
-                          <span className="font-medium text-white">{item.quantity}</span>
+                          <span className="font-medium text-white">{Math.round(item.quantity)}</span>
                         </div>
                         <div>
                           <span className="text-slate-500 block text-[10px]">Current Price</span>
