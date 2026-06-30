@@ -40,6 +40,15 @@ const Portfolio = () => {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  
+  // Risk, Mandates & AI Diagnostics States
+  const [mandates, setMandates] = useState(null);
+  const [diagnostics, setDiagnostics] = useState([]);
+  const [committeeDialogOpen, setCommitteeDialogOpen] = useState(false);
+  const [committeeLoading, setCommitteeLoading] = useState(false);
+  const [committeeResult, setCommitteeResult] = useState(null);
+  const [activeDebateStep, setActiveDebateStep] = useState(0);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -157,17 +166,50 @@ const Portfolio = () => {
 
   const fetchPortfolio = async () => {
     try {
-      const [holdingsRes, performanceRes] = await Promise.all([
+      const [holdingsRes, performanceRes, mandatesRes, diagnosticsRes] = await Promise.all([
         axios.get(`${API}/portfolio`),
-        axios.get(`${API}/portfolio/performance`)
+        axios.get(`${API}/portfolio/performance`),
+        axios.get(`${API}/portfolio/mandates`),
+        axios.get(`${API}/portfolio/diagnostics`)
       ]);
       setHoldings(holdingsRes.data);
       setPerformance(performanceRes.data);
+      setMandates(mandatesRes.data);
+      setDiagnostics(diagnosticsRes.data);
     } catch (error) {
       console.error('Error fetching portfolio:', error);
       toast.error('Failed to load portfolio');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRunCommittee = async (symbol, name) => {
+    setCommitteeResult(null);
+    setCommitteeLoading(true);
+    setActiveDebateStep(0);
+    setCommitteeDialogOpen(true);
+    
+    try {
+      const response = await axios.post(`${API}/analysis/committee`, { symbol, name });
+      setCommitteeResult(response.data);
+      
+      // Simulate steps of active debate
+      let currentStep = 0;
+      const interval = setInterval(() => {
+        if (currentStep < 3) {
+          currentStep++;
+          setActiveDebateStep(currentStep);
+        } else {
+          clearInterval(interval);
+        }
+      }, 2500);
+      
+    } catch (error) {
+      console.error('Error running committee debate:', error);
+      toast.error('Failed to analyze with AI Investment Committee');
+    } finally {
+      setCommitteeLoading(false);
     }
   };
 
@@ -859,6 +901,111 @@ const Portfolio = () => {
             </div>
           </div>
         </div>
+      {/* RISK MANDATES & AI BEHAVIORAL DIAGNOSTICS */}
+      {holdings.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 my-6">
+          {/* Mandate & Risk Guard Card */}
+          <div className="glass-card p-6 border-l-4 border-indigo-500 hover:shadow-lg hover:shadow-indigo-500/5 transition-all duration-300">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                🛡️ Mandate & Risk Guard
+              </h3>
+              {mandates && (
+                <span className={`px-3 py-1 rounded-full text-xs font-semibold bg-slate-900 border ${
+                  mandates.hhi_index < 0.15 ? 'text-emerald-400 border-emerald-500/30' : 
+                  mandates.hhi_index <= 0.25 ? 'text-amber-400 border-amber-500/30' : 
+                  'text-rose-400 border-rose-500/30'
+                }`}>
+                  {mandates.diversification_status}
+                </span>
+              )}
+            </div>
+            {mandates ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Herfindahl Concentration Index (HHI)</span>
+                  <span className="font-semibold text-white">{mandates.hhi_index}</span>
+                </div>
+                {/* Visual Gauge Bar */}
+                <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-700">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      mandates.hhi_index < 0.15 ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 
+                      mandates.hhi_index <= 0.25 ? 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 
+                      'bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
+                    }`}
+                    style={{ width: `${Math.min(mandates.hhi_index * 300, 100)}%` }}
+                  />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-sm">
+                  <div>
+                    <span className="text-slate-400 block text-xs">Stocks Allocation</span>
+                    <span className="font-bold text-white text-lg">{mandates.asset_allocation.STOCKS}%</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-xs">Mutual Funds Allocation</span>
+                    <span className="font-bold text-white text-lg">{mandates.asset_allocation.MUTUAL_FUNDS}%</span>
+                  </div>
+                </div>
+
+                {/* Mandate Violation Warnings */}
+                {mandates.concentration_alerts.length > 0 ? (
+                  <div className="space-y-2 pt-2">
+                    {mandates.concentration_alerts.map((alert, idx) => (
+                      <div key={idx} className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/25 p-3 rounded-lg text-rose-300 text-xs">
+                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <p>{alert.message}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="bg-emerald-500/10 border border-emerald-500/25 p-3 rounded-lg text-emerald-300 text-xs flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    All risk mandate parameters are currently within safe guidelines.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm">Loading risk mandates...</p>
+            )}
+          </div>
+
+          {/* AI Behavioral Diagnostics Card */}
+          <div className="glass-card p-6 border-l-4 border-amber-500 hover:shadow-lg hover:shadow-amber-500/5 transition-all duration-300">
+            <h3 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+              📓 AI Behavioral Diagnostics
+            </h3>
+            {diagnostics.length > 0 ? (
+              <div className="space-y-3 max-h-[260px] overflow-y-auto pr-1">
+                {diagnostics.map((diag, idx) => (
+                  <div 
+                    key={idx} 
+                    className={`p-3.5 rounded-lg border text-sm transition-all duration-200 ${
+                      diag.severity === 'warning' ? 'bg-rose-500/5 border-rose-500/20 text-slate-300' :
+                      diag.severity === 'success' ? 'bg-emerald-500/5 border-emerald-500/20 text-slate-300' :
+                      'bg-indigo-500/5 border-indigo-500/20 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-white text-sm">{diag.title}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-semibold tracking-wider ${
+                        diag.severity === 'warning' ? 'bg-rose-500/20 text-rose-300' :
+                        diag.severity === 'success' ? 'bg-emerald-500/20 text-emerald-300' :
+                        'bg-indigo-500/20 text-indigo-300'
+                      }`}>
+                        {diag.symbol}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">{diag.message}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-slate-400 text-sm">Analyzing transaction behavior...</p>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="glass-card p-6">
@@ -963,6 +1110,14 @@ const Portfolio = () => {
                         </div>
 
                         <div className="flex items-center justify-end gap-2 mt-4">
+                          <Button 
+                            onClick={() => handleRunCommittee(holding.symbol, holding.name)} 
+                            size="sm" 
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-md shadow-amber-900/20"
+                            title="AI Investment Committee"
+                          >
+                            ⚖️ AI Committee
+                          </Button>
                           <Button onClick={() => openEditDialog(holding)} size="sm" className="bg-indigo-600 hover:bg-indigo-700 text-white" title="Edit Holding">
                             <Pencil className="w-4 h-4 mr-1" /> Edit
                           </Button>
@@ -1162,6 +1317,94 @@ const Portfolio = () => {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* AI INVESTMENT COMMITTEE DIALOG */}
+      <Dialog open={committeeDialogOpen} onOpenChange={setCommitteeDialogOpen}>
+        <DialogContent className="bg-slate-900 border-slate-700 max-w-2xl text-white max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              ⚖️ AI Investment Committee Analysis
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6 my-4">
+            {committeeLoading && !committeeResult ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-amber-500"></div>
+                <p className="text-slate-400 text-sm">Gathering committee analysts & fetching financials...</p>
+              </div>
+            ) : committeeResult ? (
+              <div className="space-y-6">
+                {/* Simulated live transcript debate bubbles */}
+                <div className="space-y-4 max-h-[300px] overflow-y-auto bg-slate-950 p-4 rounded-xl border border-slate-800">
+                  {committeeResult.debate.slice(0, activeDebateStep + 1).map((msg, index) => (
+                    <div key={index} className="flex gap-3 items-start animate-fade-in text-sm">
+                      <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-lg flex-shrink-0">
+                        {msg.avatar}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <span className="font-bold text-white text-xs">{msg.agent}</span>
+                          <span className="text-[10px] text-slate-500 font-medium">({msg.role})</span>
+                        </div>
+                        <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/40 text-slate-300 leading-relaxed text-xs">
+                          {msg.message}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {activeDebateStep < committeeResult.debate.length - 1 && (
+                    <div className="flex items-center gap-2 text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 p-2 rounded-lg">
+                      <div className="animate-pulse w-2 h-2 rounded-full bg-amber-400" />
+                      <span>Next analyst is speaking...</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Consensus Scorecard (renders when chair finishes speaking) */}
+                {activeDebateStep >= committeeResult.debate.length - 1 && (
+                  <div className="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-4 animate-fade-in">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                      <div>
+                        <h4 className="font-bold text-lg text-white">Committee Verdict</h4>
+                        <p className="text-xs text-slate-500">Based on multi-agent consensus</p>
+                      </div>
+                      <div className="text-right">
+                        <span className={`px-3 py-1 rounded text-xs font-bold ${
+                          committeeResult.score >= 75 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                          'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        }`}>
+                          {committeeResult.outlook}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-xs text-slate-500 block">Consensus Score</span>
+                        <span className={`text-4xl font-extrabold ${
+                          committeeResult.score >= 75 ? 'text-emerald-400' : 'text-amber-400'
+                        }`}>
+                          {committeeResult.score} <span className="text-sm font-medium text-slate-500">/ 100</span>
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-xs text-slate-500 block">Symbol / Asset</span>
+                        <span className="text-lg font-bold text-white block truncate">{committeeResult.symbol}</span>
+                        <span className="text-xs text-slate-400 block truncate">{committeeResult.name}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-slate-500 bg-slate-900/40 p-3 rounded leading-relaxed border border-slate-800/30">
+                      ⚠️ **Compliance Notice & SEBI Disclaimer:** {committeeResult.disclaimer}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
