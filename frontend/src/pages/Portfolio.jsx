@@ -1501,14 +1501,14 @@ const Portfolio = () => {
                     </div>
 
                     <div>
-                      <Label className="text-slate-300 text-xs">Entry Price (₹)</Label>
+                      <Label className="text-slate-300 text-xs font-semibold text-amber-400">Entry Price (₹) [Locked to Current Price]</Label>
                       <Input
                         type="number"
                         step="any"
-                        placeholder="e.g. 195.50"
+                        readOnly
+                        placeholder="Select a target stock above..."
                         value={radarFormData.purchase_price}
-                        onChange={(e) => setRadarFormData({ ...radarFormData, purchase_price: e.target.value })}
-                        className="bg-slate-800 border-slate-700 text-white mt-1"
+                        className="bg-slate-950 border-slate-800 text-slate-400 mt-1 cursor-not-allowed font-medium"
                       />
                     </div>
 
@@ -1523,9 +1523,9 @@ const Portfolio = () => {
                       <Label className="text-slate-300 text-xs">Entry Date</Label>
                       <Input
                         type="date"
+                        readOnly
                         value={radarFormData.purchase_date}
-                        onChange={(e) => setRadarFormData({ ...radarFormData, purchase_date: e.target.value })}
-                        className="bg-slate-800 border-slate-700 text-white mt-1"
+                        className="bg-slate-950 border-slate-800 text-slate-400 mt-1 cursor-not-allowed"
                       />
                     </div>
 
