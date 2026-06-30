@@ -1370,12 +1370,13 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
     yfinance_symbols_to_try = []
 
     # Prioritize exact symbol if exchange is specified
-    if exchange:
-        if exchange.upper() == "NSE" and not q_upper.endswith(".NS"):
+    if exchange and isinstance(exchange, str):
+        exch_upper = exchange.upper()
+        if exch_upper == "NSE" and not q_upper.endswith(".NS"):
             yfinance_symbols_to_try.append(q_upper + ".NS")
-        elif exchange.upper() == "BSE" and not q_upper.endswith(".BO"):
+        elif exch_upper == "BSE" and not q_upper.endswith(".BO"):
             yfinance_symbols_to_try.append(q_upper + ".BO")
-        elif exchange.upper() == "NASDAQ" or exchange.upper() == "NYSE":
+        elif exch_upper == "NASDAQ" or exch_upper == "NYSE":
             yfinance_symbols_to_try.append(q_upper) # Raw symbol for US exchanges
         else:
             yfinance_symbols_to_try.append(q_upper) # Fallback for other specified exchanges
@@ -1391,6 +1392,7 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
     # Remove duplicates and maintain order
     yfinance_symbols_to_try = list(dict.fromkeys(yfinance_symbols_to_try))
 
+    matches = []
     for sym in yfinance_symbols_to_try:
         try:
             info = await asyncio.to_thread(lambda s=sym: getattr(yf.Ticker(s), "info", {}) or {})
@@ -1418,12 +1420,11 @@ async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[st
                 )
 
                 logger.info(f"✅ Added stock dynamically: {stock_doc['symbol']}")
-                return [StockBasic(**stock_doc)]
+                matches.append(StockBasic(**stock_doc))
         except Exception as e:
             logger.warning(f"yfinance lookup failed for {sym}: {e}")
 
-    # 4️⃣ If nothing found
-    return []
+    return matches
 # ---------- END DYNAMIC SEARCH ----------
 
 @api_router.get("/mutual-funds/search")
