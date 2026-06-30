@@ -3250,6 +3250,110 @@ async def get_portfolio_diagnostics_endpoint(current_user: User = Depends(requir
     transactions = await db.transactions.find({"user_id": current_user.id}).to_list(1000)
     return generate_portfolio_diagnostics(holdings, transactions)
 
+# Opportunity Radar (Paper Portfolio) Endpoints
+@api_router.get("/portfolio/radar")
+async def get_opportunity_radar(current_user: User = Depends(require_auth)):
+    radar_items = await db.opportunity_radar.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    
+    # Update real-time price updates for active radar items
+    active_symbols = [item["symbol"] for item in radar_items if item.get("status", "ACTIVE") == "ACTIVE" and item.get("symbol")]
+    
+    stock_prices = {}
+    if active_symbols:
+        try:
+            stock_prices = get_batch_stock_prices(active_symbols)
+        except Exception as e:
+            logger.warning(f"Error fetching batch stock prices for radar: {e}")
+            
+    for item in radar_items:
+        if item.get("status", "ACTIVE") == "ACTIVE":
+            sym = item.get("symbol")
+            if sym in stock_prices:
+                item["current_price"] = float(Decimal(str(stock_prices[sym]["current_price"])).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
+            else:
+                try:
+                    info = get_stock_info(sym)
+                    if info:
+                        item["current_price"] = info.get("current_price", item["purchase_price"])
+                except Exception:
+                    item["current_price"] = item["purchase_price"]
+        else:
+            item["current_price"] = item.get("retired_price", item["purchase_price"])
+            
+    return radar_items
+
+@api_router.post("/portfolio/radar")
+async def add_opportunity_radar(payload: Dict[str, Any], current_user: User = Depends(require_auth)):
+    symbol = payload.get("symbol", "").strip().upper()
+    name = payload.get("name", "").strip()
+    purchase_price = float(payload.get("purchase_price", 0.0))
+    purchase_date = payload.get("purchase_date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    
+    if not symbol or purchase_price <= 0:
+        raise HTTPException(status_code=400, detail="Invalid stock symbol or purchase price")
+        
+    # Auto-calculate quantity based on ₹50,000 fixed allocation rule
+    purchase_amount = 50000.0
+    quantity = round(purchase_amount / purchase_price, 4)
+    
+    current_price = purchase_price
+    try:
+        info = get_stock_info(symbol)
+        if info:
+            current_price = info.get("current_price", purchase_price)
+    except Exception:
+        pass
+        
+    radar_obj = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user.id,
+        "symbol": symbol,
+        "name": name or symbol,
+        "purchase_price": purchase_price,
+        "quantity": quantity,
+        "purchase_amount": purchase_amount,
+        "purchase_date": purchase_date,
+        "status": "ACTIVE",
+        "current_price": current_price,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.opportunity_radar.insert_one(dict(radar_obj))
+    radar_obj.pop("_id", None)
+    return radar_obj
+
+@api_router.post("/portfolio/radar/{item_id}/retire")
+async def retire_opportunity_radar(item_id: str, current_user: User = Depends(require_auth)):
+    item = await db.opportunity_radar.find_one({"id": item_id, "user_id": current_user.id})
+    if not item:
+        raise HTTPException(status_code=404, detail="Opportunity item not found")
+        
+    exit_price = item.get("purchase_price")
+    try:
+        info = get_stock_info(item["symbol"])
+        if info:
+            exit_price = info.get("current_price", exit_price)
+    except Exception:
+        pass
+        
+    await db.opportunity_radar.update_one(
+        {"id": item_id, "user_id": current_user.id},
+        {"$set": {
+            "status": "RETIRED",
+            "retired_price": exit_price,
+            "retired_date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    return {"message": "Opportunity retired successfully", "retired_price": exit_price}
+
+@api_router.delete("/portfolio/radar/{item_id}")
+async def delete_opportunity_radar(item_id: str, current_user: User = Depends(require_auth)):
+    result = await db.opportunity_radar.delete_one({"id": item_id, "user_id": current_user.id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Opportunity item not found")
+    return {"message": "Opportunity deleted successfully"}
+
 @api_router.get("/stock/{symbol}/berkshire-scorecard")
 async def get_berkshire_scorecard(symbol: str):
     """Berkshire Hathaway-style fundamental capital allocation scorecard for an equity."""
