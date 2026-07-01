@@ -37,6 +37,7 @@ const Portfolio = () => {
   };
   const [holdings, setHoldings] = useState([]);
   const [performance, setPerformance] = useState(null);
+  const [selectedBrokerFilter, setSelectedBrokerFilter] = useState('All');
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -82,6 +83,19 @@ const Portfolio = () => {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [addHoldingStatus, setAddHoldingStatus] = useState(null);
   const [uploadStatus, setUploadStatus] = useState(null);
+
+  const filteredHoldings = holdings.filter(h => {
+    if (selectedBrokerFilter === 'All') return true;
+    return (h.broker || 'Zerodha') === selectedBrokerFilter;
+  });
+
+  const stocksData = filteredHoldings.filter(h => h.asset_type === "STOCK");
+  const mfData = filteredHoldings.filter(h => h.asset_type === "MUTUAL_FUND");
+
+  const totalInvested = filteredHoldings.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
+  const totalCurrent = filteredHoldings.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_price || h.current_nav || h.purchase_price)), 0);
+  const totalGain = totalCurrent - totalInvested;
+  const totalGainPercent = totalInvested > 0 ? (totalGain / totalInvested) * 100 : 0;
   const [selectedUploadFile, setSelectedUploadFile] = useState(null);
 
   // State for the transaction dialog
@@ -431,10 +445,10 @@ const Portfolio = () => {
   };
 
   const toggleAllHoldings = () => {
-    if (selectedHoldings.length === holdings.length && holdings.length > 0) {
+    if (selectedHoldings.length === filteredHoldings.length && filteredHoldings.length > 0) {
       setSelectedHoldings([]);
     } else {
-      setSelectedHoldings(holdings.map(h => h.id));
+      setSelectedHoldings(filteredHoldings.map(h => h.id));
     }
   };
 
@@ -923,12 +937,11 @@ const Portfolio = () => {
           <h2 className="text-2xl font-bold text-white mb-6">Performance Summary</h2>
 
           {/* STOCKS PERFORMANCE */}
-          {holdings.filter(h => h.asset_type === "STOCK").length > 0 && (
+          {stocksData.length > 0 && (
             <div className="mb-8">
-              <h3 className="text-lg font-semibold text-emerald-400 mb-4">📈 Stocks Performance</h3>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
+               <h3 className="text-lg font-semibold text-emerald-400 mb-4">📈 Stocks Performance</h3>
+               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
                 {(() => {
-                  const stocksData = holdings.filter(h => h.asset_type === "STOCK");
                   const totalInvested = stocksData.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
                   const totalCurrent = stocksData.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_price || h.purchase_price)), 0);
                   const gain = totalCurrent - totalInvested;
@@ -965,12 +978,11 @@ const Portfolio = () => {
           )}
 
           {/* MUTUAL FUNDS PERFORMANCE */}
-          {holdings.filter(h => h.asset_type === "MUTUAL_FUND").length > 0 && (
+          {mfData.length > 0 && (
             <div className="mb-8">
               <h3 className="text-lg font-semibold text-blue-400 mb-4">💰 Mutual Funds Performance</h3>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800 p-4 rounded-lg border border-slate-700">
                 {(() => {
-                  const mfData = holdings.filter(h => h.asset_type === "MUTUAL_FUND");
                   const totalInvested = mfData.reduce((sum, h) => sum + (h.quantity * h.purchase_price), 0);
                   const totalCurrent = mfData.reduce((sum, h) => sum + (h.quantity * (h.current_value || h.current_nav || h.purchase_price)), 0);
                   const gain = totalCurrent - totalInvested;
@@ -1010,25 +1022,25 @@ const Portfolio = () => {
           <div>
             <h3 className="text-lg font-semibold text-white mb-4">📊 Total Portfolio</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-900 p-4 rounded-lg border border-emerald-500">
-              <div>
+               <div>
                 <p className="text-sm text-slate-400 mb-1">Total Invested</p>
-                <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_invested, user?.default_currency || 'INR', 'en-IN')}</p>
+                <p className="text-2xl font-bold text-white">{formatCurrency(totalInvested, user?.default_currency || 'INR', 'en-IN')}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-400 mb-1">Current Value</p>
-                <p className="text-2xl font-bold text-white">{formatCurrency(performance.total_current, user?.default_currency || 'INR', 'en-IN')}</p>
+                <p className="text-2xl font-bold text-white">{formatCurrency(totalCurrent, user?.default_currency || 'INR', 'en-IN')}</p>
               </div>
               <div>
                 <p className="text-sm text-slate-400 mb-1">Total Gain/Loss</p>
-                <p className={`text-2xl font-bold ${performance.total_gain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {performance.total_gain >= 0 ? '+' : ''}{formatCurrency(performance.total_gain, user?.default_currency || 'INR', 'en-IN')}
+                <p className={`text-2xl font-bold ${totalGain >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {totalGain >= 0 ? '+' : ''}{formatCurrency(totalGain, user?.default_currency || 'INR', 'en-IN')}
                 </p>
               </div>
               <div>
                 <p className="text-sm text-slate-400 mb-1">Returns</p>
-                <div className={`flex items-center space-x-2 ${performance.total_gain_percent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {performance.total_gain_percent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
-                  <p className="text-2xl font-bold">{performance.total_gain_percent >= 0 ? '+' : ''}{performance.total_gain_percent.toFixed(2)}%</p>
+                <div className={`flex items-center space-x-2 ${totalGainPercent >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {totalGainPercent >= 0 ? <TrendingUp className="w-6 h-6" /> : <TrendingDown className="w-6 h-6" />}
+                  <p className="text-2xl font-bold">{totalGainPercent >= 0 ? '+' : ''}{totalGainPercent.toFixed(2)}%</p>
                 </div>
               </div>
             </div>
@@ -1168,8 +1180,24 @@ const Portfolio = () => {
 
       {activeTab === 'portfolio' ? (
         <div className="glass-card p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-white">Your Holdings</h2>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div className="flex items-center gap-4 flex-wrap">
+              <h2 className="text-2xl font-bold text-white">Your Holdings</h2>
+              {holdings.length > 0 && (
+                <div className="flex items-center gap-2 bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1 shadow-inner">
+                  <span className="text-xs text-slate-450 font-medium">Broker:</span>
+                  <select
+                    value={selectedBrokerFilter}
+                    onChange={(e) => setSelectedBrokerFilter(e.target.value)}
+                    className="bg-transparent text-xs text-white border-none focus:ring-0 cursor-pointer p-0 pr-6 font-semibold"
+                  >
+                    {['All', ...new Set(holdings.map(h => h.broker || 'Zerodha'))].map(broker => (
+                      <option key={broker} value={broker} className="bg-slate-800 text-white">{broker}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             {holdings.length > 0 && (
               <div className="flex items-center gap-4">
                 {selectedHoldings.length > 0 && (
@@ -1183,7 +1211,7 @@ const Portfolio = () => {
                     type="checkbox"
                     id="selectAllHoldings"
                     className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                    checked={selectedHoldings.length === holdings.length && holdings.length > 0}
+                    checked={selectedHoldings.length === filteredHoldings.length && filteredHoldings.length > 0}
                     onChange={toggleAllHoldings}
                   />
                   <label htmlFor="selectAllHoldings" className="text-sm text-slate-300 font-medium cursor-pointer select-none">
@@ -1197,16 +1225,20 @@ const Portfolio = () => {
             <div className="text-center py-12">
               <p className="text-slate-400 mb-4">No holdings yet. Start building your portfolio!</p>
             </div>
+          ) : filteredHoldings.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-slate-400 mb-4">No holdings found for broker "{selectedBrokerFilter}".</p>
+            </div>
           ) : (
             <div className="space-y-8">
               {/* STOCKS SECTION */}
-              {holdings.filter(h => h.asset_type === "STOCK").length > 0 && (
+              {stocksData.length > 0 && (
                 <div>
                   <h3 className="text-xl font-semibold text-emerald-400 mb-4 pb-2 border-b border-slate-700">
-                    📈 Stocks ({holdings.filter(h => h.asset_type === "STOCK").length})
+                    📈 Stocks ({stocksData.length})
                   </h3>
                   <div className="space-y-3">
-                    {holdings.filter(h => h.asset_type === "STOCK").map((holding) => {
+                    {stocksData.map((holding) => {
                       const totalCost = holding.quantity * holding.purchase_price;
                       const currentValue = holding.quantity * (holding.current_value || holding.current_price || holding.purchase_price);
                       const gain = currentValue - totalCost;
@@ -1298,13 +1330,13 @@ const Portfolio = () => {
               )}
 
               {/* MUTUAL FUNDS SECTION */}
-              {holdings.filter(h => h.asset_type === "MUTUAL_FUND").length > 0 && (
+              {mfData.length > 0 && (
                 <div>
                   <h3 className="text-xl font-semibold text-blue-400 mb-4 pb-2 border-b border-slate-700">
-                    💰 Mutual Funds ({holdings.filter(h => h.asset_type === "MUTUAL_FUND").length})
+                    💰 Mutual Funds ({mfData.length})
                   </h3>
                   <div className="space-y-3">
-                    {holdings.filter(h => h.asset_type === "MUTUAL_FUND").map((holding) => {
+                    {mfData.map((holding) => {
                       const totalCost = holding.quantity * holding.purchase_price;
                       const currentValue = holding.quantity * (holding.current_value || holding.current_nav || holding.purchase_price);
                       const gain = currentValue - totalCost;
