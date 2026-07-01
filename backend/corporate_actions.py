@@ -97,15 +97,37 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 if purchase_date_clean and date_str < purchase_date_clean and sym_clean != "NMDC":
                     continue
 
-                # Check if already applied to this holding
-                already_applied = await db.corporate_action_logs.find_one({
+                # 1. Check if already applied to this specific holding using holding document field
+                applied_actions = holding.get("applied_corporate_actions", [])
+                if date_str in applied_actions:
+                    continue
+
+                # 2. Fall back to external logs for legacy holdings
+                already_applied_legacy = await db.corporate_action_logs.find_one({
                     "user_id": user_id,
                     "symbol": symbol,
                     "action_date": date_str
                 })
-
-                if already_applied:
-                    continue
+                if already_applied_legacy:
+                    # If the logged old_quantity matches current quantity, the log is from a deleted holding
+                    if float(already_applied_legacy.get("old_quantity", 0)) == current_qty:
+                        log_db_id = already_applied_legacy.get("_id")
+                        if log_db_id:
+                            await db.corporate_action_logs.delete_one({"_id": log_db_id})
+                        else:
+                            await db.corporate_action_logs.delete_one({
+                                "user_id": user_id,
+                                "symbol": symbol,
+                                "action_date": date_str
+                            })
+                        logger.info(f"Cleared stale legacy log for {symbol} on {date_str} because current qty {current_qty} matches logged old_qty")
+                    else:
+                        # Legacy log is valid, upgrade document to new structure and skip
+                        await db.portfolio.update_one(
+                            {"_id": holding_db_id},
+                            {"$push": {"applied_corporate_actions": date_str}}
+                        )
+                        continue
 
                 # Calculate adjusted quantity and purchase price
                 new_qty = current_qty * ratio
@@ -115,11 +137,16 @@ async def process_user_corporate_actions(db, user_id: str) -> dict:
                 if holding_db_id:
                     await db.portfolio.update_one(
                         {"_id": holding_db_id},
-                        {"$set": {
-                            "quantity": int(new_qty) if new_qty.is_integer() else new_qty,
-                            "purchase_price": new_price,
-                            "updated_at": datetime.now(timezone.utc).isoformat()
-                        }}
+                        {
+                            "$set": {
+                                "quantity": int(new_qty) if new_qty.is_integer() else new_qty,
+                                "purchase_price": new_price,
+                                "updated_at": datetime.now(timezone.utc).isoformat()
+                            },
+                            "$push": {
+                                "applied_corporate_actions": date_str
+                            }
+                        }
                     )
 
                 # Record audit log entry

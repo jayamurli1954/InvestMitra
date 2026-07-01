@@ -1790,6 +1790,10 @@ async def transact_holding(holding_id: str, transaction: HoldingTransaction, cur
         
         if new_quantity == 0:
             await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
+            symbol = holding.get("symbol")
+            if symbol:
+                await db.corporate_action_logs.delete_many({"symbol": symbol, "user_id": current_user.id})
+                logger.info(f"Cleaned up corporate action logs for {symbol} of user {current_user.id} because quantity reached 0")
         else:
             # Average price does not change on selling
             await db.portfolio.update_one(
@@ -1809,9 +1813,16 @@ async def portfolio_delete_options(holding_id: str = None):
 
 @api_router.delete("/portfolio/{holding_id}")
 async def delete_portfolio_holding(holding_id: str, current_user: User = Depends(require_auth)):
+    holding = await db.portfolio.find_one({"id": holding_id, "user_id": current_user.id})
+    if not holding:
+        raise HTTPException(status_code=404, detail="Holding not found")
+    symbol = holding.get("symbol")
     result = await db.portfolio.delete_one({"id": holding_id, "user_id": current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Holding not found")
+    if symbol:
+        await db.corporate_action_logs.delete_many({"symbol": symbol, "user_id": current_user.id})
+        logger.info(f"Cleaned up corporate action logs for {symbol} of user {current_user.id}")
     clear_user_portfolio_cache(current_user.id)
     return {"message": "Holding deleted successfully"}
 
