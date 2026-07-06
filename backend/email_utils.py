@@ -15,9 +15,9 @@ def _clean_env(name: str, default=None):
         return None
     return str(value).strip().strip('"').strip("'")
 
-# Email Configuration
-BREVO_API_KEY = _clean_env("BREVO_API_KEY", "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")
-SENDER_EMAIL = _clean_env("SMTP_EMAIL", "jayamurli1954@gmail.com") 
+# Email Configuration — no hardcoded secrets; set via environment
+BREVO_API_KEY = _clean_env("BREVO_API_KEY")
+SENDER_EMAIL = _clean_env("SMTP_EMAIL")
 SENDER_NAME = _clean_env("SENDER_NAME", "InvestMitra")
 FRONTEND_URL = _clean_env("FRONTEND_URL", "http://localhost:3000")
 FRONTEND_USE_HASH_ROUTER = (_clean_env("FRONTEND_USE_HASH_ROUTER", "true").lower() == "true")
@@ -209,6 +209,10 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
         bool: True if email sent successfully, False otherwise
     """
     try:
+        if not BREVO_API_KEY or not SENDER_EMAIL:
+            print("Error: BREVO_API_KEY and SMTP_EMAIL must be set to send email")
+            return False
+
         url = "https://api.brevo.com/v3/smtp/email"
         headers = {
             "accept": "application/json",
@@ -233,7 +237,6 @@ def _send_email(to_email: str, subject: str, text_body: str, html_body: str) -> 
         response = requests.post(url, headers=headers, json=payload)
         
         if response.status_code in [200, 201, 202]:
-            print(f"✓ Email sent successfully to {to_email} via Brevo HTTP API")
             return True
         else:
             print(f"Error: Brevo API returned {response.status_code} - {response.text}")

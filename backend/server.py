@@ -17,12 +17,16 @@ import random
 import requests
 import io
 from urllib.parse import urlparse
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from decimal import Decimal, ROUND_HALF_UP
 from auth_utils import (
     User, UserPublic, UserSession, UserRegister, UserLogin, Token,
-    verify_password, get_password_hash, create_access_token, decode_access_token
+    verify_password, get_password_hash, create_access_token, decode_access_token,
+    validate_password, mask_email, find_user_by_name,
+    create_password_reset_record, validate_reset_token, mark_reset_token_as_used,
+    invalidate_user_sessions,
 )
+from app_config import validate_production_config, cookie_secure, dev_features_enabled, debug_endpoints_enabled, is_production
 from market_data import (
     get_stock_info, get_batch_stock_prices, get_historical_data, get_market_indices, 
     get_major_world_stocks, get_mutual_fund_nav, get_exchange_rate
@@ -153,11 +157,13 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Register startup and shutdown events
 @app.on_event("startup")
 async def startup_event():
+    validate_production_config()
     load_local_stocks_cache()
     await init_db()
     
-    # Auto-seed default test user for local Quick Test Login
-    if db is not None:
+    # Optional local test user — never enabled by default
+    seed_test_user = os.getenv("SEED_TEST_USER", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if seed_test_user and db is not None:
         try:
             existing = await db.users.find_one({"email": "test@example.com"})
             if not existing:
@@ -336,6 +342,31 @@ async def require_auth(current_user: Optional[User] = Depends(get_current_user))
         raise HTTPException(status_code=401, detail="Not authenticated")
     return current_user
 
+
+def _set_session_cookie(response: Response, session_token: str) -> None:
+    response.set_cookie(
+        key="session_token",
+        value=session_token,
+        httponly=True,
+        secure=cookie_secure(),
+        samesite="none" if cookie_secure() else "lax",
+        max_age=7 * 24 * 60 * 60,
+        path="/",
+    )
+
+
+async def _resolve_user_id_from_session_token(session_token: Optional[str]) -> Optional[str]:
+    if not session_token or db is None:
+        return None
+    session = await db.user_sessions.find_one({
+        "session_token": session_token,
+        "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()},
+    })
+    if not session:
+        return None
+    return str(session.get("user_id"))
+
+
 # ==================== MODELS ====================
 
 class StockBasic(BaseModel):
@@ -422,6 +453,17 @@ class HoldingTransaction(BaseModel):
     broker: Optional[str] = "Zerodha"
     exchange: Optional[str] = "NSE"
 
+
+class PortfolioHoldingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    quantity: Optional[float] = None
+    purchase_price: Optional[float] = None
+    purchase_date: Optional[str] = None
+    broker: Optional[str] = None
+    exchange: Optional[str] = None
+    name: Optional[str] = None
+    scheme_name: Optional[str] = None
+
 from fastapi import UploadFile, File
 
 @api_router.post("/portfolio/upload")
@@ -436,6 +478,8 @@ async def upload_portfolio(file: UploadFile = File(...), current_user: User = De
         )
 
     content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="CSV file too large (max 5 MB).")
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded CSV file is empty.")
 
@@ -1008,7 +1052,9 @@ class DividendRecordCreate(BaseModel):
 
 @api_router.get("/debug/stock-info/{symbol}")
 async def debug_stock_info(symbol: str):
-    """Temporary endpoint to debug get_stock_info for a specific symbol."""
+    """Debug endpoint — disabled unless ENABLE_DEBUG_ENDPOINTS=true."""
+    if not debug_endpoints_enabled():
+        raise HTTPException(status_code=404, detail="Not found")
     logger.info(f"Debugging stock info for symbol: {symbol}")
     stock_data = get_stock_info(symbol)
     if not stock_data:
@@ -1027,24 +1073,26 @@ async def root():
 async def register_options():
     """Handle CORS preflight for register"""
     return Response(status_code=200)
+
 @api_router.post("/auth/register", response_model=Token)
-async def register(user_data: UserRegister, response: Response, database=Depends(get_db)):
+@limiter.limit("5/hour")
+async def register(request: Request, user_data: UserRegister, response: Response, database=Depends(get_db)):
     """Register new user with email/password"""
-    # Validate disclaimer acceptance
     if not user_data.disclaimer_accepted:
         raise HTTPException(
             status_code=400,
             detail="You must accept the Investment Disclaimer to register"
         )
 
-    # Check if user exists
-    existing_user = await database.users.find_one({"email": user_data.email})
+    validate_password(user_data.password)
+    normalized_email = user_data.email.strip().lower()
+
+    existing_user = await database.users.find_one({"email": normalized_email})
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Create user with disclaimer acceptance
     user = User(
-        email=user_data.email,
+        email=normalized_email,
         name=user_data.name,
         password_hash=get_password_hash(user_data.password),
         auth_provider="email",
@@ -1056,7 +1104,6 @@ async def register(user_data: UserRegister, response: Response, database=Depends
     user_dict = user.model_dump(by_alias=True)
     await database.users.insert_one(user_dict)
     
-    # Create session
     session_token = str(uuid.uuid4())
     session = UserSession(
         user_id=user.id,
@@ -1065,28 +1112,13 @@ async def register(user_data: UserRegister, response: Response, database=Depends
     )
     await database.user_sessions.insert_one(session.model_dump())
     
-    # Set cookie
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7*24*60*60,
-        path="/"
-    )
+    _set_session_cookie(response, session_token)
     
     return Token(
         access_token=session_token,
         token_type="bearer",
         user=UserPublic(**user.model_dump())
     )
-
-@api_router.options("/auth/register")
-async def register_options():
-    """Handle CORS preflight for register"""
-    return Response(status_code=200)
-
 
 
 @api_router.options("/auth/login")
@@ -1096,24 +1128,21 @@ async def login_options():
 @limiter.limit("5/minute")
 async def login(request: Request, user_data: UserLogin, response: Response, database=Depends(get_db)):
     """Login with email/password"""
-    logger.info(f"Login attempt for email: {user_data.email}")
-    # Find user
-    user_doc = await database.users.find_one({"email": user_data.email})
+    logger.info("Login attempt received")
+    normalized_email = user_data.email.strip().lower()
+    user_doc = await database.users.find_one({"email": normalized_email})
     if not user_doc:
-        logger.warning(f"Login failed: User not found for email: {user_data.email}")
+        logger.warning("Login failed: invalid credentials")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     user_doc["id"] = user_doc.pop("_id")
     user = User(**user_doc)
     
-    # Verify password
     password_verified = verify_password(user_data.password, user.password_hash)
-    logger.debug(f"Password verification result for {user_data.email}: {password_verified}")
     if not user.password_hash or not password_verified:
-        logger.warning(f"Login failed: Invalid password for email: {user_data.email}")
+        logger.warning("Login failed: invalid credentials")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    # Create session
     session_token = str(uuid.uuid4())
     session = UserSession(
         user_id=user.id,
@@ -1122,16 +1151,7 @@ async def login(request: Request, user_data: UserLogin, response: Response, data
     )
     await database.user_sessions.insert_one(session.model_dump())
     
-    # Set cookie
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7*24*60*60,
-        path="/"
-    )
+    _set_session_cookie(response, session_token)
     
     return Token(
         access_token=session_token,
@@ -1186,16 +1206,7 @@ async def google_auth_callback(session_id: str = Query(...), response: Response 
     )
     await db.user_sessions.insert_one(session.model_dump())
     
-    # Set cookie
-    response.set_cookie(
-        key="session_token",
-        value=session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=7*24*60*60,
-        path="/"
-    )
+    _set_session_cookie(response, session_token)
     
     return Token(
         access_token=session_token,
@@ -1220,7 +1231,12 @@ async def logout(
     if token:
         await db.user_sessions.delete_one({"session_token": token})
 
-    response.delete_cookie(key="session_token", path="/", secure=True, samesite="none")
+    response.delete_cookie(
+        key="session_token",
+        path="/",
+        secure=cookie_secure(),
+        samesite="none" if cookie_secure() else "lax",
+    )
     return {"message": "Logged out successfully"}
 
 class UserUpdate(BaseModel):
@@ -1272,11 +1288,13 @@ class PasswordChange(BaseModel):
 @api_router.post("/users/me/change-password")
 async def change_password(password_change: PasswordChange, current_user: User = Depends(require_auth)):
     """Change current user's password"""
+    validate_password(password_change.password)
     new_password_hash = get_password_hash(password_change.password)
     user_filter = _build_user_identity_filter(current_user.id, current_user.email)
     result = await db.users.update_one(user_filter, {"$set": {"password_hash": new_password_hash}})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="User record not found for password update")
+    await invalidate_user_sessions(db, current_user.id)
     return {"message": "Password changed successfully"}
 
 # ---------- DYNAMIC / AUTO-POPULATING STOCK SEARCH ----------
@@ -1299,7 +1317,8 @@ async def get_all_stocks_from_db(database=None):
     return stocks
 
 @api_router.get("/stocks/search")
-async def search_stocks(q: str = Query(..., min_length=1), exchange: Optional[str] = Query(None)):
+@limiter.limit("30/minute")
+async def search_stocks(request: Request, q: str = Query(..., min_length=1), exchange: Optional[str] = Query(None)):
     """
     Dynamic stock search:
     - Checks DB first
@@ -1827,7 +1846,11 @@ async def delete_portfolio_holding(holding_id: str, current_user: User = Depends
     return {"message": "Holding deleted successfully"}
 
 @api_router.put("/portfolio/{holding_id}")
-async def update_portfolio_holding(holding_id: str, updates: dict, current_user: User = Depends(require_auth)):
+async def update_portfolio_holding(
+    holding_id: str,
+    updates: PortfolioHoldingUpdate,
+    current_user: User = Depends(require_auth),
+):
     query_list = [{"id": holding_id}, {"_id": holding_id}]
     try:
         from bson import ObjectId
@@ -1836,7 +1859,9 @@ async def update_portfolio_holding(holding_id: str, updates: dict, current_user:
     except Exception:
         pass
     query = {"$or": query_list, "user_id": current_user.id}
-    clean_updates = {k: v for k, v in updates.items() if k not in ["_id", "id", "user_id"]}
+    clean_updates = updates.model_dump(exclude_unset=True)
+    if not clean_updates:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
     result = await db.portfolio.update_one(query, {"$set": clean_updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Holding not found")
@@ -2137,13 +2162,18 @@ async def get_stock_recommendations(
 
 # Enable CORS and Private Network Access for Chromium WebView2 desktop windows
 @app.middleware("http")
-async def add_pna_header(request: Request, call_next):
+async def add_security_headers(request: Request, call_next):
     if request.method == "OPTIONS":
         response = await call_next(request)
         response.headers["Access-Control-Allow-Private-Network"] = "true"
         return response
     response = await call_next(request)
     response.headers["Access-Control-Allow-Private-Network"] = "true"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if is_production():
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
 
 # Enable CORS
@@ -2153,8 +2183,8 @@ app.add_middleware(
     allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_headers=["Content-Type", "Authorization", "Cookie", "X-Requested-With"],
+    expose_headers=["Content-Type"],
 )
 
 logging.basicConfig(
@@ -3441,409 +3471,178 @@ async def health_check():
     }
 
 @app.websocket("/ws/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: str):
-    """
-    WebSocket endpoint for real-time updates to clients.
+async def websocket_endpoint(
+    websocket: WebSocket,
+    user_id: str,
+    token: Optional[str] = Query(None),
+):
+    """WebSocket for real-time updates — requires a valid session token."""
+    session_token = token or websocket.cookies.get("session_token")
+    resolved_user_id = await _resolve_user_id_from_session_token(session_token)
+    if not resolved_user_id or str(resolved_user_id) != str(user_id):
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
 
-    Architecture: Push-only design (server -> client)
-    - Server pushes real-time stock price updates to connected clients
-    - Client messages are not processed (receive_text() is called only to keep connection alive)
-    - The websocket manager handles broadcasting updates to all connected clients
-
-    Args:
-        websocket: WebSocket connection
-        user_id: Unique identifier for the user
-
-    Note: If bidirectional communication is needed in the future, implement
-    message handling in the while loop to process client requests.
-    """
     await manager.connect(user_id, websocket)
     try:
         while True:
-            # Keep the connection alive by receiving (but not processing) client messages
-            # This is a push-only WebSocket - server sends updates, client doesn't send commands
-            data = await websocket.receive_text()
-            # Intentionally not processing incoming messages - this is server-push only
-            pass
+            await websocket.receive_text()
     except Exception as e:
         logger.error(f"WebSocket error for user {user_id}: {e}")
     finally:
         manager.disconnect(user_id)
 
-# --- Temporary Google OAuth Fix ---
-from fastapi.responses import JSONResponse
-from fastapi import Request
-
-@app.get("/api/auth/google")
-async def google_auth_placeholder(request: Request):
-    """
-    Temporary placeholder for Google OAuth callback.
-    This prevents frontend login errors during local testing.
-    """
-    return JSONResponse(
-        content={"message": "Google OAuth placeholder endpoint reached. Actual auth not yet implemented."},
-        status_code=200
-    )
-@app.post("/api/auth/local-login")
-async def local_login(request: Request):
-    """
-    Temporary local login endpoint for offline testing.
-    """
-    data = await request.json()
-    username = data.get("username", "Guest")
-    return JSONResponse(
-        content={"message": f"Welcome, {username}! (local mode)", "token": "fake-token"},
-        status_code=200
-    )
-
-
-# ============================================================================
-# PASSWORD RESET HELPER FUNCTIONS
-# ============================================================================
-
-import bcrypt
-from bson import ObjectId
-
-def hash_password(password: str) -> str:
-    """Hash password using bcrypt"""
-    salt = bcrypt.gensalt(rounds=10)
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
-
-def create_password_reset_record(db, user_id, email: str) -> str:
-    """Create a password reset token record in database"""
-    import uuid
-    from datetime import datetime, timezone, timedelta
-    
-    reset_token = str(uuid.uuid4())
-    
-    # Store reset token in database (expires in 24 hours)
-    db["password_resets"].insert_one({
-        "user_id": user_id,
-        "email": email,
-        "token": reset_token,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
-        "used": False
-    })
-    
-    return reset_token
-
-def validate_reset_token(db, token: str):
-    """Validate reset token - check if it exists and is not expired"""
-    from datetime import datetime, timezone
-    
-    reset_record = db["password_resets"].find_one({"token": token})
-    
-    if not reset_record:
-        return None
-    
-    # Check if expired
-    expires_at = datetime.fromisoformat(reset_record["expires_at"])
-    if datetime.now(timezone.utc) > expires_at:
-        return None
-    
-    # Check if already used
-    if reset_record.get("used"):
-        return None
-    
-    return reset_record
-
-def mark_reset_token_as_used(db, token: str):
-    """Mark reset token as used"""
-    db["password_resets"].update_one(
-        {"token": token},
-        {"$set": {"used": True}}
-    )
-
-def mask_email(email: str) -> str:
-    """Mask email for security - jayamurli1954@gmail.com -> jaya***@gmail.com"""
-    parts = email.split("@")
-    if len(parts) != 2:
-        return email
-    
-    local = parts[0]
-    domain = parts[1]
-    
-    # Show first 4 chars + *** + rest
-    if len(local) > 4:
-        masked_local = local[:4] + "***"
-    else:
-        masked_local = "***"
-    
-    return f"{masked_local}@{domain}"
-
-def find_user_by_name(db, full_name: str):
-    """Find user by full name (case-insensitive)"""
-    user = db.users.find_one({
-        "name": {"$regex": f"^{full_name}$", "$options": "i"}
-    })
-    return user
 
 # ============================================================================
 # PASSWORD RESET ENDPOINTS
 # ============================================================================
 
 @app.post("/api/auth/forgot-password")
-async def forgot_password(request_data: dict):
+@limiter.limit("3/hour")
+async def forgot_password(request: Request, request_data: dict):
     """
     Request password reset - sends email with reset link
     Body: {"email": "user@example.com"}
     """
     from email_utils import send_password_reset_email
-    password_reset_dev_mode = os.getenv("PASSWORD_RESET_DEV_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
-    
+
     try:
-        email = request_data.get("email")
-        
-        logger.info(f"Forgot password request for email: {email}")
-        
+        email = (request_data.get("email") or "").strip().lower()
+
         if not email:
-            return JSONResponse(
-                content={"error": "Email is required"},
-                status_code=400
-            )
-        
-        # Find user by email
-        user = await db.users.find_one({"email": {"$regex": f"^{email.strip().lower()}$", "$options": "i"}})
-        
-        logger.debug(f"User search result for {email}: {'Found' if user else 'Not Found'}")
-        
+            return JSONResponse(content={"error": "Email is required"}, status_code=400)
+
+        user = await db.users.find_one({"email": email})
+
         if not user:
-            # Don't reveal if email exists (security)
             return JSONResponse(
                 content={"message": "If email exists, reset link has been sent", "delivery": "requested"},
-                status_code=200
+                status_code=200,
             )
-        
-        # Create reset token
-        reset_token = create_password_reset_record(db, user["_id"], email)
-        logger.info(f"Created reset token for user {user.get('_id')}")
-        
-        # Send email
+
+        reset_token = await create_password_reset_record(db, user["_id"], email)
         email_sent = send_password_reset_email(
             user_email=email,
             reset_token=reset_token,
-            user_name=user.get("full_name", "User")
+            user_name=user.get("name", "User"),
         )
-        
-        logger.info(f"Email sending result: {email_sent}")
-        
+
         if email_sent:
             return JSONResponse(
                 content={"message": "Password reset email has been sent", "delivery": "email_sent"},
-                status_code=200
+                status_code=200,
             )
-        else:
-            logger.error("Password reset email sending failed (SMTP unavailable or invalid credentials)")
-            if password_reset_dev_mode:
-                return JSONResponse(
-                    content={
-                        "message": "Email sending failed. Dev mode enabled: use returned reset token.",
-                        "delivery": "dev_token",
-                        "reset_token": reset_token
-                    },
-                    status_code=200
-                )
-            return JSONResponse(
-                content={
-                    "message": "Password reset requested, but email service is unavailable. Please try again later.",
-                    "delivery": "email_unavailable"
-                },
-                status_code=200
-            )
-    
-    except Exception as e:
-        logger.exception(f"Error in forgot_password: {str(e)}")
+
+        logger.error("Password reset email sending failed")
         return JSONResponse(
-            content={"error": "An error occurred"},
-            status_code=500
+            content={
+                "message": "Password reset requested, but email service is unavailable. Please try again later.",
+                "delivery": "email_unavailable",
+            },
+            status_code=200,
         )
+
+    except Exception:
+        logger.exception("Error in forgot_password")
+        return JSONResponse(content={"error": "An error occurred"}, status_code=500)
 
 
 @app.post("/api/auth/reset-password")
-async def reset_password(request_data: dict):
-    """
-    Reset password with token
-    """
-    logger.debug(f"Password reset attempt - request received")
-
+@limiter.limit("10/hour")
+async def reset_password(request: Request, request_data: dict):
+    """Reset password with token"""
     try:
-        token = request_data.get("token", "").strip()
+        token = (request_data.get("token") or "").strip()
         new_password = request_data.get("new_password")
         confirm_password = request_data.get("confirm_password")
 
-        # If token contains full URL, extract just the token part
         if token and "token=" in token:
             token = token.split("token=")[-1].strip()
-            logger.debug("Extracted token from URL parameter")
 
-        logger.debug(f"Password reset validation - token present: {bool(token)}, passwords provided: {bool(new_password and confirm_password)}")
-
-        # Validate input
         if not token or not new_password or not confirm_password:
-            error_msg = f"Missing fields: token={bool(token)}, new_password={bool(new_password)}, confirm_password={bool(confirm_password)}"
-            logger.warning(f"Password reset failed - {error_msg}")
-            return JSONResponse(
-                content={"error": error_msg},
-                status_code=400
-            )
+            return JSONResponse(content={"error": "Missing required fields"}, status_code=400)
 
-        # Check passwords match
         if new_password != confirm_password:
-            logger.warning("Password reset failed - passwords don't match")
-            return JSONResponse(
-                content={"error": "Passwords do not match"},
-                status_code=400
-            )
+            return JSONResponse(content={"error": "Passwords do not match"}, status_code=400)
 
-        # Validate password length
-        if len(new_password) < 8:
-            logger.warning(f"Password reset failed - password too short: {len(new_password)} characters")
-            return JSONResponse(
-                content={"error": "Password must be at least 8 characters long"},
-                status_code=400
-            )
+        validate_password(new_password)
 
-        logger.debug("Password reset validation passed, verifying token in database")
-
-        # Validate token from database (ASYNC)
-        from datetime import datetime, timezone
-        reset_record = await db["password_resets"].find_one({"token": token})
-
-        logger.debug(f"Password reset token lookup - record found: {reset_record is not None}")
-
+        reset_record = await validate_reset_token(db, token)
         if not reset_record:
-            logger.warning("Password reset failed - token not found in database")
-            return JSONResponse(
-                content={"error": "Invalid or expired reset token"},
-                status_code=400
-            )
+            return JSONResponse(content={"error": "Invalid or expired reset token"}, status_code=400)
 
-        # Check if expired
-        expires_at = datetime.fromisoformat(reset_record["expires_at"])
-        if datetime.now(timezone.utc) > expires_at:
-            logger.warning("Password reset failed - token expired")
-            return JSONResponse(
-                content={"error": "Reset token has expired"},
-                status_code=400
-            )
-
-        # Check if already used
-        if reset_record.get("used"):
-            logger.warning("Password reset failed - token already used")
-            return JSONResponse(
-                content={"error": "This reset token has already been used"},
-                status_code=400
-            )
-
-        logger.debug("Password reset token validated, updating password")
-
-        # Update user password
         user_id = reset_record["user_id"]
         hashed_password = get_password_hash(new_password)
+        user_filter = _build_user_identity_filter(str(user_id))
+        await db.users.update_one(user_filter, {"$set": {"password_hash": hashed_password}})
+        await mark_reset_token_as_used(db, token)
+        await invalidate_user_sessions(db, str(user_id))
 
-        await db.users.update_one(
-            {"_id": user_id},
-            {"$set": {"password_hash": hashed_password}}
-        )
-
-        logger.debug("Password updated successfully")
-
-        # Mark token as used
-        await db["password_resets"].update_one(
-            {"token": token},
-            {"$set": {"used": True}}
-        )
-
-        logger.info(f"Password reset completed successfully for user: {user_id}")
-        
         return JSONResponse(
             content={"message": "Password has been reset successfully", "success": True},
-            status_code=200
+            status_code=200,
         )
-    
-    except Exception as e:
-        logger.exception(f"Error in reset_password: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred: " + str(e)},
-            status_code=500
-        )
+
+    except HTTPException as exc:
+        return JSONResponse(content={"error": exc.detail}, status_code=exc.status_code)
+    except Exception:
+        logger.exception("Error in reset_password")
+        return JSONResponse(content={"error": "An error occurred"}, status_code=500)
 
 
 @app.post("/api/auth/recover-email")
-async def recover_email(request_data: dict):
+@limiter.limit("3/hour")
+async def recover_email(request: Request, request_data: dict):
     """
     Recover email address by full name
     Body: {"full_name": "John Doe"}
     """
     try:
-        full_name = request_data.get("full_name")
-        
+        full_name = (request_data.get("full_name") or "").strip()
+
         if not full_name:
+            return JSONResponse(content={"error": "Full name is required"}, status_code=400)
+
+        user = await find_user_by_name(db, full_name)
+
+        if user:
+            masked = mask_email(user["email"])
             return JSONResponse(
-                content={"error": "Full name is required"},
-                status_code=400
+                content={
+                    "message": "If an account matches the provided name, a masked email is shown below.",
+                    "masked_email": masked,
+                },
+                status_code=200,
             )
-        
-        # Find user by name
-        user = find_user_by_name(db, full_name)
-        
-        if not user:
-            return JSONResponse(
-                content={"error": "No account found with that name"},
-                status_code=404
-            )
-        
-        # Mask the email
-        masked_email = mask_email(user["email"])
-        
+
         return JSONResponse(
             content={
-                "message": f"Account found",
-                "masked_email": masked_email
+                "message": "If an account matches the provided name, a masked email is shown below.",
+                "masked_email": None,
             },
-            status_code=200
+            status_code=200,
         )
-    
-    except Exception as e:
-        logger.exception(f"Error in recover_email: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred"},
-            status_code=500
-        )
+
+    except Exception:
+        logger.exception("Error in recover_email")
+        return JSONResponse(content={"error": "An error occurred"}, status_code=500)
 
 
 @app.post("/api/auth/verify-email")
 async def verify_email(request_data: dict):
-    """
-    Verify email with token (for future use)
-    Body: {"token": "verification_token"}
-    """
-    try:
-        token = request_data.get("token")
-        
-        if not token:
-            return JSONResponse(
-                content={"error": "Token is required"},
-                status_code=400
-            )
-        
-        # For now, just return success
-        # In future, validate token and mark email as verified
-        
-        return JSONResponse(
-            content={"message": "Email verified successfully"},
-            status_code=200
-        )
-    
-    except Exception as e:
-        logger.exception(f"Error in verify_email: {str(e)}")
-        return JSONResponse(
-            content={"error": "An error occurred"},
-            status_code=500
-        )
+    """Email verification is not yet implemented."""
+    token = request_data.get("token")
+    if not token:
+        return JSONResponse(content={"error": "Token is required"}, status_code=400)
+
+    return JSONResponse(
+        content={"error": "Email verification is not yet available"},
+        status_code=501,
+    )
 
 
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("BACKEND_PORT", os.getenv("PORT", "9001")))
+    host = os.getenv("BACKEND_HOST", "127.0.0.1")
+    uvicorn.run("server:app", host=host, port=port, reload=True)

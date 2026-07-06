@@ -197,7 +197,7 @@ const ForgotPassword = () => {
     color: '#10b981'
   };
 
-  // Step 1: User enters email and requests reset (supports email + dev token fallback)
+  // Step 1: User enters email and requests reset
   const handleForgotPassword = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -215,12 +215,6 @@ const ForgotPassword = () => {
       const result = await forgotPassword(email);
       if (!result.success) {
         setError(result.message || 'Failed to start password reset.');
-        return;
-      }
-      if (result.delivery === 'dev_token' && result.reset_token) {
-        setResetToken(result.reset_token);
-        setSuccess('Reset token generated (dev mode). Token pre-filled. Set your new password now.');
-        setStep(2);
         return;
       }
       if (result.delivery === 'email_unavailable') {

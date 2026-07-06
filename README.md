@@ -278,9 +278,9 @@ npm install
 
 ```env
 
-REACT\_APP\_API\_URL=http://localhost:8000
+REACT\_APP\_API\_URL=http://127.0.0.1:9001
 
-REACT\_APP\_WS\_URL=ws://localhost:8000
+REACT\_APP\_WS\_URL=ws://127.0.0.1:9001
 
 ```
 
@@ -344,7 +344,7 @@ python server.py
 
 
 
-Backend will be available at: `http://localhost:8000`
+Backend will be available at: `http://127.0.0.1:9001`
 
 
 
@@ -370,9 +370,9 @@ Frontend will be available at: `http://localhost:3000`
 
 Once the backend is running, access the interactive API documentation:
 
-\- Swagger UI: `http://localhost:8000/docs`
+\- Swagger UI: `http://127.0.0.1:9001/docs`
 
-\- ReDoc: `http://localhost:8000/redoc`
+\- ReDoc: `http://127.0.0.1:9001/redoc`
 
 
 

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
-import { API } from '@/App';
+import { getWebSocketBaseUrl } from '@/config/backend';
 
 const WebSocketContext = createContext(null);
 
@@ -9,7 +9,7 @@ export const useWebSocket = () => {
 };
 
 export const WebSocketProvider = ({ children }) => {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, sessionToken } = useAuth();
   const [liveStockPrices, setLiveStockPrices] = useState({});
   const [priceFlashes, setPriceFlashes] = useState({});
   const ws = useRef(null);
@@ -24,8 +24,9 @@ export const WebSocketProvider = ({ children }) => {
     }
 
     const userId = user.id;
-    const wsHost = window.location.hostname === 'localhost' ? 'ws://localhost:8000' : 'wss://investmitra-backend.onrender.com';
-    const websocketUrl = `${wsHost}/ws/${userId}`;
+    const wsHost = getWebSocketBaseUrl();
+    const tokenQuery = sessionToken ? `?token=${encodeURIComponent(sessionToken)}` : '';
+    const websocketUrl = `${wsHost}/ws/${userId}${tokenQuery}`;
 
     ws.current = new WebSocket(websocketUrl);
 
@@ -75,7 +76,7 @@ export const WebSocketProvider = ({ children }) => {
         ws.current.close();
       }
     };
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, sessionToken]);
 
   const value = {
     liveStockPrices,

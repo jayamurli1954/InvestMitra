@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Trash2, Plus, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from '../hooks/use-toast';
-
-const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
-const API_URL = `${BACKEND_URL}/api`;
+import { API as API_URL } from '@/config/backend';
 
 // Helper to parse condition string
 const parseCondition = (conditionStr) => {

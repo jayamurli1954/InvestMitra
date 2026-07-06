@@ -28,46 +28,17 @@ import TermsAndConditions from "@/pages/TermsAndConditions";
 import Landing from "@/pages/Landing";
 import Layout from "@/components/Layout";
 import { Toaster } from "@/components/ui/sonner";
+import { API } from "@/config/backend";
 
-const BACKEND_URL = process.env.REACT_APP_API_URL?.replace('/api', '') || 'http://localhost:8000';
-export const API = `${BACKEND_URL}/api`;
-const AUTH_TOKEN_STORAGE_KEY = 'investmitra_access_token';
+export { API };
 
-const getStoredAccessToken = () => {
-  try {
-    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch (error) {
-    return null;
-  }
-};
-
-const clearStoredAccessToken = () => {
-  try {
-    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch (error) {
-    // Ignore storage failures so auth flow still proceeds.
-  }
-};
-
-// Configure axios interceptor for Authorization token
-axios.interceptors.request.use(
-  config => {
-    const token = getStoredAccessToken();
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  error => Promise.reject(error)
-);
+axios.defaults.withCredentials = true;
 
 // Intercept 401 Unauthorized errors to automatically log out users whose session has expired
 axios.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      clearStoredAccessToken();
       window.location.hash = '#/auth';
     }
     return Promise.reject(error);

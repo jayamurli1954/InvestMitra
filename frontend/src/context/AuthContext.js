@@ -3,32 +3,8 @@ import axios from 'axios';
 import { API } from '@/App';
 
 const AuthContext = createContext(null);
-const AUTH_TOKEN_STORAGE_KEY = 'investmitra_access_token';
 
-const storeAccessToken = (token) => {
-  if (!token) return;
-  try {
-    window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-  } catch (error) {
-    console.error('Failed to persist access token:', error);
-  }
-};
-
-const clearAccessToken = () => {
-  try {
-    window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch (error) {
-    console.error('Failed to clear access token:', error);
-  }
-};
-
-const getStoredAccessToken = () => {
-  try {
-    return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
-  } catch (error) {
-    return null;
-  }
-};
+axios.defaults.withCredentials = true;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -38,34 +14,31 @@ export const useAuth = () => {
   return context;
 };
 
-// Helper function to extract error message from various error formats
 const getErrorMessage = (error) => {
-  // If it's an axios error with response
   if (error.response?.data) {
     const data = error.response.data;
-    
-    // Handle FastAPI validation errors (array of error objects)
+
     if (Array.isArray(data)) {
       return data.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
     }
-    
-    // Handle single error object with 'detail' field
+
     if (data.detail) {
       return data.detail;
     }
-    
-    // Handle error object with 'message' field
+
     if (data.message) {
       return data.message;
     }
-    
-    // Handle error object with 'msg' field
+
     if (data.msg) {
       return data.msg;
     }
+
+    if (data.error) {
+      return data.error;
+    }
   }
-  
-  // Fallback to generic error message
+
   return error.message || 'An error occurred';
 };
 
@@ -73,10 +46,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [sessionToken, setSessionToken] = useState(null);
 
-  // Check for existing session on mount
   useEffect(() => {
-    // Don't check auth if we're processing a Google OAuth callback
     const hash = window.location.hash;
     if (!hash || !hash.includes('session_id=')) {
       checkAuth();
@@ -86,19 +58,12 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuth = async () => {
-    const token = getStoredAccessToken();
-    if (!token) {
-      setUser(null);
-      setIsAuthenticated(false);
-      setLoading(false);
-      return;
-    }
     try {
-      const response = await axios.get(`${API}/auth/me`);
+      const response = await axios.get(`${API}/auth/me`, { withCredentials: true });
       setUser(response.data);
       setIsAuthenticated(true);
     } catch (error) {
-      clearAccessToken();
+      setSessionToken(null);
       setUser(null);
       setIsAuthenticated(false);
     } finally {
@@ -110,9 +75,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await axios.post(
         `${API}/auth/login`,
-        { email, password }
+        { email, password },
+        { withCredentials: true }
       );
-      storeAccessToken(response.data.access_token);
+      setSessionToken(response.data.access_token);
       setUser(response.data.user);
       setIsAuthenticated(true);
       return response.data;
@@ -128,9 +94,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await axios.post(
         `${API}/auth/register`,
-        { email, password, name, disclaimer_accepted: disclaimerAccepted }
+        { email, password, name, disclaimer_accepted: disclaimerAccepted },
+        { withCredentials: true }
       );
-      storeAccessToken(response.data.access_token);
+      setSessionToken(response.data.access_token);
       setUser(response.data.user);
       setIsAuthenticated(true);
       return response.data;
@@ -154,14 +121,13 @@ export const AuthProvider = ({ children }) => {
         {},
         { withCredentials: true }
       );
-      storeAccessToken(response.data.access_token);
+      setSessionToken(response.data.access_token);
       setUser(response.data.user);
       setIsAuthenticated(true);
-      
-      // Verify the session was set properly
+
       await new Promise(resolve => setTimeout(resolve, 100));
       await checkAuth();
-      
+
       return response.data;
     } catch (error) {
       console.error('Google callback error:', error);
@@ -178,14 +144,10 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout error:', error);
     }
-    clearAccessToken();
+    setSessionToken(null);
     setUser(null);
     setIsAuthenticated(false);
   };
-
-  // ============================================================================
-  // PASSWORD RESET FUNCTIONS
-  // ============================================================================
 
   const forgotPassword = async (email) => {
     try {
@@ -197,7 +159,6 @@ export const AuthProvider = ({ children }) => {
       return {
         success: true,
         message: response.data.message || 'Password reset email has been sent',
-        reset_token: response.data.reset_token || null,
         delivery: response.data.delivery || 'requested'
       };
     } catch (error) {
@@ -213,10 +174,10 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await axios.post(
         `${API}/auth/reset-password`,
-        { 
-          token, 
-          new_password: newPassword, 
-          confirm_password: confirmPassword 
+        {
+          token,
+          new_password: newPassword,
+          confirm_password: confirmPassword
         },
         { withCredentials: true }
       );
@@ -274,22 +235,18 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ============================================================================
-  // END PASSWORD RESET FUNCTIONS
-  // ============================================================================
-
   const value = {
     user,
-    setUser, // Add this line
+    setUser,
     loading,
     isAuthenticated,
+    sessionToken,
     login,
     register,
     loginWithGoogle,
     handleGoogleCallback,
     logout,
     checkAuth,
-    // Password reset functions
     forgotPassword,
     resetPassword,
     recoverEmail,
@@ -298,4 +255,3 @@ export const AuthProvider = ({ children }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
-
