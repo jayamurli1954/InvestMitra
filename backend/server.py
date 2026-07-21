@@ -303,22 +303,23 @@ async def get_current_user(
         logger.error("Database not available for authentication")
         return None
 
-    token = None
-
-    # Check cookie first, then Authorization header
+    tokens_to_check = []
+    if credentials and credentials.credentials:
+        tokens_to_check.append(credentials.credentials)
     if session_token:
-        token = session_token
-    elif credentials:
-        token = credentials.credentials
+        tokens_to_check.append(session_token)
 
-    if not token:
+    if not tokens_to_check:
         return None
 
-    # Check session in database
-    session = await db.user_sessions.find_one({
-        "session_token": token,
-        "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}
-    })
+    session = None
+    for token in tokens_to_check:
+        session = await db.user_sessions.find_one({
+            "session_token": token,
+            "expires_at": {"$gt": datetime.now(timezone.utc).isoformat()}
+        })
+        if session:
+            break
 
     if not session:
         return None
@@ -1227,8 +1228,13 @@ async def logout(
     session_token: Optional[str] = Cookie(None)
 ):
     """Logout user"""
-    token = session_token or (credentials.credentials if credentials else None)
-    if token:
+    tokens_to_delete = set()
+    if credentials and credentials.credentials:
+        tokens_to_delete.add(credentials.credentials)
+    if session_token:
+        tokens_to_delete.add(session_token)
+
+    for token in tokens_to_delete:
         await db.user_sessions.delete_one({"session_token": token})
 
     response.delete_cookie(

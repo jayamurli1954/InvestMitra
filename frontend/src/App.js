@@ -34,12 +34,35 @@ export { API };
 
 axios.defaults.withCredentials = true;
 
+// Automatically attach Authorization header if session_token exists in localStorage
+axios.interceptors.request.use(
+  config => {
+    const token = localStorage.getItem('session_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  error => Promise.reject(error)
+);
+
 // Intercept 401 Unauthorized errors to automatically log out users whose session has expired
 axios.interceptors.response.use(
   response => response,
   error => {
     if (error.response?.status === 401) {
-      window.location.hash = '#/auth';
+      localStorage.removeItem('session_token');
+
+      const publicPaths = ['#/', '#/landing', '#/auth', '#/forgot-password', '#/disclaimer', '#/about-us', '#/privacy-policy', '#/terms-and-conditions'];
+      const currentHash = window.location.hash || '#/';
+      const isPublicPath = publicPaths.some(path => currentHash === path || currentHash.startsWith(path + '?'));
+
+      const requestUrl = error.config?.url || '';
+      const isAuthCheck = requestUrl.includes('/auth/me') || requestUrl.includes('/auth/login');
+
+      if (!isPublicPath && !isAuthCheck) {
+        window.location.hash = '#/auth';
+      }
     }
     return Promise.reject(error);
   }

@@ -46,7 +46,19 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [sessionToken, setSessionToken] = useState(null);
+  const [sessionToken, setSessionToken] = useState(() => localStorage.getItem('session_token'));
+
+  const saveToken = (token) => {
+    if (token) {
+      localStorage.setItem('session_token', token);
+      setSessionToken(token);
+    }
+  };
+
+  const clearToken = () => {
+    localStorage.removeItem('session_token');
+    setSessionToken(null);
+  };
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -58,12 +70,17 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuth = async () => {
+    const token = localStorage.getItem('session_token');
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
     try {
-      const response = await axios.get(`${API}/auth/me`, { withCredentials: true });
+      const response = await axios.get(`${API}/auth/me`, {
+        withCredentials: true,
+        headers
+      });
       setUser(response.data);
       setIsAuthenticated(true);
     } catch (error) {
-      setSessionToken(null);
+      clearToken();
       setUser(null);
       setIsAuthenticated(false);
     } finally {
@@ -78,7 +95,9 @@ export const AuthProvider = ({ children }) => {
         { email, password },
         { withCredentials: true }
       );
-      setSessionToken(response.data.access_token);
+      if (response.data.access_token) {
+        saveToken(response.data.access_token);
+      }
       setUser(response.data.user);
       setIsAuthenticated(true);
       return response.data;
@@ -97,7 +116,9 @@ export const AuthProvider = ({ children }) => {
         { email, password, name, disclaimer_accepted: disclaimerAccepted },
         { withCredentials: true }
       );
-      setSessionToken(response.data.access_token);
+      if (response.data.access_token) {
+        saveToken(response.data.access_token);
+      }
       setUser(response.data.user);
       setIsAuthenticated(true);
       return response.data;
@@ -121,7 +142,9 @@ export const AuthProvider = ({ children }) => {
         {},
         { withCredentials: true }
       );
-      setSessionToken(response.data.access_token);
+      if (response.data.access_token) {
+        saveToken(response.data.access_token);
+      }
       setUser(response.data.user);
       setIsAuthenticated(true);
 
@@ -140,11 +163,13 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await axios.post(`${API}/auth/logout`, {}, { withCredentials: true });
+      const token = localStorage.getItem('session_token');
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      await axios.post(`${API}/auth/logout`, {}, { withCredentials: true, headers });
     } catch (error) {
       console.error('Logout error:', error);
     }
-    setSessionToken(null);
+    clearToken();
     setUser(null);
     setIsAuthenticated(false);
   };
