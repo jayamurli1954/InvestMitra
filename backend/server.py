@@ -1,3 +1,16 @@
+import sys
+import os
+import logging
+from pathlib import Path
+
+ROOT_DIR = Path(__file__).parent
+PROJECT_ROOT = ROOT_DIR.parent
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from fastapi import FastAPI, APIRouter, HTTPException, Query, Depends, Cookie, Response, Request, WebSocket, BackgroundTasks
 import pandas as pd
 from websocket_manager import manager
@@ -6,9 +19,6 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
-import os
-import logging
-from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Dict, Any
 import uuid
@@ -150,9 +160,22 @@ from slowapi.errors import RateLimitExceeded
 
 limiter = Limiter(key_func=get_remote_address)
 
+try:
+    from backend.api.quant import router as quant_router
+    from backend.api.research import router as research_router
+    from backend.api.events import router as events_router
+except ModuleNotFoundError:
+    from api.quant import router as quant_router
+    from api.research import router as research_router
+    from api.events import router as events_router
+
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+app.include_router(quant_router)
+app.include_router(research_router)
+app.include_router(events_router)
 
 # Register startup and shutdown events
 @app.on_event("startup")
@@ -874,6 +897,33 @@ async def download_portfolio(current_user: User = Depends(require_auth)):
     
     response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
     response.headers["Content-Disposition"] = "attachment; filename=portfolio.csv"
+    return response
+
+@api_router.get("/portfolio/download-excel")
+async def download_portfolio_excel(current_user: User = Depends(require_auth)):
+    """Download user's portfolio with analytics as an Excel spreadsheet"""
+    holdings = await db.portfolio.find({"user_id": current_user.id}, {"_id": 0}).to_list(1000)
+    if not holdings:
+        raise HTTPException(status_code=404, detail="No holdings to download")
+
+    df = pd.DataFrame(holdings)
+    for col in ['quantity', 'purchase_price', 'current_price']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+    if 'quantity' in df.columns and 'purchase_price' in df.columns:
+        df['invested_value'] = df['quantity'] * df['purchase_price']
+    if 'quantity' in df.columns and 'current_price' in df.columns:
+        df['current_value'] = df['quantity'] * df['current_price']
+        df['unrealized_pnl'] = df['current_value'] - df.get('invested_value', 0.0)
+
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Portfolio_Holdings')
+
+    buffer.seek(0)
+    response = StreamingResponse(buffer, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response.headers["Content-Disposition"] = "attachment; filename=InvestMitra_Portfolio_Analytics.xlsx"
     return response
 
 

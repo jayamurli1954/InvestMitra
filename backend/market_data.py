@@ -5,7 +5,7 @@ import logging
 import asyncio
 import os
 import time
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from websocket_manager import manager
 
 logger = logging.getLogger(__name__)
@@ -333,13 +333,19 @@ def load_mutual_fund_data():
     """Load mutual fund data from CSV into a cache."""
     global _MUTUAL_FUNDS_CACHE
     try:
-        df = pd.read_csv('data/mutual_funds.csv', sep=';', on_bad_lines='skip', encoding='utf-8')
+        from pathlib import Path
+        base_dir = Path(__file__).parent
+        csv_path = base_dir / 'data' / 'mutual_funds.csv'
+        if not csv_path.exists():
+            csv_path = Path('data/mutual_funds.csv')
+
+        df = pd.read_csv(csv_path, sep=';', on_bad_lines='skip', encoding='utf-8')
         df = df[pd.to_numeric(df['Scheme Code'], errors='coerce').notna()]
         df['Scheme Code'] = df['Scheme Code'].astype(int)
         _MUTUAL_FUNDS_CACHE = df.set_index('Scheme Code')
         logger.info(f"Loaded {len(_MUTUAL_FUNDS_CACHE)} valid mutual fund records into cache.")
     except FileNotFoundError:
-        logger.error("Mutual fund data file not found: data/mutual_funds.csv")
+        logger.warning(f"Mutual fund data file not found at {csv_path}")
         _MUTUAL_FUNDS_CACHE = pd.DataFrame()
     except Exception as e:
         logger.error(f"Error loading mutual fund data: {str(e)}")
@@ -397,3 +403,104 @@ def get_mutual_fund_nav(scheme_code: str) -> Dict:
     except Exception as e:
         logger.error(f"Error fetching mutual fund data for {scheme_code}: {str(e)}")
         return None
+
+
+def calculate_technical_indicators(hist_df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Calculates technical indicators: 14-day RSI, 20/50/200 EMAs, Volume Spikes, and Breakout signals.
+    """
+    if hist_df is None or hist_df.empty or len(hist_df) < 14:
+        return {
+            "rsi": 50.0,
+            "ema_20": 0.0,
+            "ema_50": 0.0,
+            "ema_200": 0.0,
+            "signal": "NEUTRAL",
+            "volume_spike": False
+        }
+
+    close_col = 'Close' if 'Close' in hist_df.columns else ('close' if 'close' in hist_df.columns else None)
+    if not close_col:
+        return {
+            "rsi": 50.0,
+            "ema_20": 0.0,
+            "ema_50": 0.0,
+            "ema_200": 0.0,
+            "signal": "NEUTRAL",
+            "volume_spike": False
+        }
+
+    closes = pd.to_numeric(hist_df[close_col], errors='coerce').dropna()
+    if closes.empty or len(closes) < 5:
+        return {
+            "rsi": 50.0,
+            "ema_20": 0.0,
+            "ema_50": 0.0,
+            "ema_200": 0.0,
+            "signal": "NEUTRAL",
+            "volume_spike": False
+        }
+
+    vol_col = 'Volume' if 'Volume' in hist_df.columns else ('volume' if 'volume' in hist_df.columns else None)
+    volumes = pd.to_numeric(hist_df[vol_col], errors='coerce').fillna(1000.0) if vol_col else pd.Series([1000.0] * len(closes), index=closes.index)
+
+    # RSI 14
+    delta = closes.diff()
+    gain = delta.clip(lower=0)
+    loss = -1.0 * delta.clip(upper=0)
+    avg_gain = gain.rolling(window=14, min_periods=1).mean()
+    avg_loss = loss.rolling(window=14, min_periods=1).mean()
+    rs = avg_gain / (avg_loss + 1e-9)
+    rsi_series = 100.0 - (100.0 / (1.0 + rs))
+    rsi = float(rsi_series.iloc[-1]) if not rsi_series.empty and not pd.isna(rsi_series.iloc[-1]) else 50.0
+
+    # EMAs
+    ema_20 = float(closes.ewm(span=20, adjust=False).mean().iloc[-1])
+    ema_50 = float(closes.ewm(span=50, adjust=False).mean().iloc[-1]) if len(closes) >= 50 else float(closes.iloc[-1])
+    ema_200 = float(closes.ewm(span=200, adjust=False).mean().iloc[-1]) if len(closes) >= 200 else float(closes.iloc[-1])
+
+    # Volume Spike
+    avg_vol_20 = float(volumes.rolling(window=20).mean().iloc[-1]) if len(volumes) >= 20 else 1000.0
+    latest_vol = float(volumes.iloc[-1])
+    volume_spike = bool(latest_vol >= (avg_vol_20 * 1.5))
+
+    curr_p = float(closes.iloc[-1])
+    if curr_p > ema_20 and ema_20 > ema_50 and rsi > 55:
+        signal = "BULLISH_BREAKOUT"
+    elif curr_p < ema_20 and rsi < 45:
+        signal = "BEARISH_PULLBACK"
+    else:
+        signal = "CONSOLIDATION"
+
+    return {
+        "rsi": round(rsi, 2),
+        "ema_20": round(ema_20, 2),
+        "ema_50": round(ema_50, 2),
+        "ema_200": round(ema_200, 2),
+        "signal": signal,
+        "volume_spike": volume_spike
+    }
+
+
+def get_pkscreener_technical_scans(symbols: List[str] = None) -> List[Dict[str, Any]]:
+    """
+    Run PKScreener-inspired technical scanner across Indian stocks.
+    """
+    if not symbols:
+        symbols = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "INDIGO.NS", "ASIANPAINT.NS"]
+
+    scans = []
+    for sym in symbols:
+        hist = get_historical_data(sym, days=60)
+        if not hist:
+            continue
+        df = pd.DataFrame(hist)
+        indicators = calculate_technical_indicators(df)
+        scans.append({
+            "symbol": sym.replace(".NS", ""),
+            "full_symbol": sym,
+            "close_price": float(df['close'].iloc[-1]),
+            **indicators
+        })
+
+    return scans

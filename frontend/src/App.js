@@ -18,6 +18,8 @@ import Dividends from "@/pages/Dividends";
 import PerformanceReport from "@/pages/PerformanceReport";
 import Backtesting from "@/pages/Backtesting";
 import AIInsights from "@/pages/AIInsights";
+import EventRadar from "@/pages/EventRadar";
+import ResearchWorkspace from "@/pages/ResearchWorkspace";
 import Auth from "@/pages/Auth";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ProfileSettings from "@/pages/ProfileSettings";
@@ -34,7 +36,6 @@ export { API };
 
 axios.defaults.withCredentials = true;
 
-// Automatically attach Authorization header if session_token exists in localStorage
 axios.interceptors.request.use(
   config => {
     const token = localStorage.getItem('session_token');
@@ -46,7 +47,6 @@ axios.interceptors.request.use(
   error => Promise.reject(error)
 );
 
-// Intercept 401 Unauthorized errors to automatically log out users whose session has expired
 axios.interceptors.response.use(
   response => response,
   error => {
@@ -68,7 +68,6 @@ axios.interceptors.response.use(
   }
 );
 
-// Protected Route component
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, loading } = useAuth();
 
@@ -114,6 +113,8 @@ function AppRoutes() {
                     <Route path="/performance" element={<PerformanceReport />} />
                     <Route path="/backtesting" element={<Backtesting />} />
                     <Route path="/ai-insights" element={<AIInsights />} />
+                    <Route path="/event-radar" element={<EventRadar />} />
+                    <Route path="/research-workspace" element={<ResearchWorkspace />} />
                     <Route path="/screener" element={<Screener />} />
                     <Route path="/stock/:symbol" element={<StockDetail />} />
                     <Route path="/strategies" element={<Strategies />} />
