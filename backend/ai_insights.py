@@ -155,8 +155,39 @@ def extract_json_from_markdown(text: str) -> str:
     return stripped[start:]
 
 
+def _sanitize_ai_output(obj):
+    """
+    Recursively run AI output through the SEBI compliance guard: sanitise every
+    string and inject the mandatory disclaimer into every object. Applied to ALL
+    successfully parsed responses (not only the ast.literal_eval fallback path),
+    so no un-sanitised model text can leave the backend. If the guard cannot be
+    imported, the value is returned unchanged.
+    """
+    try:
+        from sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
+    except Exception:
+        try:
+            from backend.sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
+        except Exception:
+            return obj
+
+    if isinstance(obj, str):
+        return sanitize_text(obj)
+    elif isinstance(obj, list):
+        return [_sanitize_ai_output(item) for item in obj]
+    elif isinstance(obj, dict):
+        res = {k: _sanitize_ai_output(v) for k, v in obj.items()}
+        res["sebi_disclaimer"] = SEBI_DISCLAIMER_TEXT
+        return res
+    return obj
+
+
 def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
-    """Parse Gemini JSON robustly, even when it includes minor markdown noise."""
+    """Parse Gemini JSON robustly, even when it includes minor markdown noise.
+
+    Every successfully parsed object is passed through the SEBI compliance guard
+    before being returned.
+    """
     extracted = extract_json_from_markdown(raw_text)
     candidates = [extracted]
 
@@ -172,7 +203,7 @@ def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
 
     for candidate in candidates:
         try:
-            return json.loads(candidate)
+            return _sanitize_ai_output(json.loads(candidate))
         except json.JSONDecodeError:
             continue
 
@@ -188,23 +219,7 @@ def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("AI response did not parse into a JSON object")
 
-    def _sanitize_obj(obj):
-        try:
-            from sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
-        except Exception:
-            return obj
-
-        if isinstance(obj, str):
-            return sanitize_text(obj)
-        elif isinstance(obj, list):
-            return [_sanitize_obj(item) for item in obj]
-        elif isinstance(obj, dict):
-            res = {k: _sanitize_obj(v) for k, v in obj.items()}
-            res["sebi_disclaimer"] = SEBI_DISCLAIMER_TEXT
-            return res
-        return obj
-
-    return _sanitize_obj(parsed)
+    return _sanitize_ai_output(parsed)
 
 
 
