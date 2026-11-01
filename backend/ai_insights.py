@@ -878,17 +878,22 @@ Respond with ONLY the JSON object, nothing else.
 
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
+    # gemini-2.5-* are "thinking" models: reasoning tokens are drawn from
+    # max_output_tokens. For this structured-JSON task we disable thinking (when
+    # the SDK supports it) and keep a generous output budget so the JSON is never
+    # truncated mid-string.
+    config_kwargs = dict(temperature=0.4, top_p=0.9, top_k=40, max_output_tokens=2048)
+    try:
+        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+    except Exception:
+        pass
+
     try:
         logger.info(f"🤖 Calling Gemini for event-impact analysis: {symbol}")
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=full_prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.4,
-                top_p=0.9,
-                top_k=40,
-                max_output_tokens=1024,
-            ),
+            config=types.GenerateContentConfig(**config_kwargs),
         )
 
         raw_text = None
