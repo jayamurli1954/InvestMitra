@@ -5,6 +5,7 @@ Abstracts market data sources (yfinance, Kite, Shoonya, Dhan, NSE Direct) for re
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional
+import os
 import logging
 import yfinance as yf
 import pandas as pd
@@ -104,11 +105,169 @@ class YFinanceDataProvider(BaseMarketDataProvider):
         return 0.0
 
 
+class ShoonyaDataProvider(BaseMarketDataProvider):
+    """
+    Shoonya (Finvasia) market-data provider over the OAuth API.
+
+    Uses the access token produced by market.shoonya_connect (stored in
+    SHOONYA_ACCESS_TOKEN). Data calls authenticate via a Bearer header, so once a
+    token is present no interactive login is needed until it expires. Falls back
+    gracefully (returns empty / 0.0) when not connected, so MarketDataService can
+    defer to yfinance.
+    """
+
+    DEFAULT_HOST = "https://api.shoonya.com/NorenWClientAPI/"
+    DEFAULT_WS = "wss://api.shoonya.com/NorenWSAPI/"
+
+    def __init__(self):
+        self._api = None
+        self._token_cache: Dict[str, str] = {}
+        self._ready = False
+        try:
+            from NorenRestApiPy.NorenApi import NorenApi
+        except Exception as e:
+            logger.warning(f"Shoonya SDK not installed; provider disabled: {e}")
+            return
+
+        access_token = os.getenv("SHOONYA_ACCESS_TOKEN")
+        uid = os.getenv("SHOONYA_USER_ID")
+        actid = os.getenv("SHOONYA_ACTID") or uid
+        if not access_token or not uid:
+            logger.warning("Shoonya not connected (run market.shoonya_connect); provider disabled.")
+            return
+
+        host = os.getenv("SHOONYA_HOST", self.DEFAULT_HOST)
+        ws = os.getenv("SHOONYA_WS", self.DEFAULT_WS)
+        try:
+            self._api = NorenApi(host=host, websocket=ws)
+            self._api.injectOAuthHeader(access_token, uid, actid)
+            self._ready = True
+            logger.info("✓ Shoonya provider initialised (OAuth token loaded).")
+        except Exception as e:
+            logger.error(f"Shoonya provider init failed: {e}")
+
+    @staticmethod
+    def _clean(symbol: str) -> str:
+        return symbol.upper().replace(".NS", "").replace(".BO", "").strip()
+
+    def _resolve_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
+        """Resolve a trading symbol to Shoonya's numeric token (cached)."""
+        clean = self._clean(symbol)
+        if clean in self._token_cache:
+            return self._token_cache[clean]
+        try:
+            res = self._api.searchscrip(exchange=exchange, searchtext=clean)
+            values = (res or {}).get("values", [])
+            match = next(
+                (v for v in values if v.get("tsym", "").upper() == f"{clean}-EQ"),
+                values[0] if values else None,
+            )
+            token = match.get("token") if match else None
+            if token:
+                self._token_cache[clean] = token
+            return token
+        except Exception as e:
+            logger.warning(f"Shoonya token resolve failed for {symbol}: {e}")
+            return None
+
+    def get_current_price(self, symbol: str) -> float:
+        if not self._ready:
+            return 0.0
+        token = self._resolve_token(symbol)
+        if not token:
+            return 0.0
+        try:
+            q = self._api.get_quotes(exchange="NSE", token=token)
+            lp = (q or {}).get("lp")
+            return float(lp) if lp else 0.0
+        except Exception as e:
+            logger.warning(f"Shoonya price fetch failed for {symbol}: {e}")
+            return 0.0
+
+    def get_stock_info(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        results: Dict[str, Dict[str, Any]] = {}
+        if not self._ready:
+            return results
+        for symbol in symbols or []:
+            token = self._resolve_token(symbol)
+            if not token:
+                continue
+            try:
+                q = self._api.get_quotes(exchange="NSE", token=token) or {}
+                lp = float(q.get("lp") or 0.0)
+                prev = float(q.get("c") or lp)  # 'c' = previous close
+                change = lp - prev
+                change_pct = (change / prev * 100.0) if prev else 0.0
+                results[symbol] = {
+                    "symbol": symbol,
+                    "name": q.get("cname") or q.get("tsym") or symbol,
+                    "exchange": q.get("exch", "NSE"),
+                    "sector": "Other",  # Shoonya quotes carry no sector/fundamentals
+                    "current_price": lp,
+                    "change": change,
+                    "change_percent": change_pct,
+                    "volume": int(float(q.get("v") or 0)),
+                    "market_cap": 0.0,
+                    "pe_ratio": None,
+                    "pb_ratio": None,
+                    "roe": None,
+                    "ma_50": lp,
+                    "ma_200": lp,
+                }
+            except Exception as e:
+                logger.warning(f"Shoonya stock info failed for {symbol}: {e}")
+        return results
+
+    def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:
+        if not self._ready:
+            return []
+        token = self._resolve_token(symbol)
+        if not token:
+            return []
+        try:
+            from datetime import datetime, timedelta
+            start = (datetime.now() - timedelta(days=days)).replace(hour=9, minute=15, second=0)
+            series = self._api.get_time_price_series(
+                exchange="NSE", token=token,
+                starttime=start.timestamp(), interval="1440",  # daily candles
+            ) or []
+            data = []
+            for row in reversed(series):  # Shoonya returns newest-first
+                ts = row.get("time") or row.get("ssboe")
+                try:
+                    date = datetime.strptime(ts, "%d-%m-%Y %H:%M:%S").strftime("%Y-%m-%d")
+                except Exception:
+                    date = str(ts)
+                data.append({
+                    "date": date,
+                    "open": float(row.get("into") or 0),
+                    "high": float(row.get("inth") or 0),
+                    "low": float(row.get("intl") or 0),
+                    "close": float(row.get("intc") or 0),
+                    "volume": int(float(row.get("intv") or 0)),
+                })
+            return data
+        except Exception as e:
+            logger.warning(f"Shoonya historical fetch failed for {symbol}: {e}")
+            return []
+
+
+def build_primary_provider() -> BaseMarketDataProvider:
+    """Select the primary market-data provider from the PRIMARY_PROVIDER env var."""
+    choice = (os.getenv("PRIMARY_PROVIDER") or "yfinance").strip().lower()
+    if choice == "shoonya":
+        provider = ShoonyaDataProvider()
+        if getattr(provider, "_ready", False):
+            return provider
+        logger.warning("PRIMARY_PROVIDER=shoonya but not connected; using yfinance.")
+    return YFinanceDataProvider()
+
+
 class MarketDataService:
     """Composite service managing primary and fallback market data providers."""
 
     def __init__(self, primary_provider: Optional[BaseMarketDataProvider] = None):
-        self.primary_provider = primary_provider or YFinanceDataProvider()
+        self.primary_provider = primary_provider or build_primary_provider()
         self.fallback_provider = YFinanceDataProvider()
         self.manual_price_overrides: Dict[str, float] = {
             "INDIGRID.NS": 169.00,
