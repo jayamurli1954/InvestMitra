@@ -82,6 +82,25 @@ logger.info("="*70 + "\n")
 # ------------------------------------
 
 
+def _build_gen_config(**kwargs):
+    """
+    Build a GenerateContentConfig with Gemini 2.5 "thinking" disabled.
+
+    gemini-2.5-* models draw reasoning tokens from max_output_tokens, which can
+    silently truncate (or empty) the visible response and force a fallback.
+    Disabling thinking keeps the full budget for the actual answer. thinking_config
+    is only added when the installed google-genai SDK supports it, so this stays
+    safe on older versions.
+    """
+    if types is None:
+        return None
+    try:
+        kwargs.setdefault("thinking_config", types.ThinkingConfig(thinking_budget=0))
+    except Exception:
+        pass
+    return types.GenerateContentConfig(**kwargs)
+
+
 def extract_json_from_markdown(text: str) -> str:
     """
     Extract JSON content from Gemini responses that may be wrapped in markdown
@@ -345,7 +364,7 @@ Respond with ONLY the JSON object, nothing else.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=full_prompt,
-            config=types.GenerateContentConfig(
+            config=_build_gen_config(
                 temperature=0.7,
                 top_p=0.9,
                 top_k=40,
@@ -521,7 +540,7 @@ Generate ONLY the JSON object.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.8)
+            config=_build_gen_config(temperature=0.8, max_output_tokens=2048)
         )
         
         # Handle different response formats
@@ -604,9 +623,9 @@ Keep it concise and actionable.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(
+            config=_build_gen_config(
                 temperature=0.7,
-                max_output_tokens=200
+                max_output_tokens=800
             )
         )
         
@@ -748,7 +767,7 @@ Return ONLY valid JSON:
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=selected_prompt,
-            config=types.GenerateContentConfig(temperature=0.7)
+            config=_build_gen_config(temperature=0.7, max_output_tokens=1024)
         )
         raw_text = None
         try:
@@ -878,22 +897,12 @@ Respond with ONLY the JSON object, nothing else.
 
     full_prompt = f"{system_prompt}\n\n{user_prompt}"
 
-    # gemini-2.5-* are "thinking" models: reasoning tokens are drawn from
-    # max_output_tokens. For this structured-JSON task we disable thinking (when
-    # the SDK supports it) and keep a generous output budget so the JSON is never
-    # truncated mid-string.
-    config_kwargs = dict(temperature=0.4, top_p=0.9, top_k=40, max_output_tokens=2048)
-    try:
-        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
-    except Exception:
-        pass
-
     try:
         logger.info(f"🤖 Calling Gemini for event-impact analysis: {symbol}")
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=full_prompt,
-            config=types.GenerateContentConfig(**config_kwargs),
+            config=_build_gen_config(temperature=0.4, top_p=0.9, top_k=40, max_output_tokens=2048),
         )
 
         raw_text = None
