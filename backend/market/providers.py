@@ -252,6 +252,117 @@ class ShoonyaDataProvider(BaseMarketDataProvider):
             return []
 
 
+class FyersDataProvider(BaseMarketDataProvider):
+    """
+    Fyers (API v3) market-data provider — READ-ONLY (quotes, history, holdings).
+
+    Uses the access token produced by market.fyers_connect (FYERS_ACCESS_TOKEN).
+    This provider never places orders; it only reads market data. Degrades to
+    empty/0.0 when not connected so MarketDataService defers to yfinance.
+    """
+
+    def __init__(self):
+        self._fyers = None
+        self._ready = False
+        try:
+            from fyers_apiv3 import fyersModel
+        except Exception as e:
+            logger.warning(f"Fyers SDK not installed; provider disabled: {e}")
+            return
+
+        app_id = os.getenv("FYERS_APP_ID")
+        access_token = os.getenv("FYERS_ACCESS_TOKEN")
+        if not app_id or not access_token:
+            logger.warning("Fyers not connected (run market.fyers_connect); provider disabled.")
+            return
+        try:
+            self._fyers = fyersModel.FyersModel(client_id=app_id, token=access_token, is_async=False, log_path="")
+            self._ready = True
+            logger.info("✓ Fyers provider initialised (OAuth token loaded).")
+        except Exception as e:
+            logger.error(f"Fyers provider init failed: {e}")
+
+    @staticmethod
+    def _fy_symbol(symbol: str) -> str:
+        """Map 'RELIANCE' / 'RELIANCE.NS' to Fyers 'NSE:RELIANCE-EQ'."""
+        clean = symbol.upper().replace(".NS", "").replace(".BO", "").strip()
+        return f"NSE:{clean}-EQ"
+
+    def get_current_price(self, symbol: str) -> float:
+        if not self._ready:
+            return 0.0
+        try:
+            r = self._fyers.quotes({"symbols": self._fy_symbol(symbol)})
+            d = (r or {}).get("d") or []
+            if d and d[0].get("s") == "ok":
+                return float(d[0]["v"].get("lp") or 0.0)
+        except Exception as e:
+            logger.warning(f"Fyers price fetch failed for {symbol}: {e}")
+        return 0.0
+
+    def get_stock_info(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        results: Dict[str, Dict[str, Any]] = {}
+        if not self._ready or not symbols:
+            return results
+        fy_map = {self._fy_symbol(s): s for s in symbols}
+        try:
+            r = self._fyers.quotes({"symbols": ",".join(fy_map)})
+            for row in (r or {}).get("d") or []:
+                if row.get("s") != "ok":
+                    continue
+                orig = fy_map.get(row.get("n"))
+                v = row.get("v") or {}
+                lp = float(v.get("lp") or 0.0)
+                results[orig or row.get("n")] = {
+                    "symbol": orig or row.get("n"),
+                    "name": v.get("short_name") or orig or row.get("n"),
+                    "exchange": "NSE",
+                    "sector": "Other",  # Fyers quotes carry no sector/fundamentals
+                    "current_price": lp,
+                    "change": float(v.get("ch") or 0.0),
+                    "change_percent": float(v.get("chp") or 0.0),
+                    "volume": int(float(v.get("volume") or 0)),
+                    "market_cap": 0.0,
+                    "pe_ratio": None,
+                    "pb_ratio": None,
+                    "roe": None,
+                    "ma_50": lp,
+                    "ma_200": lp,
+                }
+        except Exception as e:
+            logger.warning(f"Fyers stock info failed: {e}")
+        return results
+
+    def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:
+        if not self._ready:
+            return []
+        try:
+            from datetime import datetime, timedelta
+            end = datetime.now()
+            start = end - timedelta(days=days)
+            r = self._fyers.history({
+                "symbol": self._fy_symbol(symbol),
+                "resolution": "D",
+                "date_format": "1",
+                "range_from": start.strftime("%Y-%m-%d"),
+                "range_to": end.strftime("%Y-%m-%d"),
+                "cont_flag": "1",
+            })
+            data = []
+            for c in (r or {}).get("candles") or []:
+                # candle: [epoch, open, high, low, close, volume]
+                data.append({
+                    "date": datetime.fromtimestamp(c[0]).strftime("%Y-%m-%d"),
+                    "open": float(c[1]), "high": float(c[2]),
+                    "low": float(c[3]), "close": float(c[4]),
+                    "volume": int(c[5]),
+                })
+            return data
+        except Exception as e:
+            logger.warning(f"Fyers historical fetch failed for {symbol}: {e}")
+            return []
+
+
 def build_primary_provider() -> BaseMarketDataProvider:
     """Select the primary market-data provider from the PRIMARY_PROVIDER env var."""
     choice = (os.getenv("PRIMARY_PROVIDER") or "yfinance").strip().lower()
@@ -260,6 +371,11 @@ def build_primary_provider() -> BaseMarketDataProvider:
         if getattr(provider, "_ready", False):
             return provider
         logger.warning("PRIMARY_PROVIDER=shoonya but not connected; using yfinance.")
+    elif choice == "fyers":
+        provider = FyersDataProvider()
+        if getattr(provider, "_ready", False):
+            return provider
+        logger.warning("PRIMARY_PROVIDER=fyers but not connected; using yfinance.")
     return YFinanceDataProvider()
 
 
