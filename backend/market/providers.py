@@ -267,7 +267,7 @@ class FyersDataProvider(BaseMarketDataProvider):
     empty/0.0 when not connected so MarketDataService defers to yfinance.
     """
 
-    def __init__(self):
+    def __init__(self, creds: Optional[Dict[str, str]] = None):
         self._fyers = None
         self._ready = False
         try:
@@ -276,10 +276,12 @@ class FyersDataProvider(BaseMarketDataProvider):
             logger.warning(f"Fyers SDK not installed; provider disabled: {e}")
             return
 
-        app_id = os.getenv("FYERS_APP_ID")
-        access_token = os.getenv("FYERS_ACCESS_TOKEN")
+        # Per-user credentials take priority; env is the single-user fallback.
+        creds = creds or {}
+        app_id = creds.get("app_id") or creds.get("api_key") or os.getenv("FYERS_APP_ID")
+        access_token = creds.get("access_token") or os.getenv("FYERS_ACCESS_TOKEN")
         if not app_id or not access_token:
-            logger.warning("Fyers not connected (run market.fyers_connect); provider disabled.")
+            logger.warning("Fyers not connected; provider disabled.")
             return
         try:
             self._fyers = fyersModel.FyersModel(client_id=app_id, token=access_token, is_async=False, log_path="")

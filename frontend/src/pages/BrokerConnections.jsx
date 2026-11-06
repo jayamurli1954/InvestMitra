@@ -76,6 +76,36 @@ export default function BrokerConnections() {
     } finally { setSyncing(false); }
   };
 
+  const FYERS_REDIRECT = `${API}/broker/fyers/callback`;
+
+  // Handle the return from an OAuth redirect (?connected=... / ?error=...)
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get('error')) setError(`Broker connect failed: ${p.get('error')}`);
+    if (p.get('connected') || p.get('error')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      load();
+    }
+  }, [load]);
+
+  const connectOAuth = async (broker) => {
+    setError(''); setBusy(broker);
+    try {
+      const vals = forms[broker] || {};
+      if (broker === 'Fyers') {
+        const res = await axios.post(`${API}/broker/fyers/begin`, {
+          api_key: vals.api_key || '',
+          secret_id: vals.secret_id || '',
+          redirect_uri: vals.redirect_uri || FYERS_REDIRECT,
+        });
+        if (res.data?.login_url) { window.location.href = res.data.login_url; return; }
+      }
+      setError('Could not start the broker login.');
+    } catch (e) {
+      setError(e.response?.data?.detail || `Could not start ${broker} login.`);
+    } finally { setBusy(''); }
+  };
+
   return (
     <div className="p-6 bg-slate-950 text-slate-100 min-h-screen">
       <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
@@ -147,7 +177,27 @@ export default function BrokerConnections() {
                   </button>
                 </div>
               ) : isOAuth ? (
-                <div className="text-xs text-slate-500 italic">OAuth connect flow coming soon.</div>
+                <div className="space-y-2">
+                  {(b.fields || []).map((f) => (
+                    <input
+                      key={f}
+                      type={SECRET_FIELDS.has(f) ? 'password' : 'text'}
+                      placeholder={FIELD_LABELS[f] || f}
+                      value={(forms[b.broker] || {})[f] ?? (f === 'redirect_uri' ? FYERS_REDIRECT : '')}
+                      onChange={(e) => setField(b.broker, f, e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg text-xs p-2.5 text-slate-200 focus:outline-none focus:border-emerald-500"
+                    />
+                  ))}
+                  <p className="text-[10px] text-slate-500">Register the Redirect URL above in your Fyers app, then connect.</p>
+                  <button
+                    onClick={() => connectOAuth(b.broker)}
+                    disabled={busy === b.broker}
+                    className="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold text-xs rounded-lg flex items-center justify-center gap-1"
+                  >
+                    {busy === b.broker ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Link2 className="w-3.5 h-3.5" />}
+                    Connect {b.broker}
+                  </button>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {(b.fields || []).map((f) => (

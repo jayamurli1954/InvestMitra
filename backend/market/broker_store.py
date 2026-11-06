@@ -58,7 +58,7 @@ def decrypt_creds(token: str) -> Dict[str, str]:
 def build_user_holdings_providers(connections: List[Dict[str, Any]]):
     """Build [(broker, provider)] from a user's stored connections (decrypting
     each in memory). Only connected, holdings-capable providers are returned."""
-    from market.providers import AngelOneDataProvider  # Fyers added with OAuth phase
+    from market.providers import AngelOneDataProvider, FyersDataProvider
 
     out = []
     for conn in connections or []:
@@ -74,7 +74,39 @@ def build_user_holdings_providers(connections: List[Dict[str, Any]]):
             p = AngelOneDataProvider(creds=creds)
             if getattr(p, "_ready", False):
                 out.append((broker, p))
+        elif broker == "Fyers" and creds.get("access_token"):
+            p = FyersDataProvider(creds=creds)
+            if getattr(p, "_ready", False):
+                out.append((broker, p))
     return out
+
+
+def fyers_login_url(app_id: str, secret: str, redirect: str, state: str) -> str:
+    """Build the Fyers OAuth login URL, carrying `state` to identify the user."""
+    import re
+    from fyers_apiv3 import fyersModel
+    s = fyersModel.SessionModel(
+        client_id=app_id, secret_key=secret, redirect_uri=redirect,
+        response_type="code", grant_type="authorization_code",
+    )
+    url = s.generate_authcode()
+    if "state=" in url:
+        url = re.sub(r"state=[^&]*", f"state={state}", url)
+    else:
+        url += f"&state={state}"
+    return url
+
+
+def exchange_fyers_code(app_id: str, secret: str, redirect: str, auth_code: str) -> Optional[str]:
+    """Exchange a Fyers OAuth auth_code for an access token. Returns None on failure."""
+    from fyers_apiv3 import fyersModel
+    s = fyersModel.SessionModel(
+        client_id=app_id, secret_key=secret, redirect_uri=redirect,
+        response_type="code", grant_type="authorization_code",
+    )
+    s.set_token(auth_code)
+    resp = s.generate_token()
+    return (resp or {}).get("access_token")
 
 
 def validate_broker_connection(broker: str, creds: Dict[str, str]) -> Optional[str]:

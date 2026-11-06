@@ -1883,6 +1883,78 @@ async def disconnect_broker(broker: str, current_user: User = Depends(require_au
     return {"broker": broker, "status": "disconnected"}
 
 
+class FyersBeginCreate(BaseModel):
+    api_key: str
+    secret_id: str
+    redirect_uri: str
+
+
+@api_router.post("/broker/fyers/begin")
+async def fyers_oauth_begin(body: FyersBeginCreate, current_user: User = Depends(require_auth)):
+    """Start Fyers OAuth: store the user's app creds (pending) and return the login URL.
+
+    The user registers {redirect_uri} in their Fyers app; it must point to
+    /api/broker/fyers/callback on this backend.
+    """
+    import secrets as _secrets
+    from market.broker_store import encrypt_creds, fyers_login_url
+    nonce = _secrets.token_urlsafe(24)
+    enc = encrypt_creds({"app_id": body.api_key, "secret": body.secret_id, "redirect": body.redirect_uri})
+    await db.broker_connections.update_one(
+        {"user_id": current_user.id, "broker": "Fyers"},
+        {"$set": {
+            "user_id": current_user.id, "broker": "Fyers", "enc_credentials": enc,
+            "status": "pending", "nonce": nonce,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    try:
+        url = fyers_login_url(body.api_key, body.secret_id, body.redirect_uri, nonce)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not build Fyers login URL: {e}")
+    return {"login_url": url}
+
+
+@api_router.get("/broker/fyers/callback")
+async def fyers_oauth_callback(request: Request):
+    """Fyers redirects here after login (no app auth — identified by the state nonce)."""
+    from fastapi.responses import RedirectResponse
+    from market.broker_store import decrypt_creds, encrypt_creds, exchange_fyers_code
+    params = dict(request.query_params)
+    auth_code = params.get("auth_code") or params.get("code")
+    state = params.get("state")
+    frontend = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+    def _back(q):
+        return RedirectResponse(f"{frontend}/broker-connections?{q}")
+
+    if not auth_code or not state:
+        return _back("error=missing_code")
+    conn = await db.broker_connections.find_one({"broker": "Fyers", "nonce": state, "status": "pending"})
+    if not conn:
+        return _back("error=invalid_state")
+    try:
+        app = decrypt_creds(conn["enc_credentials"])
+        access_token = exchange_fyers_code(app["app_id"], app["secret"], app["redirect"], auth_code)
+    except Exception as e:
+        logger.error(f"Fyers OAuth exchange failed: {e}")
+        return _back("error=exchange_failed")
+    if not access_token:
+        return _back("error=no_token")
+    new_enc = encrypt_creds({
+        "app_id": app["app_id"], "secret": app["secret"],
+        "redirect": app["redirect"], "access_token": access_token,
+    })
+    await db.broker_connections.update_one(
+        {"_id": conn["_id"]},
+        {"$set": {"enc_credentials": new_enc, "status": "connected",
+                  "connected_at": datetime.now(timezone.utc).isoformat()},
+         "$unset": {"nonce": ""}},
+    )
+    return _back("connected=fyers")
+
+
 @api_router.post("/portfolio/sync-broker")
 async def sync_broker_holdings(current_user: User = Depends(require_auth)):
     """Auto-import the user's holdings from THEIR connected brokers (read-only).
