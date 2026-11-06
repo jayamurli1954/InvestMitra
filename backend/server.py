@@ -1827,6 +1827,33 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
 
     return holding_obj
 
+@api_router.post("/portfolio/sync-broker")
+async def sync_broker_holdings(current_user: User = Depends(require_auth)):
+    """Auto-import the user's holdings from their connected brokers (read-only).
+
+    Non-destructive: imported rows are tagged source=broker_import and symbols the
+    user tracks manually are skipped, so nothing hand-entered is duplicated.
+    """
+    try:
+        from market.providers import build_holdings_providers
+        from market.holdings_sync import sync_user_broker_holdings
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Broker module unavailable: {e}")
+
+    providers = build_holdings_providers()
+    if not providers:
+        return {"synced": {}, "note": "No broker connected. Add broker credentials to connect a broker."}
+    try:
+        summary = await sync_user_broker_holdings(db, current_user.id, providers)
+    except Exception as e:
+        logger.error(f"Broker sync failed for {current_user.id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Broker sync failed: {e}")
+    return {
+        "synced": summary,
+        "note": "Imported holdings are tagged as broker imports; symbols you track manually were skipped to avoid duplicates.",
+    }
+
+
 @api_router.post("/portfolio/{holding_id}/transact")
 async def transact_holding(holding_id: str, transaction: HoldingTransaction, current_user: User = Depends(require_auth)):
     holding = await db.portfolio.find_one({"id": holding_id, "user_id": current_user.id})

@@ -483,6 +483,20 @@ class AngelOneDataProvider(BaseMarketDataProvider):
             return []
 
 
+def build_holdings_providers():
+    """Return [(display_name, provider)] for configured, connected holdings-capable
+    brokers (currently from env; per-user credentials come later). Each is live-
+    logged-in, so call this on demand (e.g. a manual "Sync" action), not per request."""
+    out = []
+    angel = AngelOneDataProvider()
+    if getattr(angel, "_ready", False):
+        out.append(("Angel One", angel))
+    fyers = FyersDataProvider()
+    if getattr(fyers, "_ready", False) and fyers.get_holdings():
+        out.append(("Fyers", fyers))
+    return out
+
+
 def build_primary_provider() -> BaseMarketDataProvider:
     """Select the primary market-data provider from the PRIMARY_PROVIDER env var."""
     choice = (os.getenv("PRIMARY_PROVIDER") or "yfinance").strip().lower()
