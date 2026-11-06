@@ -402,6 +402,86 @@ class FyersDataProvider(BaseMarketDataProvider):
             return []
 
 
+class AngelOneDataProvider(BaseMarketDataProvider):
+    """
+    Angel One (SmartAPI) provider — used as a HOLDINGS source (read-only).
+
+    Angel logs in with API key + client code + MPIN + TOTP (no OAuth redirect),
+    so it connects straight from stored credentials. Quote methods are no-ops here
+    (Angel is used to import the user's holdings, not to serve quotes); prices come
+    from the market-data provider / yfinance. Disables cleanly when not configured.
+    """
+
+    def __init__(self):
+        self._api = None
+        self._ready = False
+        try:
+            from SmartApi import SmartConnect
+            import pyotp
+        except Exception as e:
+            logger.warning(f"Angel SmartAPI SDK not installed; provider disabled: {e}")
+            return
+
+        api_key = os.getenv("ANGEL_API_KEY")
+        client_code = os.getenv("ANGEL_CLIENT_CODE")
+        mpin = os.getenv("ANGEL_MPIN")
+        totp_secret = os.getenv("ANGEL_TOTP_SECRET")
+        if not all([api_key, client_code, mpin, totp_secret]):
+            logger.warning("Angel One not configured (ANGEL_* env); provider disabled.")
+            return
+        try:
+            self._api = SmartConnect(api_key=api_key)
+            otp = pyotp.TOTP(totp_secret).now()
+            sess = self._api.generateSession(client_code, mpin, otp)
+            if not (sess or {}).get("status"):
+                logger.error(f"Angel session failed: {(sess or {}).get('message')}")
+                self._api = None
+                return
+            self._ready = True
+            logger.info("✓ Angel One provider initialised (session established).")
+        except Exception as e:
+            logger.error(f"Angel One init failed: {e}")
+            self._api = None
+
+    # --- quote methods are no-ops: Angel here is a holdings source only ---
+    def get_stock_info(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        return {}
+
+    def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:
+        return []
+
+    def get_current_price(self, symbol: str) -> float:
+        return 0.0
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Fetch the connected Angel account's equity holdings, normalized."""
+        if not self._ready:
+            return []
+        try:
+            r = self._api.holding()
+            if not (r or {}).get("status"):
+                return []
+            out = []
+            for h in (r or {}).get("data") or []:
+                ts = (h.get("tradingsymbol") or "").upper()
+                clean = ts.replace("-EQ", "").strip()
+                qty = float(h.get("quantity") or 0)
+                if not clean or qty <= 0:
+                    continue
+                out.append({
+                    "symbol": clean,
+                    "name": clean,
+                    "quantity": qty,
+                    "avg_cost": float(h.get("averageprice") or 0),
+                    "ltp": float(h.get("ltp") or 0),
+                    "exchange": h.get("exchange", "NSE"),
+                })
+            return out
+        except Exception as e:
+            logger.warning(f"Angel holdings fetch failed: {e}")
+            return []
+
+
 def build_primary_provider() -> BaseMarketDataProvider:
     """Select the primary market-data provider from the PRIMARY_PROVIDER env var."""
     choice = (os.getenv("PRIMARY_PROVIDER") or "yfinance").strip().lower()

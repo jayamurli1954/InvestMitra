@@ -8,3 +8,8 @@
 # SDK isn't installed, so the base app and CI never need these.
 
 fyers-apiv3==3.2.1
+
+# Angel One SmartAPI (holdings import)
+smartapi-python==1.5.5
+pyotp==2.9.0
+logzero==1.7.0
