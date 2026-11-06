@@ -28,6 +28,12 @@ class BaseMarketDataProvider(ABC):
     def get_current_price(self, symbol: str) -> float:
         pass
 
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Return the connected account's equity holdings in a normalized shape:
+        [{symbol, name, quantity, avg_cost, ltp, exchange}]. Default: none
+        (yfinance and quote-only providers have no account holdings)."""
+        return []
+
 
 class YFinanceDataProvider(BaseMarketDataProvider):
     """Yahoo Finance Market Data Provider (Default Fallback)."""
@@ -364,6 +370,35 @@ class FyersDataProvider(BaseMarketDataProvider):
             return data
         except Exception as e:
             logger.warning(f"Fyers historical fetch failed for {symbol}: {e}")
+            return []
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Fetch the connected Fyers account's equity holdings, normalized."""
+        if not self._ready:
+            return []
+        try:
+            r = self._fyers.holdings()
+            if (r or {}).get("s") != "ok":
+                return []
+            out = []
+            for h in (r or {}).get("holdings") or []:
+                # Fyers symbol like 'NSE:RELIANCE-EQ' -> 'RELIANCE'
+                fy_sym = h.get("symbol", "")
+                clean = fy_sym.split(":")[-1].replace("-EQ", "").strip() if fy_sym else ""
+                qty = float(h.get("quantity") or 0)
+                if not clean or qty <= 0:
+                    continue
+                out.append({
+                    "symbol": clean,
+                    "name": clean,
+                    "quantity": qty,
+                    "avg_cost": float(h.get("costPrice") or 0),
+                    "ltp": float(h.get("ltp") or 0),
+                    "exchange": "NSE" if fy_sym.startswith("NSE") else (fy_sym.split(":")[0] if ":" in fy_sym else "NSE"),
+                })
+            return out
+        except Exception as e:
+            logger.warning(f"Fyers holdings fetch failed: {e}")
             return []
 
 
