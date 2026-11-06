@@ -28,6 +28,12 @@ class BaseMarketDataProvider(ABC):
     def get_current_price(self, symbol: str) -> float:
         pass
 
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Return the connected account's equity holdings in a normalized shape:
+        [{symbol, name, quantity, avg_cost, ltp, exchange}]. Default: none
+        (yfinance and quote-only providers have no account holdings)."""
+        return []
+
 
 class YFinanceDataProvider(BaseMarketDataProvider):
     """Yahoo Finance Market Data Provider (Default Fallback)."""
@@ -261,7 +267,7 @@ class FyersDataProvider(BaseMarketDataProvider):
     empty/0.0 when not connected so MarketDataService defers to yfinance.
     """
 
-    def __init__(self):
+    def __init__(self, creds: Optional[Dict[str, str]] = None):
         self._fyers = None
         self._ready = False
         try:
@@ -270,10 +276,12 @@ class FyersDataProvider(BaseMarketDataProvider):
             logger.warning(f"Fyers SDK not installed; provider disabled: {e}")
             return
 
-        app_id = os.getenv("FYERS_APP_ID")
-        access_token = os.getenv("FYERS_ACCESS_TOKEN")
+        # Per-user credentials take priority; env is the single-user fallback.
+        creds = creds or {}
+        app_id = creds.get("app_id") or creds.get("api_key") or os.getenv("FYERS_APP_ID")
+        access_token = creds.get("access_token") or os.getenv("FYERS_ACCESS_TOKEN")
         if not app_id or not access_token:
-            logger.warning("Fyers not connected (run market.fyers_connect); provider disabled.")
+            logger.warning("Fyers not connected; provider disabled.")
             return
         try:
             self._fyers = fyersModel.FyersModel(client_id=app_id, token=access_token, is_async=False, log_path="")
@@ -365,6 +373,133 @@ class FyersDataProvider(BaseMarketDataProvider):
         except Exception as e:
             logger.warning(f"Fyers historical fetch failed for {symbol}: {e}")
             return []
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Fetch the connected Fyers account's equity holdings, normalized."""
+        if not self._ready:
+            return []
+        try:
+            r = self._fyers.holdings()
+            if (r or {}).get("s") != "ok":
+                return []
+            out = []
+            for h in (r or {}).get("holdings") or []:
+                # Fyers symbol like 'NSE:RELIANCE-EQ' -> 'RELIANCE'
+                fy_sym = h.get("symbol", "")
+                clean = fy_sym.split(":")[-1].replace("-EQ", "").strip() if fy_sym else ""
+                qty = float(h.get("quantity") or 0)
+                if not clean or qty <= 0:
+                    continue
+                out.append({
+                    "symbol": clean,
+                    "name": clean,
+                    "quantity": qty,
+                    "avg_cost": float(h.get("costPrice") or 0),
+                    "ltp": float(h.get("ltp") or 0),
+                    "exchange": "NSE" if fy_sym.startswith("NSE") else (fy_sym.split(":")[0] if ":" in fy_sym else "NSE"),
+                })
+            return out
+        except Exception as e:
+            logger.warning(f"Fyers holdings fetch failed: {e}")
+            return []
+
+
+class AngelOneDataProvider(BaseMarketDataProvider):
+    """
+    Angel One (SmartAPI) provider — used as a HOLDINGS source (read-only).
+
+    Angel logs in with API key + client code + MPIN + TOTP (no OAuth redirect),
+    so it connects straight from stored credentials. Quote methods are no-ops here
+    (Angel is used to import the user's holdings, not to serve quotes); prices come
+    from the market-data provider / yfinance. Disables cleanly when not configured.
+    """
+
+    def __init__(self, creds: Optional[Dict[str, str]] = None):
+        self._api = None
+        self._ready = False
+        try:
+            from SmartApi import SmartConnect
+            import pyotp
+        except Exception as e:
+            logger.warning(f"Angel SmartAPI SDK not installed; provider disabled: {e}")
+            return
+
+        # Per-user credentials take priority; fall back to env for single-user setups.
+        creds = creds or {}
+        api_key = creds.get("api_key") or os.getenv("ANGEL_API_KEY")
+        client_code = (creds.get("client_code") or creds.get("client_id")
+                       or os.getenv("ANGEL_CLIENT_CODE") or os.getenv("ANGEL_CLIENT_ID"))
+        mpin = (creds.get("mpin") or creds.get("password")
+                or os.getenv("ANGEL_MPIN") or os.getenv("ANGEL_PASSWORD"))
+        totp_secret = creds.get("totp_secret") or os.getenv("ANGEL_TOTP_SECRET")
+        if not all([api_key, client_code, mpin, totp_secret]):
+            logger.warning("Angel One not configured (ANGEL_* env); provider disabled.")
+            return
+        try:
+            self._api = SmartConnect(api_key=api_key)
+            otp = pyotp.TOTP(totp_secret).now()
+            sess = self._api.generateSession(client_code, mpin, otp)
+            if not (sess or {}).get("status"):
+                logger.error(f"Angel session failed: {(sess or {}).get('message')}")
+                self._api = None
+                return
+            self._ready = True
+            logger.info("✓ Angel One provider initialised (session established).")
+        except Exception as e:
+            logger.error(f"Angel One init failed: {e}")
+            self._api = None
+
+    # --- quote methods are no-ops: Angel here is a holdings source only ---
+    def get_stock_info(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        return {}
+
+    def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:
+        return []
+
+    def get_current_price(self, symbol: str) -> float:
+        return 0.0
+
+    def get_holdings(self) -> List[Dict[str, Any]]:
+        """Fetch the connected Angel account's equity holdings, normalized."""
+        if not self._ready:
+            return []
+        try:
+            r = self._api.holding()
+            if not (r or {}).get("status"):
+                return []
+            out = []
+            for h in (r or {}).get("data") or []:
+                ts = (h.get("tradingsymbol") or "").upper()
+                clean = ts.replace("-EQ", "").strip()
+                qty = float(h.get("quantity") or 0)
+                if not clean or qty <= 0:
+                    continue
+                out.append({
+                    "symbol": clean,
+                    "name": clean,
+                    "quantity": qty,
+                    "avg_cost": float(h.get("averageprice") or 0),
+                    "ltp": float(h.get("ltp") or 0),
+                    "exchange": h.get("exchange", "NSE"),
+                })
+            return out
+        except Exception as e:
+            logger.warning(f"Angel holdings fetch failed: {e}")
+            return []
+
+
+def build_holdings_providers():
+    """Return [(display_name, provider)] for configured, connected holdings-capable
+    brokers (currently from env; per-user credentials come later). Each is live-
+    logged-in, so call this on demand (e.g. a manual "Sync" action), not per request."""
+    out = []
+    angel = AngelOneDataProvider()
+    if getattr(angel, "_ready", False):
+        out.append(("Angel One", angel))
+    fyers = FyersDataProvider()
+    if getattr(fyers, "_ready", False) and fyers.get_holdings():
+        out.append(("Fyers", fyers))
+    return out
 
 
 def build_primary_provider() -> BaseMarketDataProvider:

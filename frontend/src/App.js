@@ -19,6 +19,7 @@ import PerformanceReport from "@/pages/PerformanceReport";
 import Backtesting from "@/pages/Backtesting";
 import AIInsights from "@/pages/AIInsights";
 import EventRadar from "@/pages/EventRadar";
+import BrokerConnections from "@/pages/BrokerConnections";
 import ResearchWorkspace from "@/pages/ResearchWorkspace";
 import Auth from "@/pages/Auth";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -114,6 +115,7 @@ function AppRoutes() {
                     <Route path="/backtesting" element={<Backtesting />} />
                     <Route path="/ai-insights" element={<AIInsights />} />
                     <Route path="/event-radar" element={<EventRadar />} />
+                    <Route path="/broker-connections" element={<BrokerConnections />} />
                     <Route path="/research-workspace" element={<ResearchWorkspace />} />
                     <Route path="/screener" element={<Screener />} />
                     <Route path="/stock/:symbol" element={<StockDetail />} />
