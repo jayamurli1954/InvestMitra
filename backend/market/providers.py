@@ -412,7 +412,7 @@ class AngelOneDataProvider(BaseMarketDataProvider):
     from the market-data provider / yfinance. Disables cleanly when not configured.
     """
 
-    def __init__(self):
+    def __init__(self, creds: Optional[Dict[str, str]] = None):
         self._api = None
         self._ready = False
         try:
@@ -422,11 +422,14 @@ class AngelOneDataProvider(BaseMarketDataProvider):
             logger.warning(f"Angel SmartAPI SDK not installed; provider disabled: {e}")
             return
 
-        api_key = os.getenv("ANGEL_API_KEY")
-        # Accept either naming convention for client code and the login secret.
-        client_code = os.getenv("ANGEL_CLIENT_CODE") or os.getenv("ANGEL_CLIENT_ID")
-        mpin = os.getenv("ANGEL_MPIN") or os.getenv("ANGEL_PASSWORD")
-        totp_secret = os.getenv("ANGEL_TOTP_SECRET")
+        # Per-user credentials take priority; fall back to env for single-user setups.
+        creds = creds or {}
+        api_key = creds.get("api_key") or os.getenv("ANGEL_API_KEY")
+        client_code = (creds.get("client_code") or creds.get("client_id")
+                       or os.getenv("ANGEL_CLIENT_CODE") or os.getenv("ANGEL_CLIENT_ID"))
+        mpin = (creds.get("mpin") or creds.get("password")
+                or os.getenv("ANGEL_MPIN") or os.getenv("ANGEL_PASSWORD"))
+        totp_secret = creds.get("totp_secret") or os.getenv("ANGEL_TOTP_SECRET")
         if not all([api_key, client_code, mpin, totp_secret]):
             logger.warning("Angel One not configured (ANGEL_* env); provider disabled.")
             return

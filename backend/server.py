@@ -1827,27 +1827,92 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
 
     return holding_obj
 
+class BrokerConnectCreate(BaseModel):
+    broker: str
+    credentials: Dict[str, str]
+
+
+@api_router.get("/broker/supported")
+async def list_supported_brokers(current_user: User = Depends(require_auth)):
+    """List brokers the connect UI supports, with the fields each needs."""
+    from market.broker_store import SUPPORTED_BROKERS
+    return {"brokers": [{"broker": b, **meta} for b, meta in SUPPORTED_BROKERS.items()]}
+
+
+@api_router.get("/broker/connections")
+async def list_broker_connections(current_user: User = Depends(require_auth)):
+    """List the user's connected brokers. Secrets are never returned."""
+    conns = await db.broker_connections.find(
+        {"user_id": current_user.id}, {"_id": 0, "enc_credentials": 0, "user_id": 0}
+    ).to_list(50)
+    return {"connections": conns}
+
+
+@api_router.post("/broker/connect")
+async def connect_broker(body: BrokerConnectCreate, current_user: User = Depends(require_auth)):
+    """Verify and store (encrypted) a user's broker credentials."""
+    from market.broker_store import SUPPORTED_BROKERS, validate_broker_connection, encrypt_creds
+    if body.broker not in SUPPORTED_BROKERS:
+        raise HTTPException(status_code=400, detail="Unsupported broker")
+    try:
+        err = validate_broker_connection(body.broker, body.credentials)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Broker validation error: {e}")
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    try:
+        enc = encrypt_creds(body.credentials)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    await db.broker_connections.update_one(
+        {"user_id": current_user.id, "broker": body.broker},
+        {"$set": {
+            "user_id": current_user.id, "broker": body.broker, "enc_credentials": enc,
+            "status": "connected", "connected_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"broker": body.broker, "status": "connected"}
+
+
+@api_router.delete("/broker/connections/{broker}")
+async def disconnect_broker(broker: str, current_user: User = Depends(require_auth)):
+    """Disconnect a broker and remove its auto-imported holdings."""
+    await db.broker_connections.delete_one({"user_id": current_user.id, "broker": broker})
+    await db.portfolio.delete_many({"user_id": current_user.id, "broker": broker, "source": "broker_import"})
+    return {"broker": broker, "status": "disconnected"}
+
+
 @api_router.post("/portfolio/sync-broker")
 async def sync_broker_holdings(current_user: User = Depends(require_auth)):
-    """Auto-import the user's holdings from their connected brokers (read-only).
+    """Auto-import the user's holdings from THEIR connected brokers (read-only).
 
-    Non-destructive: imported rows are tagged source=broker_import and symbols the
-    user tracks manually are skipped, so nothing hand-entered is duplicated.
+    Uses each user's own stored credentials, so one user never sees another's data.
+    Non-destructive: imported rows are tagged as broker imports and symbols the user
+    tracks manually are skipped, so nothing hand-entered is duplicated.
     """
-    try:
-        from market.providers import build_holdings_providers
-        from market.holdings_sync import sync_user_broker_holdings
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Broker module unavailable: {e}")
+    from market.broker_store import build_user_holdings_providers
+    from market.holdings_sync import sync_user_broker_holdings
 
-    providers = build_holdings_providers()
+    conns = await db.broker_connections.find({"user_id": current_user.id}).to_list(50)
+    if not conns:
+        return {"synced": {}, "note": "No broker connected. Connect a broker first."}
+    try:
+        providers = build_user_holdings_providers(conns)
+    except Exception as e:
+        logger.error(f"Broker connect error for {current_user.id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Broker connect error: {e}")
     if not providers:
-        return {"synced": {}, "note": "No broker connected. Add broker credentials to connect a broker."}
+        return {"synced": {}, "note": "Could not connect to your broker(s) — credentials may have expired; reconnect."}
     try:
         summary = await sync_user_broker_holdings(db, current_user.id, providers)
     except Exception as e:
         logger.error(f"Broker sync failed for {current_user.id}: {e}")
         raise HTTPException(status_code=500, detail=f"Broker sync failed: {e}")
+    await db.broker_connections.update_many(
+        {"user_id": current_user.id},
+        {"$set": {"last_synced": datetime.now(timezone.utc).isoformat()}},
+    )
     return {
         "synced": summary,
         "note": "Imported holdings are tagged as broker imports; symbols you track manually were skipped to avoid duplicates.",
