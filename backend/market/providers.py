@@ -423,8 +423,9 @@ class AngelOneDataProvider(BaseMarketDataProvider):
             return
 
         api_key = os.getenv("ANGEL_API_KEY")
-        client_code = os.getenv("ANGEL_CLIENT_CODE")
-        mpin = os.getenv("ANGEL_MPIN")
+        # Accept either naming convention for client code and the login secret.
+        client_code = os.getenv("ANGEL_CLIENT_CODE") or os.getenv("ANGEL_CLIENT_ID")
+        mpin = os.getenv("ANGEL_MPIN") or os.getenv("ANGEL_PASSWORD")
         totp_secret = os.getenv("ANGEL_TOTP_SECRET")
         if not all([api_key, client_code, mpin, totp_secret]):
             logger.warning("Angel One not configured (ANGEL_* env); provider disabled.")
