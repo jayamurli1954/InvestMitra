@@ -56,7 +56,7 @@ python-jose==3.5.0
 python-multipart==0.0.20
 pytokens==0.1.10
 pytz==2025.2
-requests==2.32.5
+requests==2.31.0
 requests-oauthlib==2.0.0
 rich==14.2.0
 rsa==4.9.1
@@ -81,3 +81,10 @@ PyPortfolioOpt==1.5.5
 apscheduler==3.10.4
 
 slowapi==0.1.9
+
+# Shoonya (Finvasia) OAuth market-data API client
+NorenRestApiOAuth==0.0.41
+
+# NOTE: Fyers (fyers-apiv3) is an OPTIONAL broker provider installed separately
+# via requirements-brokers.txt — its pinned AWS-Lambda deps conflict with boto3/
+# jmespath here. FyersDataProvider disables itself cleanly when it isn't installed.

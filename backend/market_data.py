@@ -14,6 +14,50 @@ MARKET_CACHE_TTL_SECONDS = int(os.environ.get("MARKET_CACHE_TTL_SECONDS", "600")
 _INDICES_CACHE = {"data": [], "ts": 0.0}
 _MAJOR_STOCKS_CACHE = {"data": [], "ts": 0.0}
 
+# --- Live broker data provider (Shoonya / Fyers) ---------------------------
+# Selected via PRIMARY_PROVIDER. Returns None when the provider is yfinance or a
+# broker is not connected, so the existing yfinance paths below are unchanged
+# unless a broker is actively connected and chosen (safe-by-default).
+_PROVIDER = None
+_PROVIDER_INIT = False
+
+
+def _provider():
+    global _PROVIDER, _PROVIDER_INIT
+    if not _PROVIDER_INIT:
+        _PROVIDER_INIT = True
+        try:
+            from market.providers import build_primary_provider, YFinanceDataProvider
+            p = build_primary_provider()
+            _PROVIDER = None if isinstance(p, YFinanceDataProvider) else p
+            if _PROVIDER is not None:
+                logger.info(f"market_data using live provider: {type(_PROVIDER).__name__}")
+        except Exception as e:
+            logger.warning(f"Live market provider unavailable, using yfinance: {e}")
+            _PROVIDER = None
+    return _PROVIDER
+
+
+def _price_only_info(symbol: str, pv: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a full-shape stock_info entry from a provider's price-only quote
+    (used when yfinance has no data for a symbol but the broker does)."""
+    lp = float(pv.get("current_price") or 0.0)
+    return {
+        "symbol": symbol,
+        "name": pv.get("name") or symbol,
+        "exchange": pv.get("exchange", "NSE"),
+        "sector": pv.get("sector", "Other"),
+        "current_price": lp,
+        "change": float(pv.get("change") or 0.0),
+        "change_percent": float(pv.get("change_percent") or 0.0),
+        "volume": int(pv.get("volume") or 0),
+        "market_cap": 0.0,
+        "pe_ratio": None, "pb_ratio": None, "roe": None,
+        "debt_to_equity": None, "dividend_yield": None,
+        "week_52_high": lp * 1.1, "week_52_low": lp * 0.9,
+        "rsi": None, "ma_50": lp, "ma_200": lp,
+    }
+
 
 def get_stock_info(symbols: any) -> Dict[str, Dict]:
     """Fetch real-time stock information for a single symbol or a batch of stock symbols."""
@@ -87,13 +131,43 @@ def get_stock_info(symbols: any) -> Dict[str, Dict]:
 
     except Exception as e:
         logger.error(f"Error fetching batch data for symbols {symbols}: {str(e)}")
-        
+
+    # Overlay live broker prices (keeps yfinance fundamentals; fills gaps yfinance missed)
+    prov = _provider()
+    if prov is not None:
+        try:
+            pinfo = prov.get_stock_info(symbols)
+            for sym, pv in pinfo.items():
+                lp = pv.get("current_price")
+                if not lp:
+                    continue
+                if sym in results:
+                    r = results[sym]
+                    r["current_price"] = float(lp)
+                    r["change"] = float(pv.get("change") or r.get("change") or 0.0)
+                    r["change_percent"] = float(pv.get("change_percent") or r.get("change_percent") or 0.0)
+                    if pv.get("volume"):
+                        r["volume"] = int(pv["volume"])
+                else:
+                    results[sym] = _price_only_info(sym, pv)
+        except Exception as e:
+            logger.warning(f"Provider overlay failed in get_stock_info: {e}")
+
     return results
 
 
 
 def get_historical_data(symbol: str, days: int = 90) -> List[Dict]:
     """Fetch historical stock data"""
+    # Prefer live broker candles when connected; fall back to yfinance.
+    prov = _provider()
+    if prov is not None:
+        try:
+            d = prov.get_historical_data(symbol, days)
+            if d:
+                return d
+        except Exception as e:
+            logger.warning(f"Provider historical fetch failed for {symbol}: {e}")
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period=f"{days}d")
@@ -161,9 +235,24 @@ def get_batch_stock_prices(symbols: List[str]) -> Dict[str, Dict]:
     results = {}
     if not symbols:
         return results
+
+    # Live broker prices first (for whatever it can resolve)
+    prov = _provider()
+    if prov is not None:
+        try:
+            pinfo = prov.get_stock_info(symbols)
+            for sym, pv in pinfo.items():
+                if pv.get("current_price"):
+                    results[sym] = {"current_price": float(pv["current_price"])}
+        except Exception as e:
+            logger.warning(f"Provider batch prices failed: {e}")
+
+    remaining = [s for s in symbols if s not in results]
+    if not remaining:
+        return results
     try:
         hist = yf.download(
-            tickers=" ".join(symbols),
+            tickers=" ".join(remaining),
             period="5d",
             interval="1d",
             group_by="ticker",
@@ -171,12 +260,12 @@ def get_batch_stock_prices(symbols: List[str]) -> Dict[str, Dict]:
             progress=False,
             threads=False,
         )
-        for symbol in symbols:
+        for symbol in remaining:
             current_price, prev_close = _extract_close_prices(hist, symbol)
             if current_price is not None:
                 results[symbol] = {"current_price": float(current_price)}
     except Exception as e:
-        logger.error(f"Error fetching batch prices for {symbols}: {e}")
+        logger.error(f"Error fetching batch prices for {remaining}: {e}")
     return results
 
 def _build_market_point(name: str, current_price: float, prev_close: float, symbol: Optional[str] = None) -> Dict:
@@ -317,7 +406,17 @@ def get_current_price(symbol: str) -> float:
     if symbol in MANUAL_PRICES:
         logger.info(f"Using manual price for {symbol}: {MANUAL_PRICES[symbol]}")
         return MANUAL_PRICES[symbol]
-    
+
+    # Live broker price when connected
+    prov = _provider()
+    if prov is not None:
+        try:
+            p = prov.get_current_price(symbol)
+            if p and p > 0:
+                return float(p)
+        except Exception as e:
+            logger.warning(f"Provider price failed for {symbol}: {e}")
+
     try:
         ticker = yf.Ticker(symbol)
         hist = ticker.history(period="1d")
