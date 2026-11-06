@@ -85,5 +85,6 @@ slowapi==0.1.9
 # Shoonya (Finvasia) OAuth market-data API client
 NorenRestApiOAuth==0.0.41
 
-# Fyers API v3 client (read-only market data)
-fyers-apiv3==3.2.1
+# NOTE: Fyers (fyers-apiv3) is an OPTIONAL broker provider installed separately
+# via requirements-brokers.txt — its pinned AWS-Lambda deps conflict with boto3/
+# jmespath here. FyersDataProvider disables itself cleanly when it isn't installed.

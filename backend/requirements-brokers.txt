@@ -1,0 +1,10 @@
+# Optional broker SDKs for live market data.
+# Install only if you want to use a broker provider (PRIMARY_PROVIDER=fyers):
+#     pip install -r requirements-brokers.txt
+#
+# Kept separate from requirements.txt because fyers-apiv3 pins heavy AWS-Lambda
+# dependencies (aws_lambda_powertools, aws-xray-sdk) that conflict with the main
+# app's boto3/jmespath pins. The providers disable themselves gracefully when the
+# SDK isn't installed, so the base app and CI never need these.
+
+fyers-apiv3==3.2.1

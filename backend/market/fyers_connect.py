@@ -13,6 +13,9 @@ from the redirected URL, and paste it here. The script exchanges it for an acces
 token and writes it to backend/.env. Your auth code and token never leave your
 machine.
 
+Prerequisite: pip install -r requirements-brokers.txt  (installs fyers-apiv3,
+which is kept out of the base requirements.txt due to a dependency conflict).
+
 Required in backend/.env before running:
     FYERS_APP_ID       - your app id, e.g. ABCD1234-100
     FYERS_SECRET_ID    - the app secret
