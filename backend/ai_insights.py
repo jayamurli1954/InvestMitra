@@ -82,6 +82,25 @@ logger.info("="*70 + "\n")
 # ------------------------------------
 
 
+def _build_gen_config(**kwargs):
+    """
+    Build a GenerateContentConfig with Gemini 2.5 "thinking" disabled.
+
+    gemini-2.5-* models draw reasoning tokens from max_output_tokens, which can
+    silently truncate (or empty) the visible response and force a fallback.
+    Disabling thinking keeps the full budget for the actual answer. thinking_config
+    is only added when the installed google-genai SDK supports it, so this stays
+    safe on older versions.
+    """
+    if types is None:
+        return None
+    try:
+        kwargs.setdefault("thinking_config", types.ThinkingConfig(thinking_budget=0))
+    except Exception:
+        pass
+    return types.GenerateContentConfig(**kwargs)
+
+
 def extract_json_from_markdown(text: str) -> str:
     """
     Extract JSON content from Gemini responses that may be wrapped in markdown
@@ -136,8 +155,39 @@ def extract_json_from_markdown(text: str) -> str:
     return stripped[start:]
 
 
+def _sanitize_ai_output(obj):
+    """
+    Recursively run AI output through the SEBI compliance guard: sanitise every
+    string and inject the mandatory disclaimer into every object. Applied to ALL
+    successfully parsed responses (not only the ast.literal_eval fallback path),
+    so no un-sanitised model text can leave the backend. If the guard cannot be
+    imported, the value is returned unchanged.
+    """
+    try:
+        from sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
+    except Exception:
+        try:
+            from backend.sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
+        except Exception:
+            return obj
+
+    if isinstance(obj, str):
+        return sanitize_text(obj)
+    elif isinstance(obj, list):
+        return [_sanitize_ai_output(item) for item in obj]
+    elif isinstance(obj, dict):
+        res = {k: _sanitize_ai_output(v) for k, v in obj.items()}
+        res["sebi_disclaimer"] = SEBI_DISCLAIMER_TEXT
+        return res
+    return obj
+
+
 def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
-    """Parse Gemini JSON robustly, even when it includes minor markdown noise."""
+    """Parse Gemini JSON robustly, even when it includes minor markdown noise.
+
+    Every successfully parsed object is passed through the SEBI compliance guard
+    before being returned.
+    """
     extracted = extract_json_from_markdown(raw_text)
     candidates = [extracted]
 
@@ -153,7 +203,7 @@ def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
 
     for candidate in candidates:
         try:
-            return json.loads(candidate)
+            return _sanitize_ai_output(json.loads(candidate))
         except json.JSONDecodeError:
             continue
 
@@ -169,23 +219,7 @@ def parse_ai_json_response(raw_text: str) -> Dict[str, Any]:
     if not isinstance(parsed, dict):
         raise ValueError("AI response did not parse into a JSON object")
 
-    def _sanitize_obj(obj):
-        try:
-            from sebi_compliance_guard import sanitize_text, SEBI_DISCLAIMER_TEXT
-        except Exception:
-            return obj
-
-        if isinstance(obj, str):
-            return sanitize_text(obj)
-        elif isinstance(obj, list):
-            return [_sanitize_obj(item) for item in obj]
-        elif isinstance(obj, dict):
-            res = {k: _sanitize_obj(v) for k, v in obj.items()}
-            res["sebi_disclaimer"] = SEBI_DISCLAIMER_TEXT
-            return res
-        return obj
-
-    return _sanitize_obj(parsed)
+    return _sanitize_ai_output(parsed)
 
 
 
@@ -345,7 +379,7 @@ Respond with ONLY the JSON object, nothing else.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=full_prompt,
-            config=types.GenerateContentConfig(
+            config=_build_gen_config(
                 temperature=0.7,
                 top_p=0.9,
                 top_k=40,
@@ -521,7 +555,7 @@ Generate ONLY the JSON object.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.8)
+            config=_build_gen_config(temperature=0.8, max_output_tokens=2048)
         )
         
         # Handle different response formats
@@ -604,9 +638,9 @@ Keep it concise and actionable.
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(
+            config=_build_gen_config(
                 temperature=0.7,
-                max_output_tokens=200
+                max_output_tokens=800
             )
         )
         
@@ -748,7 +782,7 @@ Return ONLY valid JSON:
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=selected_prompt,
-            config=types.GenerateContentConfig(temperature=0.7)
+            config=_build_gen_config(temperature=0.7, max_output_tokens=1024)
         )
         raw_text = None
         try:
@@ -771,5 +805,145 @@ Return ONLY valid JSON:
         "key_points": [f"System evaluation completed for {symbol}.", "Detailed fundamental metrics active."],
         "recommendation": "Monitor market trends."
     }
+
+
+def _format_event_context(event: Dict[str, Any]) -> str:
+    """Render an event dict into a compact prompt block."""
+    if not event:
+        return "No structured event data available."
+    return (
+        f"Title: {event.get('title', 'N/A')}\n"
+        f"Summary: {event.get('summary', 'N/A')}\n"
+        f"Type: {event.get('event_type', 'N/A')} | Severity: {event.get('severity', 'N/A')}\n"
+        f"Geography: {event.get('geography', 'N/A')} | "
+        f"Affected commodities: {', '.join(event.get('affected_commodities', []) or ['N/A'])}"
+    )
+
+
+def _format_exposures(exposures: List[Dict[str, Any]]) -> str:
+    """Render structural exposure rows into a compact prompt block."""
+    if not exposures:
+        return "No structural exposures on record for this company."
+    lines = []
+    for exp in exposures:
+        lines.append(
+            f"- {exp.get('exposure_type', 'N/A')} -> {exp.get('target_entity', 'N/A')} "
+            f"(level={exp.get('exposure_level', 'N/A')}, direction={exp.get('direction', 'N/A')}): "
+            f"{exp.get('financial_sensitivity', '')}"
+        )
+    return "\n".join(lines)
+
+
+def _format_evidence(evidence: List[Dict[str, Any]]) -> str:
+    """Render retrieved evidence chunks into a compact prompt block."""
+    if not evidence:
+        return "No evidence chunks retrieved."
+    lines = []
+    for chunk in evidence:
+        lines.append(
+            f"- [{chunk.get('document_title', 'Source')} / {chunk.get('period', 'N/A')}]: "
+            f"{chunk.get('content', '')}"
+        )
+    return "\n".join(lines)
+
+
+def generate_event_impact_analysis(
+    event: Dict[str, Any],
+    company: Dict[str, Any],
+    exposures: List[Dict[str, Any]],
+    evidence: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """
+    Generate a real, company-specific event-impact assessment and contrarian risk
+    review using Gemini, grounded in the supplied structured context (event,
+    company profile, structural exposures and retrieved evidence).
+
+    Returns a dict with ``impact_assessment`` and ``contrarian_risk_review`` keys,
+    plus ``ai_generated: True``. Returns ``None`` when the LLM is unavailable or
+    the call fails, so callers can fall back to deterministic analysis.
+    SEBI sanitisation is left to the caller's final ``enforce_sebi_compliance`` pass.
+    """
+    if client is None:
+        logger.info("ℹ️ Gemini unavailable; event-impact analysis will use deterministic fallback.")
+        return None
+
+    symbol = (company or {}).get("symbol") or (company or {}).get("nse_symbol") or "the company"
+    company_name = (company or {}).get("company_name") or symbol
+
+    system_prompt = (
+        "You are an equity research analyst at a SEBI-registered research firm in India. "
+        "Assess how a global/macro event structurally affects a specific listed Indian company. "
+        "Reason ONLY from the structured context provided (event, exposures, evidence) — do not "
+        "invent figures or cite sources not present in the evidence. Do NOT issue BUY/SELL calls "
+        "or price targets; describe direction of impact and risk, not trading instructions."
+    )
+
+    user_prompt = f"""
+Analyse the structural impact of the following event on {company_name} ({symbol}).
+
+EVENT:
+{_format_event_context(event)}
+
+COMPANY STRUCTURAL EXPOSURES:
+{_format_exposures(exposures)}
+
+RETRIEVED EVIDENCE:
+{_format_evidence(evidence)}
+
+Return ONLY a JSON object with exactly this shape:
+{{
+  "impact_assessment": {{
+    "impact_direction": "one of: POSITIVE | NEGATIVE | MIXED | NEUTRAL / BALANCED",
+    "impact_magnitude": "one of: HIGH | MODERATE | LOW",
+    "confidence_score": 0.0,
+    "time_horizon": "e.g. SHORT_TERM | SHORT_TO_MEDIUM_TERM | MEDIUM_TERM",
+    "rationale": "2-3 sentences grounded in the exposures and evidence above, naming the specific transmission channel"
+  }},
+  "contrarian_risk_review": {{
+    "bull_case": "the constructive case specific to this company and event",
+    "bear_case": "the downside case specific to this company and event",
+    "counter_evidence": "what would invalidate the primary thesis",
+    "thesis_breakers": ["specific condition 1", "specific condition 2"]
+  }}
+}}
+
+Respond with ONLY the JSON object, nothing else.
+"""
+
+    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+    try:
+        logger.info(f"🤖 Calling Gemini for event-impact analysis: {symbol}")
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=full_prompt,
+            config=_build_gen_config(temperature=0.4, top_p=0.9, top_k=40, max_output_tokens=2048),
+        )
+
+        raw_text = None
+        try:
+            raw_text = response.text
+        except Exception:
+            if getattr(response, "candidates", None):
+                candidate = response.candidates[0]
+                content = getattr(candidate, "content", None)
+                parts = getattr(content, "parts", None) if content else None
+                if parts:
+                    raw_text = parts[0].text
+
+        if not raw_text:
+            logger.error("Gemini returned empty response for event-impact analysis.")
+            return None
+
+        parsed = parse_ai_json_response(raw_text)
+        if not isinstance(parsed, dict) or "impact_assessment" not in parsed:
+            logger.error("Gemini event-impact response missing expected keys.")
+            return None
+
+        parsed["ai_generated"] = True
+        return parsed
+    except Exception as e:
+        logger.error(f"❌ Error in event-impact analysis for {symbol}: {e}")
+        return None
 
 

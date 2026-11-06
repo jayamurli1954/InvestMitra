@@ -21,6 +21,14 @@ except ModuleNotFoundError:
     from research.rag.retrieval_engine import retrieve_evidence_for_company, format_citations
     from governance.compliance import enforce_sebi_compliance
 
+try:
+    from backend.ai_insights import generate_event_impact_analysis
+except ModuleNotFoundError:
+    try:
+        from ai_insights import generate_event_impact_analysis
+    except Exception:
+        generate_event_impact_analysis = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,24 +47,40 @@ def analyze_event_impact_on_company(
     evidence = retrieve_evidence_for_company(company_symbol, event.get("title", ""))
     citations = format_citations(evidence)
 
+    # --- Deterministic baseline (fallback when the LLM is unavailable) ---
     direction = "NEUTRAL / BALANCED"
     magnitude = "MODERATE"
-    
     for exp in exposures:
         if exp.get("exposure_level") == "HIGH":
             direction = exp.get("direction", "MIXED")
             magnitude = "HIGH"
             break
 
+    impact_assessment = {
+        "impact_direction": direction,
+        "impact_magnitude": magnitude,
+        "confidence_score": 0.85,
+        "time_horizon": "SHORT_TO_MEDIUM_TERM"
+    }
     contrarian_review = {
-        "bull_case": f"{company_symbol} exhibits strong pricing power and operational efficiency to absorb raw material inflation.",
-        "bear_case": f"Prolonged {event.get('title')} could compress gross operating margins by 150-250 bps over the next 2 quarters.",
+        "bull_case": f"{company_symbol} exhibits pricing power and operational efficiency to absorb input inflation.",
+        "bear_case": f"Prolonged {event.get('title')} could compress gross operating margins over the next 2 quarters.",
         "counter_evidence": "Company management maintains strategic hedging and price adjustment buffers.",
         "thesis_breakers": [
-            "Brent crude remaining above $95/bbl for > 2 consecutive quarters",
+            "Input cost pressure persisting for more than 2 consecutive quarters",
             "Inability to pass through cost increases to end consumers"
         ]
     }
+    analysis_source = "DETERMINISTIC_FALLBACK"
+
+    # --- Real LLM analysis, grounded in the structured context above ---
+    if generate_event_impact_analysis is not None:
+        company_for_llm = {**company, "symbol": company_symbol}
+        ai_result = generate_event_impact_analysis(event, company_for_llm, exposures, evidence)
+        if ai_result:
+            impact_assessment = ai_result.get("impact_assessment", impact_assessment)
+            contrarian_review = ai_result.get("contrarian_risk_review", contrarian_review)
+            analysis_source = "GEMINI_LLM"
 
     report = {
         "event_summary": {
@@ -70,20 +94,16 @@ def analyze_event_impact_on_company(
             "company_name": company.get("company_name"),
             "sector": company.get("sector")
         },
-        "impact_assessment": {
-            "impact_direction": direction,
-            "impact_magnitude": magnitude,
-            "confidence_score": 0.85,
-            "time_horizon": "SHORT_TO_MEDIUM_TERM"
-        },
+        "impact_assessment": impact_assessment,
         "structural_exposures": exposures,
         "evidence_citations": citations,
         "contrarian_risk_review": contrarian_review,
         "what_to_monitor": [
-            "Daily Brent Crude / ATF price benchmarks",
-            "Upcoming Q1 management margin commentary",
+            "Relevant commodity / input price benchmarks",
+            "Upcoming quarterly management margin commentary",
             "Exchange rate volatility (USD/INR)"
-        ]
+        ],
+        "analysis_source": analysis_source
     }
 
     return enforce_sebi_compliance(report)

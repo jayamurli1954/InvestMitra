@@ -41,6 +41,38 @@ const DEFAULT_SCOPE = {
   macro_drivers: ["Global Brent Crude Futures", "USD/INR Exchange Rate", "Refining Margins"]
 };
 
+// Small badge that tells the user where a piece of analysis came from.
+function SourceBadge({ source }) {
+  if (source === 'GEMINI_LLM') {
+    return (
+      <span className="px-2 py-0.5 bg-violet-500/10 text-violet-300 border border-violet-500/30 text-[10px] font-semibold rounded-full">
+        Gemini AI
+      </span>
+    );
+  }
+  if (source === 'DETERMINISTIC_FALLBACK') {
+    return (
+      <span className="px-2 py-0.5 bg-slate-700/40 text-slate-300 border border-slate-600/40 text-[10px] font-semibold rounded-full">
+        Rule-based
+      </span>
+    );
+  }
+  // No source field => client-side offline fallback
+  return (
+    <span className="px-2 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-semibold rounded-full">
+      Demo (offline)
+    </span>
+  );
+}
+
+function DemoChip() {
+  return (
+    <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[9px] font-semibold rounded uppercase tracking-wide">
+      Demo data
+    </span>
+  );
+}
+
 async function fetchWithFallback(endpoint, options = {}) {
   const ports = ['', 'http://127.0.0.1:8000', 'http://127.0.0.1:9001', 'http://localhost:8000', 'http://localhost:9001'];
   for (const prefix of ports) {
@@ -64,6 +96,11 @@ export default function EventRadar() {
   const [impactAnalysis, setImpactAnalysis] = useState(null);
   const [selectedCompany, setSelectedCompany] = useState('INDIGO');
   const [loading, setLoading] = useState(false);
+
+  // Treat the feed as live only when the backend tags events with a non-demo
+  // source; seed/demo data (or the client fallback, which carries no source)
+  // is surfaced honestly to the user.
+  const isDemoFeed = !events.some((e) => e.data_source && e.data_source !== 'SEED_DEMO');
 
   useEffect(() => {
     fetchWithFallback('/api/events/feed').then(data => {
@@ -129,13 +166,20 @@ export default function EventRadar() {
             Global & Indian Market Event Radar
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Real-time OSINT event intelligence signal propagation into Indian sectors and listed equities.
+            OSINT event intelligence signal propagation into Indian sectors and listed equities.
           </p>
         </div>
-        <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-full flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          OSINT Live
-        </span>
+        {isDemoFeed ? (
+          <span className="px-3 py-1 bg-amber-500/10 text-amber-300 border border-amber-500/30 text-xs font-semibold rounded-full flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            Demo Feed
+          </span>
+        ) : (
+          <span className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold rounded-full flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            OSINT Live
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -160,11 +204,14 @@ export default function EventRadar() {
                   <span className="px-2 py-0.5 bg-slate-800 text-cyan-400 rounded font-medium">
                     {evt.event_type}
                   </span>
-                  <span className={`font-semibold ${
-                    evt.severity === 'HIGH' ? 'text-rose-400' : 'text-amber-400'
-                  }`}>
-                    {evt.severity} SEVERITY
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {evt.data_source === 'SEED_DEMO' && <DemoChip />}
+                    <span className={`font-semibold ${
+                      evt.severity === 'HIGH' ? 'text-rose-400' : 'text-amber-400'
+                    }`}>
+                      {evt.severity} SEVERITY
+                    </span>
+                  </div>
                 </div>
                 <h3 className="text-sm font-medium text-slate-200 line-clamp-2 mt-1">
                   {evt.title}
@@ -264,9 +311,12 @@ export default function EventRadar() {
 
         {/* Right Column: Impact Analysis & Citation Output */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg">
-          <h2 className="text-md font-semibold text-slate-200 mb-4 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-indigo-400" />
-            Evidence-Backed Impact Assessment
+          <h2 className="text-md font-semibold text-slate-200 mb-4 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <FileText className="w-4 h-4 text-indigo-400" />
+              Evidence-Backed Impact Assessment
+            </span>
+            {impactAnalysis && <SourceBadge source={impactAnalysis.analysis_source} />}
           </h2>
 
           {impactAnalysis ? (
@@ -284,7 +334,10 @@ export default function EventRadar() {
 
               {/* RAG Citations */}
               <div>
-                <span className="font-semibold text-slate-300 block mb-2">Verifiable Corporate Citations</span>
+                <span className="font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                  Corporate Citations
+                  {impactAnalysis.evidence_citations?.some((c) => c.demo_data) && <DemoChip />}
+                </span>
                 <div className="space-y-2">
                   {impactAnalysis.evidence_citations?.map((cit) => (
                     <div key={cit.citation_number} className="p-3 bg-slate-950/90 rounded border border-slate-800">

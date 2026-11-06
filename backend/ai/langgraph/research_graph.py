@@ -21,6 +21,14 @@ except ModuleNotFoundError:
     from research.rag.retrieval_engine import retrieve_evidence_for_company, format_citations
     from governance.compliance import enforce_sebi_compliance
 
+try:
+    from backend.ai_insights import generate_event_impact_analysis
+except ModuleNotFoundError:
+    try:
+        from ai_insights import generate_event_impact_analysis
+    except Exception:
+        generate_event_impact_analysis = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,6 +73,8 @@ class CompanyResearchAgent:
 class EventImpactAgent:
     def run(self, state: AgentState) -> None:
         logger.info("[EventImpactAgent] Analyzing exposure impact...")
+
+        # Deterministic baseline (used if the LLM is unavailable)
         direction = "NEUTRAL / BALANCED"
         magnitude = "MODERATE"
         for exp in state.exposures:
@@ -75,16 +85,38 @@ class EventImpactAgent:
         state.impact_analysis = {
             "direction": direction,
             "magnitude": magnitude,
-            "confidence": 0.85
+            "confidence": 0.85,
+            "analysis_source": "DETERMINISTIC_FALLBACK"
         }
+
+        # Real LLM analysis grounded in event + exposures + evidence
+        if generate_event_impact_analysis is not None:
+            company_for_llm = {**(state.company_profile or {}), "symbol": state.company_symbol}
+            ai_result = generate_event_impact_analysis(
+                state.event_data, company_for_llm, state.exposures, state.evidence_chunks
+            )
+            if ai_result:
+                assessment = ai_result.get("impact_assessment", {})
+                state.impact_analysis = {
+                    "direction": assessment.get("impact_direction", direction),
+                    "magnitude": assessment.get("impact_magnitude", magnitude),
+                    "confidence": assessment.get("confidence_score", 0.85),
+                    "rationale": assessment.get("rationale"),
+                    "analysis_source": "GEMINI_LLM"
+                }
+                # Hand the risk review to the contrarian agent so it needn't re-call the LLM
+                state.risk_review = ai_result.get("contrarian_risk_review", {})
 
 
 class ContrarianRiskAgent:
     def run(self, state: AgentState) -> None:
         logger.info("[ContrarianRiskAgent] Challenging assumptions & identifying thesis breakers...")
+        # Prefer the LLM-generated review produced by EventImpactAgent, if present
+        if state.risk_review:
+            return
         state.risk_review = {
             "bull_case": f"{state.company_symbol} pricing power buffers near-term cost pressures.",
-            "bear_case": "Prolonged crude/input spikes compress operating margin by 150-250 bps.",
+            "bear_case": "Prolonged input-cost spikes compress operating margin over coming quarters.",
             "counter_evidence": "Company management maintains active hedging and price adjustment mechanisms.",
             "thesis_breakers": [
                 "Input price spike persisting > 2 quarters",
