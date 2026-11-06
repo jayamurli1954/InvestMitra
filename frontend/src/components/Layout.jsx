@@ -117,6 +117,7 @@ const Layout = ({ children }) => {
     { path: '/screener', icon: Filter, label: 'Screener' },
     { path: '/strategies', icon: Target, label: 'Strategies' },
     { path: '/analytics', icon: PieChart, label: 'Analytics' },
+    { path: '/broker-connections', icon: Building2, label: 'Brokers' },
   ];
 
   const popularStocks = [
