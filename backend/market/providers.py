@@ -305,32 +305,36 @@ class FyersDataProvider(BaseMarketDataProvider):
         if not self._ready or not symbols:
             return results
         fy_map = {self._fy_symbol(s): s for s in symbols}
-        try:
-            r = self._fyers.quotes({"symbols": ",".join(fy_map)})
-            for row in (r or {}).get("d") or []:
-                if row.get("s") != "ok":
-                    continue
-                orig = fy_map.get(row.get("n"))
-                v = row.get("v") or {}
-                lp = float(v.get("lp") or 0.0)
-                results[orig or row.get("n")] = {
-                    "symbol": orig or row.get("n"),
-                    "name": v.get("short_name") or orig or row.get("n"),
-                    "exchange": "NSE",
-                    "sector": "Other",  # Fyers quotes carry no sector/fundamentals
-                    "current_price": lp,
-                    "change": float(v.get("ch") or 0.0),
-                    "change_percent": float(v.get("chp") or 0.0),
-                    "volume": int(float(v.get("volume") or 0)),
-                    "market_cap": 0.0,
-                    "pe_ratio": None,
-                    "pb_ratio": None,
-                    "roe": None,
-                    "ma_50": lp,
-                    "ma_200": lp,
-                }
-        except Exception as e:
-            logger.warning(f"Fyers stock info failed: {e}")
+        fy_symbols = list(fy_map)
+        # Fyers quotes GET is capped at 50 symbols per request — batch accordingly.
+        for i in range(0, len(fy_symbols), 50):
+            batch = fy_symbols[i:i + 50]
+            try:
+                r = self._fyers.quotes({"symbols": ",".join(batch)})
+                for row in (r or {}).get("d") or []:
+                    if row.get("s") != "ok":
+                        continue
+                    orig = fy_map.get(row.get("n"))
+                    v = row.get("v") or {}
+                    lp = float(v.get("lp") or 0.0)
+                    results[orig or row.get("n")] = {
+                        "symbol": orig or row.get("n"),
+                        "name": v.get("short_name") or orig or row.get("n"),
+                        "exchange": "NSE",
+                        "sector": "Other",  # Fyers quotes carry no sector/fundamentals
+                        "current_price": lp,
+                        "change": float(v.get("ch") or 0.0),
+                        "change_percent": float(v.get("chp") or 0.0),
+                        "volume": int(float(v.get("volume") or 0)),
+                        "market_cap": 0.0,
+                        "pe_ratio": None,
+                        "pb_ratio": None,
+                        "roe": None,
+                        "ma_50": lp,
+                        "ma_200": lp,
+                    }
+            except Exception as e:
+                logger.warning(f"Fyers stock info failed for batch {i//50}: {e}")
         return results
 
     def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:

@@ -2,7 +2,8 @@
 One-time Fyers (API v3) OAuth connect helper — READ-ONLY market data.
 
 Run this locally once (and again whenever the access token expires — Fyers tokens
-are valid for the trading day):
+expire daily at 6:30 AM IST, so re-run after that each trading day; API error
+codes -8/-15/-16/-17 also mean the token is invalid/expired):
 
     cd backend
     python -m market.fyers_connect
