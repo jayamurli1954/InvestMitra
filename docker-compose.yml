@@ -13,7 +13,13 @@ services:
       - PORT=8000
       - MONGO_URL=${MONGO_URL:-mongodb://mongo:27017}
       - DB_NAME=${DB_NAME:-investment_framework}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,https://investmitra.coolify.dev}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,https://www.investmitra.sanmitratech.in,https://investmitra.sanmitratech.in}
+      # Broker connections (per-user encrypted store) + Fyers OAuth redirect-back
+      - BROKER_ENC_KEY=${BROKER_ENC_KEY}
+      - FRONTEND_URL=${FRONTEND_URL:-https://www.investmitra.sanmitratech.in}
+      # AI insights + live data provider
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - PRIMARY_PROVIDER=${PRIMARY_PROVIDER:-yfinance}
     depends_on:
       - mongo
 
