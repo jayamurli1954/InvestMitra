@@ -1595,6 +1595,13 @@ async def get_mutual_fund_detail(scheme_code: str):
         logger.error(f"Error fetching mutual fund {scheme_code}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@api_router.get("/market/status")
+async def market_status():
+    """NSE/BSE open/closed status (IST, accounts for weekends + trading holidays)."""
+    from market.market_status import get_market_status
+    return get_market_status()
+
+
 @api_router.get("/market/major-stocks")
 @cached(key_prefix="major_stocks")
 async def get_major_stocks():
