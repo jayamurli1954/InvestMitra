@@ -417,6 +417,7 @@ class AngelOneDataProvider(BaseMarketDataProvider):
     def __init__(self, creds: Optional[Dict[str, str]] = None):
         self._api = None
         self._ready = False
+        self._token_cache: Dict[str, str] = {}
         try:
             from SmartApi import SmartConnect
             import pyotp
@@ -449,15 +450,106 @@ class AngelOneDataProvider(BaseMarketDataProvider):
             logger.error(f"Angel One init failed: {e}")
             self._api = None
 
-    # --- quote methods are no-ops: Angel here is a holdings source only ---
-    def get_stock_info(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
-        return {}
-
-    def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:
-        return []
+    def _resolve_token(self, symbol: str, exchange: str = "NSE") -> Optional[str]:
+        """Resolve a symbol to Angel's numeric token via searchScrip (cached)."""
+        clean = symbol.upper().replace(".NS", "").replace(".BO", "").strip()
+        if clean in self._token_cache:
+            return self._token_cache[clean]
+        try:
+            r = self._api.searchScrip(exchange, clean)
+            hits = (r or {}).get("data") or []
+            match = next((h for h in hits if h.get("tradingsymbol", "").upper() == f"{clean}-EQ"),
+                         hits[0] if hits else None)
+            token = match.get("symboltoken") if match else None
+            if token:
+                self._token_cache[clean] = token
+            return token
+        except Exception as e:
+            logger.warning(f"Angel token resolve failed for {symbol}: {e}")
+            return None
 
     def get_current_price(self, symbol: str) -> float:
+        if not self._ready:
+            return 0.0
+        token = self._resolve_token(symbol)
+        if not token:
+            return 0.0
+        try:
+            md = self._api.getMarketData("LTP", {"NSE": [token]})
+            fetched = ((md or {}).get("data") or {}).get("fetched") or []
+            if fetched:
+                return float(fetched[0].get("ltp") or 0.0)
+        except Exception as e:
+            logger.warning(f"Angel price fetch failed for {symbol}: {e}")
         return 0.0
+
+    def get_stock_info(self, symbols: List[str]) -> Dict[str, Dict[str, Any]]:
+        results: Dict[str, Dict[str, Any]] = {}
+        if not self._ready or not symbols:
+            return results
+        # Resolve tokens, keeping token -> original symbol so we can map results back.
+        tok_to_sym = {}
+        for s in symbols:
+            tok = self._resolve_token(s)
+            if tok:
+                tok_to_sym[str(tok)] = s
+        tokens = list(tok_to_sym)
+        # getMarketData FULL is capped at 50 tokens per call.
+        for i in range(0, len(tokens), 50):
+            batch = tokens[i:i + 50]
+            try:
+                md = self._api.getMarketData("FULL", {"NSE": batch})
+                for f in ((md or {}).get("data") or {}).get("fetched") or []:
+                    orig = tok_to_sym.get(str(f.get("symbolToken")))
+                    if not orig:
+                        continue
+                    lp = float(f.get("ltp") or 0.0)
+                    results[orig] = {
+                        "symbol": orig,
+                        "name": f.get("tradingSymbol") or orig,
+                        "exchange": "NSE",
+                        "sector": "Other",  # Angel quotes carry no sector/fundamentals
+                        "current_price": lp,
+                        "change": float(f.get("netChange") or 0.0),
+                        "change_percent": float(f.get("percentChange") or 0.0),
+                        "volume": int(float(f.get("tradeVolume") or 0)),
+                        "market_cap": 0.0,
+                        "pe_ratio": None, "pb_ratio": None, "roe": None,
+                        "ma_50": lp, "ma_200": lp,
+                    }
+            except Exception as e:
+                logger.warning(f"Angel market data failed for batch {i//50}: {e}")
+        return results
+
+    def get_historical_data(self, symbol: str, days: int = 90) -> List[Dict[str, Any]]:
+        if not self._ready:
+            return []
+        token = self._resolve_token(symbol)
+        if not token:
+            return []
+        try:
+            from datetime import datetime, timedelta
+            end = datetime.now()
+            start = end - timedelta(days=days)
+            params = {
+                "exchange": "NSE", "symboltoken": token, "interval": "ONE_DAY",
+                "fromdate": start.strftime("%Y-%m-%d 09:15"),
+                "todate": end.strftime("%Y-%m-%d 15:30"),
+            }
+            r = self._api.getCandleData(params)
+            data = []
+            for c in (r or {}).get("data") or []:
+                # candle: [timestamp, open, high, low, close, volume]
+                data.append({
+                    "date": str(c[0])[:10],
+                    "open": float(c[1]), "high": float(c[2]),
+                    "low": float(c[3]), "close": float(c[4]),
+                    "volume": int(c[5]),
+                })
+            return data
+        except Exception as e:
+            logger.warning(f"Angel historical fetch failed for {symbol}: {e}")
+            return []
 
     def get_holdings(self) -> List[Dict[str, Any]]:
         """Fetch the connected Angel account's equity holdings, normalized."""
@@ -515,6 +607,11 @@ def build_primary_provider() -> BaseMarketDataProvider:
         if getattr(provider, "_ready", False):
             return provider
         logger.warning("PRIMARY_PROVIDER=fyers but not connected; using yfinance.")
+    elif choice == "angel":
+        provider = AngelOneDataProvider()
+        if getattr(provider, "_ready", False):
+            return provider
+        logger.warning("PRIMARY_PROVIDER=angel but not connected; using yfinance.")
     return YFinanceDataProvider()
 
 
