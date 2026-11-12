@@ -85,6 +85,12 @@ slowapi==0.1.9
 # Shoonya (Finvasia) OAuth market-data API client
 NorenRestApiOAuth==0.0.41
 
+# Angel One SmartAPI — live quotes + holdings. Clean deps (requests/six/dateutil),
+# so it installs in the default build (unlike fyers-apiv3). Enables PRIMARY_PROVIDER=angel.
+smartapi-python==1.5.5
+pyotp==2.9.0
+logzero==1.7.0
+
 # NOTE: Fyers (fyers-apiv3) is an OPTIONAL broker provider installed separately
 # via requirements-brokers.txt — its pinned AWS-Lambda deps conflict with boto3/
 # jmespath here. FyersDataProvider disables itself cleanly when it isn't installed.

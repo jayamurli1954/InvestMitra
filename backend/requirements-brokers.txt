@@ -9,7 +9,5 @@
 
 fyers-apiv3==3.2.1
 
-# Angel One SmartAPI (holdings import)
-smartapi-python==1.5.5
-pyotp==2.9.0
-logzero==1.7.0
+# NOTE: Angel One (smartapi-python) moved to the main requirements.txt — its deps
+# are conflict-free, so it installs in the default build (no build.sh needed for Angel).
