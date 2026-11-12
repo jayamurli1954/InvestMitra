@@ -436,6 +436,25 @@ class AngelOneDataProvider(BaseMarketDataProvider):
         if not all([api_key, client_code, mpin, totp_secret]):
             logger.warning("Angel One not configured (ANGEL_* env); provider disabled.")
             return
+
+        # Masked diagnostic: reveals which env var fed the client_code so a stale
+        # ANGEL_CLIENT_CODE/ANGEL_MPIN shadowing ANGEL_CLIENT_ID/ANGEL_PASSWORD is
+        # obvious in the Render log, without ever printing the secret value.
+        def _mask(v):
+            v = str(v or "")
+            return f"{v[:2]}…{v[-2:]} (len {len(v)})" if len(v) > 4 else f"(len {len(v)})"
+        _cc_src = ("per-user" if (creds.get("client_code") or creds.get("client_id"))
+                   else "ANGEL_CLIENT_CODE" if os.getenv("ANGEL_CLIENT_CODE")
+                   else "ANGEL_CLIENT_ID" if os.getenv("ANGEL_CLIENT_ID") else "none")
+        _pw_src = ("per-user" if (creds.get("mpin") or creds.get("password"))
+                   else "ANGEL_MPIN" if os.getenv("ANGEL_MPIN")
+                   else "ANGEL_PASSWORD" if os.getenv("ANGEL_PASSWORD") else "none")
+        logger.info("Angel login creds: client_code from %s = %s; password from %s = %s",
+                    _cc_src, _mask(client_code), _pw_src, _mask(mpin))
+        if str(client_code).strip().lower() in {"your-client-code", "your-client-id", "placeholder"}:
+            logger.error("Angel client_code is a PLACEHOLDER (%r). Set the REAL value in Render — "
+                         "note ANGEL_CLIENT_CODE overrides ANGEL_CLIENT_ID if both exist.",
+                         client_code)
         try:
             self._api = SmartConnect(api_key=api_key)
             otp = pyotp.TOTP(totp_secret).now()
