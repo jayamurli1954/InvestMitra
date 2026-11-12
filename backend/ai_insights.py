@@ -435,8 +435,8 @@ Respond with ONLY the JSON object, nothing else.
             
             return {
                 "optimization_suggestions": {
-                    "rebalancing": [f"AI response parsing failed. Raw: {raw_text[:100]}"],
-                    "diversification": ["Unable to parse AI recommendations"],
+                    "rebalancing": ["AI insights are temporarily unavailable (the response could not be read). Please try again shortly."],
+                    "diversification": [],
                     "risk_management": [],
                     "tactical_moves": []
                 },
@@ -445,15 +445,26 @@ Respond with ONLY the JSON object, nothing else.
             }
 
     except APIError as api_error:
-        logger.error(f"❌ Gemini API Error: {api_error}")
+        # Attribute names vary across google-genai error classes (ClientError etc.),
+        # so read them defensively and surface quota/billing issues clearly.
+        msg = str(getattr(api_error, "message", None) or api_error)
+        status = getattr(api_error, "status_code", None) or getattr(api_error, "code", None)
+        lowered = msg.lower()
+        is_quota = ("RESOURCE_EXHAUSTED" in msg or status in (402, 429)
+                    or "quota" in lowered or "credit" in lowered or "billing" in lowered)
+        logger.error(f"❌ Gemini API Error (status={status}): {msg}")
+        rebalancing = (
+            ["AI insights are temporarily unavailable — the Gemini API quota/credits are exhausted. Please check your Gemini API billing."]
+            if is_quota else [f"AI service error: {msg[:160]}"]
+        )
         return {
             "optimization_suggestions": {
-                "rebalancing": [f"API Error: {api_error.message}"],
+                "rebalancing": rebalancing,
                 "diversification": [],
                 "risk_management": [],
                 "tactical_moves": []
             },
-            "error": f"api_error_{api_error.status_code}"
+            "error": "ai_quota_exhausted" if is_quota else f"api_error_{status}"
         }
         
     except Exception as e:
