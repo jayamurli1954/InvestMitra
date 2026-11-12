@@ -1834,6 +1834,170 @@ async def add_portfolio_holding(holding: PortfolioHoldingCreate, current_user: U
 
     return holding_obj
 
+class BrokerConnectCreate(BaseModel):
+    broker: str
+    credentials: Dict[str, str]
+
+
+@api_router.get("/broker/supported")
+async def list_supported_brokers(current_user: User = Depends(require_auth)):
+    """List brokers the connect UI supports, with the fields each needs."""
+    from market.broker_store import SUPPORTED_BROKERS
+    return {"brokers": [{"broker": b, **meta} for b, meta in SUPPORTED_BROKERS.items()]}
+
+
+@api_router.get("/broker/connections")
+async def list_broker_connections(current_user: User = Depends(require_auth)):
+    """List the user's connected brokers. Secrets are never returned."""
+    conns = await db.broker_connections.find(
+        {"user_id": current_user.id}, {"_id": 0, "enc_credentials": 0, "user_id": 0}
+    ).to_list(50)
+    return {"connections": conns}
+
+
+@api_router.post("/broker/connect")
+async def connect_broker(body: BrokerConnectCreate, current_user: User = Depends(require_auth)):
+    """Verify and store (encrypted) a user's broker credentials."""
+    from market.broker_store import SUPPORTED_BROKERS, validate_broker_connection, encrypt_creds
+    if body.broker not in SUPPORTED_BROKERS:
+        raise HTTPException(status_code=400, detail="Unsupported broker")
+    try:
+        err = validate_broker_connection(body.broker, body.credentials)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Broker validation error: {e}")
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    try:
+        enc = encrypt_creds(body.credentials)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    await db.broker_connections.update_one(
+        {"user_id": current_user.id, "broker": body.broker},
+        {"$set": {
+            "user_id": current_user.id, "broker": body.broker, "enc_credentials": enc,
+            "status": "connected", "connected_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"broker": body.broker, "status": "connected"}
+
+
+@api_router.delete("/broker/connections/{broker}")
+async def disconnect_broker(broker: str, current_user: User = Depends(require_auth)):
+    """Disconnect a broker and remove its auto-imported holdings."""
+    await db.broker_connections.delete_one({"user_id": current_user.id, "broker": broker})
+    await db.portfolio.delete_many({"user_id": current_user.id, "broker": broker, "source": "broker_import"})
+    return {"broker": broker, "status": "disconnected"}
+
+
+class FyersBeginCreate(BaseModel):
+    api_key: str
+    secret_id: str
+    redirect_uri: str
+
+
+@api_router.post("/broker/fyers/begin")
+async def fyers_oauth_begin(body: FyersBeginCreate, current_user: User = Depends(require_auth)):
+    """Start Fyers OAuth: store the user's app creds (pending) and return the login URL.
+
+    The user registers {redirect_uri} in their Fyers app; it must point to
+    /api/broker/fyers/callback on this backend.
+    """
+    import secrets as _secrets
+    from market.broker_store import encrypt_creds, fyers_login_url
+    nonce = _secrets.token_urlsafe(24)
+    enc = encrypt_creds({"app_id": body.api_key, "secret": body.secret_id, "redirect": body.redirect_uri})
+    await db.broker_connections.update_one(
+        {"user_id": current_user.id, "broker": "Fyers"},
+        {"$set": {
+            "user_id": current_user.id, "broker": "Fyers", "enc_credentials": enc,
+            "status": "pending", "nonce": nonce,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    try:
+        url = fyers_login_url(body.api_key, body.secret_id, body.redirect_uri, nonce)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Could not build Fyers login URL: {e}")
+    return {"login_url": url}
+
+
+@api_router.get("/broker/fyers/callback")
+async def fyers_oauth_callback(request: Request):
+    """Fyers redirects here after login (no app auth — identified by the state nonce)."""
+    from fastapi.responses import RedirectResponse
+    from market.broker_store import decrypt_creds, encrypt_creds, exchange_fyers_code
+    params = dict(request.query_params)
+    auth_code = params.get("auth_code") or params.get("code")
+    state = params.get("state")
+    frontend = os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+    def _back(q):
+        return RedirectResponse(f"{frontend}/broker-connections?{q}")
+
+    if not auth_code or not state:
+        return _back("error=missing_code")
+    conn = await db.broker_connections.find_one({"broker": "Fyers", "nonce": state, "status": "pending"})
+    if not conn:
+        return _back("error=invalid_state")
+    try:
+        app = decrypt_creds(conn["enc_credentials"])
+        access_token = exchange_fyers_code(app["app_id"], app["secret"], app["redirect"], auth_code)
+    except Exception as e:
+        logger.error(f"Fyers OAuth exchange failed: {e}")
+        return _back("error=exchange_failed")
+    if not access_token:
+        return _back("error=no_token")
+    new_enc = encrypt_creds({
+        "app_id": app["app_id"], "secret": app["secret"],
+        "redirect": app["redirect"], "access_token": access_token,
+    })
+    await db.broker_connections.update_one(
+        {"_id": conn["_id"]},
+        {"$set": {"enc_credentials": new_enc, "status": "connected",
+                  "connected_at": datetime.now(timezone.utc).isoformat()},
+         "$unset": {"nonce": ""}},
+    )
+    return _back("connected=fyers")
+
+
+@api_router.post("/portfolio/sync-broker")
+async def sync_broker_holdings(current_user: User = Depends(require_auth)):
+    """Auto-import the user's holdings from THEIR connected brokers (read-only).
+
+    Uses each user's own stored credentials, so one user never sees another's data.
+    Non-destructive: imported rows are tagged as broker imports and symbols the user
+    tracks manually are skipped, so nothing hand-entered is duplicated.
+    """
+    from market.broker_store import build_user_holdings_providers
+    from market.holdings_sync import sync_user_broker_holdings
+
+    conns = await db.broker_connections.find({"user_id": current_user.id}).to_list(50)
+    if not conns:
+        return {"synced": {}, "note": "No broker connected. Connect a broker first."}
+    try:
+        providers = build_user_holdings_providers(conns)
+    except Exception as e:
+        logger.error(f"Broker connect error for {current_user.id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Broker connect error: {e}")
+    if not providers:
+        return {"synced": {}, "note": "Could not connect to your broker(s) — credentials may have expired; reconnect."}
+    try:
+        summary = await sync_user_broker_holdings(db, current_user.id, providers)
+    except Exception as e:
+        logger.error(f"Broker sync failed for {current_user.id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Broker sync failed: {e}")
+    await db.broker_connections.update_many(
+        {"user_id": current_user.id},
+        {"$set": {"last_synced": datetime.now(timezone.utc).isoformat()}},
+    )
+    return {
+        "synced": summary,
+        "note": "Imported holdings are tagged as broker imports; symbols you track manually were skipped to avoid duplicates.",
+    }
+
+
 @api_router.post("/portfolio/{holding_id}/transact")
 async def transact_holding(holding_id: str, transaction: HoldingTransaction, current_user: User = Depends(require_auth)):
     holding = await db.portfolio.find_one({"id": holding_id, "user_id": current_user.id})
