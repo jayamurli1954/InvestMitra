@@ -1,6 +1,12 @@
 """
 InvestMitra Event Collector Module
-Ingests global OSINT, geopolitical developments, macro indicators, and commodity signals (World Monitor Inspiration).
+Intended to ingest global OSINT, geopolitical developments, macro indicators, and
+commodity signals.
+
+NOTE: This module currently serves a small, hand-authored SEED/DEMO feed, not a live
+news pipeline. Every event returned is tagged ``data_source: "SEED_DEMO"`` so callers
+and the UI can distinguish it from real ingestion. Replacing GLOBAL_EVENT_FEED with a
+real news/OSINT source is a tracked follow-up.
 """
 
 from typing import List, Dict, Any
@@ -9,7 +15,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Sample Live Global Event Feed Database (World Monitor OSINT Pipeline)
+# SEED / DEMO event feed — placeholder data, NOT a live OSINT pipeline.
 GLOBAL_EVENT_FEED: List[Dict[str, Any]] = [
     {
         "event_id": "EVT-2026-001",
@@ -50,14 +56,19 @@ GLOBAL_EVENT_FEED: List[Dict[str, Any]] = [
 ]
 
 
+def _tag_demo(evt: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a copy of an event tagged as seed/demo data."""
+    return {**evt, "data_source": "SEED_DEMO"}
+
+
 def fetch_recent_global_events(limit: int = 5) -> List[Dict[str, Any]]:
-    """Fetch latest global event signals from ingestion queue."""
-    return GLOBAL_EVENT_FEED[:limit]
+    """Fetch recent event signals (currently seed/demo data, not live ingestion)."""
+    return [_tag_demo(evt) for evt in GLOBAL_EVENT_FEED[:limit]]
 
 
 def get_event_by_id(event_id: str) -> Dict[str, Any]:
-    """Retrieve specific event signal by ID."""
+    """Retrieve a specific event signal by ID (seed/demo data)."""
     for evt in GLOBAL_EVENT_FEED:
         if evt["event_id"] == event_id:
-            return evt
-    return GLOBAL_EVENT_FEED[0]
+            return _tag_demo(evt)
+    return _tag_demo(GLOBAL_EVENT_FEED[0])

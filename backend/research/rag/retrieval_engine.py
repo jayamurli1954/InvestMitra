@@ -1,6 +1,13 @@
 """
 InvestMitra RAG Evidence Retrieval & Citation Engine
-Retrieves evidence chunks for company filings, earnings calls, and corporate disclosures with verifiable citations.
+Intended to retrieve evidence chunks from company filings, earnings calls and
+corporate disclosures with verifiable citations.
+
+NOTE: This currently serves a small, hand-authored SEED/DEMO knowledge base matched
+by symbol (no real vector search — ``generate_simulated_embedding`` is a placeholder).
+Every citation returned is tagged ``demo_data: True`` so it is never presented as a
+retrieved real disclosure. Wiring a real vector store (e.g. Supabase/pgvector) over an
+actual document corpus is a tracked follow-up.
 """
 
 from typing import List, Dict, Any, Optional
@@ -9,7 +16,7 @@ from backend.research.rag.document_processor import generate_simulated_embedding
 
 logger = logging.getLogger(__name__)
 
-# Sample Evidence Knowledge Base for Indian Companies
+# SEED / DEMO evidence knowledge base — placeholder chunks, NOT retrieved from real filings.
 EVIDENCE_DATABASE: List[Dict[str, Any]] = [
     {
         "chunk_id": "CHK-INDIGO-2025-Q4-01",
@@ -88,6 +95,7 @@ def format_citations(evidence_chunks: List[Dict[str, Any]]) -> List[Dict[str, An
             "source_name": chunk["source_name"],
             "period": chunk["period"],
             "citation_text": chunk["content"],
-            "confidence": chunk.get("relevance_score", 0.85)
+            "confidence": chunk.get("relevance_score", 0.85),
+            "demo_data": True
         })
     return citations
